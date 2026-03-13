@@ -1,0 +1,33 @@
+# Data — multi-GB raw downloads, never committed
+data/*
+!data/.gitkeep
+!data/SOURCES.md
+
+# Pipeline checkpoints — intermediate Parquet files
+cache/*
+!cache/.gitkeep
+
+# Output CSVs are committed; notebook outputs are not
+notebooks/.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+*.egg-info/
+dist/
+build/
+
+# uv / virtualenv
+.venv/
+.uv/
+
+# OS
+.DS_Store
+Thumbs.db
