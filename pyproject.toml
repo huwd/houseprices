@@ -1,0 +1,60 @@
+[project]
+name = "houseprices"
+version = "0.1.0"
+description = "UK house prices per square metre — PPD × EPC pipeline"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.1.0",
+    "pyarrow>=17.0.0",
+    "pandas>=2.2.0",
+    "requests>=2.32.0",
+]
+
+[project.optional-dependencies]
+notebook = [
+    "jupyter>=1.1.0",
+    "nbconvert>=7.16.0",
+    "matplotlib>=3.9.0",
+    "folium>=0.17.0",
+]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-cov>=5.0.0",
+    "mypy>=1.10.0",
+    "ruff>=0.5.0",
+    "pandas-stubs>=2.2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/houseprices"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["duckdb.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=src --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
