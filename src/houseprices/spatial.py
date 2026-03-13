@@ -2,6 +2,7 @@
 
 import pathlib
 
+import duckdb
 import pandas as pd
 
 
@@ -14,4 +15,21 @@ def build_uprn_lsoa(
     Returns a DataFrame with columns: UPRN, LSOA21CD, LSOA21NM.
     Only UPRNs that fall within a boundary polygon are included.
     """
-    raise NotImplementedError
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+
+    uprn = str(uprn_path)
+    boundary = str(boundary_path)
+
+    return con.execute(f"""
+        SELECT
+            u.UPRN,
+            l.LSOA21CD,
+            l.LSOA21NM
+        FROM read_csv('{uprn}') AS u
+        JOIN ST_Read('{boundary}') AS l
+          ON ST_Within(
+              ST_Point(u.X_COORDINATE, u.Y_COORDINATE),
+              l.geom
+          )
+    """).df()
