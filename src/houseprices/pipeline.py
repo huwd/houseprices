@@ -25,7 +25,7 @@ def normalise_address(saon: str, paon: str, street: str) -> str:
     return parts
 
 
-def aggregate(rows: list[dict]) -> dict:  # type: ignore[type-arg]
+def aggregate(rows: list[dict[str, float]]) -> dict[str, int]:
     """Aggregate sales rows to price per m² (total price / total area)."""
     total_price = sum(r["price"] for r in rows)
     total_area = sum(r["floor_area"] for r in rows)
