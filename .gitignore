@@ -3,7 +3,6 @@ data/*
 !data/.gitkeep
 !data/SOURCES.md
 !data/anna_reference.json.example
-!data/anna_reference.json
 
 # Pipeline checkpoints — intermediate Parquet files
 cache/*
