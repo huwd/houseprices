@@ -34,7 +34,16 @@ def load_epc(epc_path: str | pathlib.Path) -> pd.DataFrame:
     Rows without a UPRN are kept as-is (they are candidates for Tier 2
     address-normalisation matching and cannot be deduplicated by UPRN).
     """
-    raise NotImplementedError
+    df = pd.read_csv(epc_path)
+    df["LODGEMENT_DATETIME"] = pd.to_datetime(df["LODGEMENT_DATETIME"])
+
+    with_uprn = df[df["UPRN"].notna()].copy()
+    without_uprn = df[df["UPRN"].isna()].copy()
+
+    with_uprn = with_uprn.sort_values("LODGEMENT_DATETIME", ascending=False)
+    with_uprn = with_uprn.drop_duplicates(subset=["UPRN"], keep="first")
+
+    return pd.concat([with_uprn, without_uprn], ignore_index=True)
 
 
 def join_datasets(
@@ -51,7 +60,56 @@ def join_datasets(
     PPD records with ppd_category_type != 'A' are excluded before joining.
     Unmatched PPD records are not included in the result.
     """
-    raise NotImplementedError
+    ppd = pd.read_csv(ppd_path)
+    ppd = ppd[ppd["ppd_category_type"] == "A"].copy()
+
+    epc = load_epc(epc_path)
+    ubdc = pd.read_csv(ubdc_path)
+
+    # Tier 1: exact UPRN join via UBDC lookup
+    epc_with_uprn = epc[epc["UPRN"].notna()].copy()
+    epc_with_uprn["UPRN"] = epc_with_uprn["UPRN"].astype(int)
+
+    tier1 = (
+        ppd.merge(
+            ubdc,
+            left_on="transaction_unique_identifier",
+            right_on="transactionid",
+        )
+        .merge(epc_with_uprn, left_on="uprn", right_on="UPRN")
+        .assign(match_tier=1)
+    )
+
+    # Tier 2: address normalisation for records not matched in Tier 1
+    matched = set(tier1["transaction_unique_identifier"])
+    ppd_remaining = ppd[~ppd["transaction_unique_identifier"].isin(matched)].copy()
+
+    ppd_remaining["norm_addr"] = ppd_remaining.apply(
+        lambda r: normalise_address(
+            str(r["saon"]) if pd.notna(r["saon"]) else "",
+            str(r["paon"]) if pd.notna(r["paon"]) else "",
+            str(r["street"]) if pd.notna(r["street"]) else "",
+        ),
+        axis=1,
+    )
+    ppd_remaining["postcode_norm"] = ppd_remaining["postcode"].str.strip().str.upper()
+
+    epc_tier2 = epc.copy()
+    epc_tier2["norm_addr"] = epc_tier2.apply(
+        lambda r: normalise_address(
+            str(r["ADDRESS1"]) if pd.notna(r["ADDRESS1"]) else "",
+            str(r["ADDRESS2"]) if pd.notna(r["ADDRESS2"]) else "",
+            "",
+        ),
+        axis=1,
+    )
+    epc_tier2["postcode_norm"] = epc_tier2["POSTCODE"].str.strip().str.upper()
+
+    tier2 = ppd_remaining.merge(epc_tier2, on=["postcode_norm", "norm_addr"]).assign(
+        match_tier=2
+    )
+
+    return pd.concat([tier1, tier2], ignore_index=True)
 
 
 def aggregate(rows: list[dict[str, float]]) -> dict[str, int]:
