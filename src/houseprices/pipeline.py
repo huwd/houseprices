@@ -2,9 +2,20 @@
 
 import pathlib
 import re
+from collections.abc import Callable
 from enum import Enum
 
 import pandas as pd
+
+from houseprices.spatial import build_uprn_lsoa
+
+# ---------------------------------------------------------------------------
+# Default paths (relative to project root)
+# ---------------------------------------------------------------------------
+
+DATA = pathlib.Path("data")
+CACHE = pathlib.Path("cache")
+OUTPUT = pathlib.Path("output")
 
 
 class Geography(Enum):
@@ -197,3 +208,118 @@ def aggregate(rows: list[dict[str, float]]) -> dict[str, int]:
     total_price = sum(r["price"] for r in rows)
     total_area = sum(r["floor_area"] for r in rows)
     return {"price_per_sqm": round(total_price / total_area)}
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint helper
+# ---------------------------------------------------------------------------
+
+
+def _checkpoint(
+    name: str,
+    cache_dir: pathlib.Path,
+    compute: Callable[[], pd.DataFrame],
+) -> pd.DataFrame:
+    """Return cached Parquet if present; otherwise compute, save, and return.
+
+    Creates *cache_dir* if it does not exist.
+    """
+    path = cache_dir / f"{name}.parquet"
+    if path.exists():
+        print(f"  [skip] {name}")
+        return pd.read_parquet(path)
+    print(f"  [run]  {name}")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    df = compute()
+    df.to_parquet(path, index=False)
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Top-level runner
+# ---------------------------------------------------------------------------
+
+
+def run(
+    ppd_path: pathlib.Path,
+    epc_path: pathlib.Path,
+    ubdc_path: pathlib.Path,
+    uprn_path: pathlib.Path,
+    boundary_path: pathlib.Path,
+    *,
+    cache_dir: pathlib.Path = CACHE,
+    output_dir: pathlib.Path = OUTPUT,
+    min_sales: int = 10,
+) -> None:
+    """Run the full pipeline: join → spatial → aggregate → write CSVs.
+
+    Each heavy step is checkpointed to *cache_dir* as Parquet.  Re-running
+    skips any step whose checkpoint already exists, so iterating on later
+    stages does not require re-processing the raw data.
+
+    Args:
+        ppd_path:      Path to the Price Paid Data CSV.
+        epc_path:      Path to the EPC CSV (extracted from bulk ZIP).
+        ubdc_path:     Path to the UBDC PPD→UPRN lookup CSV.
+        uprn_path:     Path to the OS Open UPRN CSV.
+        boundary_path: Path to the LSOA boundary file (GeoPackage or GeoJSON).
+        cache_dir:     Directory for Parquet checkpoints (default: cache/).
+        output_dir:    Directory for output CSVs (default: output/).
+        min_sales:     Minimum sales per geography unit to include in output.
+    """
+    # Step 1: join PPD + EPC via UBDC UPRN lookup + address normalisation
+    matched = _checkpoint(
+        "matched",
+        cache_dir,
+        lambda: join_datasets(ppd_path, epc_path, ubdc_path),
+    )
+
+    # Step 2: build UPRN → LSOA spatial lookup
+    uprn_lsoa = _checkpoint(
+        "uprn_lsoa",
+        cache_dir,
+        lambda: build_uprn_lsoa(uprn_path, boundary_path),
+    )
+
+    # Step 3: attach LSOA codes to matched records via UPRN.
+    # Only Tier 1 records have a UBDC-confirmed UPRN (`uprn` column);
+    # Tier 2 address-matched records get LSOA21CD = NaN and are excluded
+    # from the LSOA output but still appear in the postcode district output.
+    uprn_to_lsoa: pd.Series = uprn_lsoa.set_index("UPRN")["LSOA21CD"]
+    matched["LSOA21CD"] = matched["uprn"].map(uprn_to_lsoa)
+
+    # Step 4: match report
+    ppd_meta = pd.read_csv(ppd_path, usecols=["ppd_category_type"])
+    total_ppd = int((ppd_meta["ppd_category_type"] == "A").sum())
+    report = match_report(matched, total_ppd)
+    print(
+        f"\nMatch report — "
+        f"tier1: {report['tier1']} ({report['tier1_pct']}%), "
+        f"tier2: {report['tier2']} ({report['tier2_pct']}%), "
+        f"unmatched: {report['unmatched']} ({report['unmatched_pct']}%)\n"
+    )
+
+    # Step 5: aggregate and write outputs
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    district_df = aggregate_by_geography(
+        matched, Geography.POSTCODE_DISTRICT, min_sales=min_sales
+    )
+    district_path = output_dir / "price_per_sqm_postcode_district.csv"
+    district_df.to_csv(district_path, index=False)
+    print(f"  wrote {len(district_df)} postcode districts → {district_path}")
+
+    lsoa_df = aggregate_by_geography(matched, Geography.LSOA, min_sales=min_sales)
+    lsoa_path = output_dir / "price_per_sqm_lsoa.csv"
+    lsoa_df.to_csv(lsoa_path, index=False)
+    print(f"  wrote {len(lsoa_df)} LSOAs → {lsoa_path}")
+
+
+if __name__ == "__main__":  # pragma: no cover
+    run(
+        ppd_path=DATA / "pp-complete.csv",
+        epc_path=DATA / "epc-domestic-all.csv",
+        ubdc_path=DATA / "ppd-uprn-lookup.csv",
+        uprn_path=DATA / "os-open-uprn.csv",
+        boundary_path=DATA / "lsoa_boundaries.gpkg",
+    )
