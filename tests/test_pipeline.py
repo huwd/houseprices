@@ -2,11 +2,13 @@
 
 import pathlib
 
+import pandas as pd
 import pytest
 
 from houseprices.pipeline import (
+    Geography,
     aggregate,
-    aggregate_by_postcode_district,
+    aggregate_by_geography,
     join_datasets,
     load_epc,
     match_report,
@@ -198,7 +200,7 @@ def test_join_result_row_count(joined: "pd.DataFrame") -> None:  # type: ignore[
 
 @pytest.fixture
 def aggregated(joined: "pd.DataFrame") -> "pd.DataFrame":  # type: ignore[name-defined]  # noqa: F821
-    return aggregate_by_postcode_district(joined, min_sales=1)
+    return aggregate_by_geography(joined, Geography.POSTCODE_DISTRICT, min_sales=1)
 
 
 def test_aggregate_postcode_district_extraction(
@@ -231,7 +233,7 @@ def test_aggregate_min_sales_filter(
     joined: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
 ) -> None:
     """Districts below min_sales threshold are excluded from the result."""
-    result = aggregate_by_postcode_district(joined, min_sales=2)
+    result = aggregate_by_geography(joined, Geography.POSTCODE_DISTRICT, min_sales=2)
     districts = set(result["postcode_district"])
     assert "SD1" in districts
     assert "SD2" not in districts  # only 1 sale
@@ -320,3 +322,81 @@ def test_match_report_percentages_sum_to_100(
         + float(report["unmatched_pct"])
     )
     assert abs(total_pct - 100.0) < 0.2  # allow rounding tolerance
+
+
+# ---------------------------------------------------------------------------
+# aggregate_by_geography — Geography.LSOA
+#
+# Synthetic fixture: four rows with LSOA21CD, one without (excluded).
+#
+#   SD0000001: price=430000  area=135.0  price_per_sqm=3185
+#   SD0000002: price=150000  area=65.0   price_per_sqm=2308
+#   (row without LSOA21CD excluded)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def lsoa_rows() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {"price": 250_000, "TOTAL_FLOOR_AREA": 80.0, "LSOA21CD": "SD0000001"},
+            {"price": 180_000, "TOTAL_FLOOR_AREA": 55.0, "LSOA21CD": "SD0000001"},
+            {"price": 150_000, "TOTAL_FLOOR_AREA": 65.0, "LSOA21CD": "SD0000002"},
+            {"price": 200_000, "TOTAL_FLOOR_AREA": 60.0, "LSOA21CD": None},
+        ]
+    )
+
+
+@pytest.fixture
+def lsoa_aggregated(lsoa_rows: pd.DataFrame) -> pd.DataFrame:
+    return aggregate_by_geography(lsoa_rows, Geography.LSOA, min_sales=1)
+
+
+def test_lsoa_aggregate_output_column(lsoa_aggregated: pd.DataFrame) -> None:
+    """Geography key column must be named LSOA21CD."""
+    assert "LSOA21CD" in lsoa_aggregated.columns
+
+
+def test_lsoa_aggregate_expected_codes(lsoa_aggregated: pd.DataFrame) -> None:
+    codes = set(lsoa_aggregated["LSOA21CD"])
+    assert codes == {"SD0000001", "SD0000002"}
+
+
+def test_lsoa_aggregate_excludes_rows_without_code(
+    lsoa_aggregated: pd.DataFrame,
+) -> None:
+    """Rows with no LSOA21CD must be silently dropped."""
+    assert len(lsoa_aggregated) == 2
+
+
+def test_lsoa_aggregate_price_per_sqm(lsoa_aggregated: pd.DataFrame) -> None:
+    """SD0000001: (250000+180000) / (80+55) = 430000/135 = 3185."""
+    row = lsoa_aggregated[lsoa_aggregated["LSOA21CD"] == "SD0000001"]
+    assert row.iloc[0]["price_per_sqm"] == 3185
+
+
+def test_lsoa_aggregate_num_sales(lsoa_aggregated: pd.DataFrame) -> None:
+    row = lsoa_aggregated[lsoa_aggregated["LSOA21CD"] == "SD0000001"]
+    assert row.iloc[0]["num_sales"] == 2
+
+
+def test_lsoa_aggregate_min_sales_filter(lsoa_rows: pd.DataFrame) -> None:
+    result = aggregate_by_geography(lsoa_rows, Geography.LSOA, min_sales=2)
+    codes = set(result["LSOA21CD"])
+    assert "SD0000001" in codes
+    assert "SD0000002" not in codes  # only 1 sale
+
+
+def test_lsoa_aggregate_sorted_descending(lsoa_aggregated: pd.DataFrame) -> None:
+    prices = list(lsoa_aggregated["price_per_sqm"])
+    assert prices == sorted(prices, reverse=True)
+
+
+def test_lsoa_aggregate_output_columns(lsoa_aggregated: pd.DataFrame) -> None:
+    assert set(lsoa_aggregated.columns) >= {
+        "LSOA21CD",
+        "num_sales",
+        "price_per_sqm",
+        "total_price",
+        "total_floor_area",
+    }
