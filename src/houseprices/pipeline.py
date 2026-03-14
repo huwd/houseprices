@@ -112,6 +112,18 @@ def join_datasets(
     return pd.concat([tier1, tier2], ignore_index=True)
 
 
+def match_report(matched: pd.DataFrame, total_ppd: int) -> dict[str, int | float]:
+    """Compute match-rate statistics from the joined dataset.
+
+    Args:
+        matched:   DataFrame returned by join_datasets, with a match_tier column.
+        total_ppd: Total number of category-A PPD records before joining.
+
+    Returns a dict with tier1, tier2, unmatched counts and their percentages.
+    """
+    raise NotImplementedError
+
+
 def aggregate_by_postcode_district(
     matched: pd.DataFrame,
     min_sales: int = 10,

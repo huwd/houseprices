@@ -9,6 +9,7 @@ from houseprices.pipeline import (
     aggregate_by_postcode_district,
     join_datasets,
     load_epc,
+    match_report,
     normalise_address,
 )
 
@@ -255,3 +256,67 @@ def test_aggregate_output_columns(
         "total_price",
         "total_floor_area",
     }
+
+
+# ---------------------------------------------------------------------------
+# match_report
+#
+# Fixture data (5 category-A PPD rows):
+#   TXN-001 → Tier 1   (1 row)
+#   TXN-002/003/004 → Tier 2  (3 rows)
+#   TXN-005 → unmatched (not in joined result)
+#   TXN-006 → category B, excluded before joining
+#
+# Percentages: tier1=20.0%, tier2=60.0%, unmatched=20.0%
+# ---------------------------------------------------------------------------
+
+# 5 category-A rows in ppd_sample.csv (TXN-001 to TXN-005)
+TOTAL_PPD_FIXTURE = 5
+
+
+def test_match_report_tier_counts(
+    joined: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+) -> None:
+    """Tier 1 and Tier 2 counts must reflect the match_tier column."""
+    report = match_report(joined, TOTAL_PPD_FIXTURE)
+    assert report["tier1"] == 1
+    assert report["tier2"] == 3
+
+
+def test_match_report_unmatched_count(
+    joined: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+) -> None:
+    """Unmatched = total_ppd − tier1 − tier2."""
+    report = match_report(joined, TOTAL_PPD_FIXTURE)
+    assert report["unmatched"] == 1
+
+
+def test_match_report_percentages(
+    joined: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+) -> None:
+    """Percentages are rounded to one decimal place."""
+    report = match_report(joined, TOTAL_PPD_FIXTURE)
+    assert report["tier1_pct"] == 20.0
+    assert report["tier2_pct"] == 60.0
+    assert report["unmatched_pct"] == 20.0
+
+
+def test_match_report_total(
+    joined: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+) -> None:
+    """total reflects the total_ppd argument passed in."""
+    report = match_report(joined, TOTAL_PPD_FIXTURE)
+    assert report["total"] == TOTAL_PPD_FIXTURE
+
+
+def test_match_report_percentages_sum_to_100(
+    joined: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+) -> None:
+    """Tier 1 + Tier 2 + unmatched percentages must sum to 100.0."""
+    report = match_report(joined, TOTAL_PPD_FIXTURE)
+    total_pct = (
+        float(report["tier1_pct"])
+        + float(report["tier2_pct"])
+        + float(report["unmatched_pct"])
+    )
+    assert abs(total_pct - 100.0) < 0.2  # allow rounding tolerance
