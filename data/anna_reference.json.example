@@ -1,0 +1,10 @@
+{
+  "_note": "Anna Powell-Smith's published figures from houseprices.anna.ps. Copy this file to anna_reference.json and fill in values from her published analysis.",
+  "published_date": "YYYY-MM-DD",
+  "national_median_price_per_sqm": null,
+  "london_median_price_per_sqm": null,
+  "postcode_districts": {
+    "SW1A": null,
+    "EC1A": null
+  }
+}
