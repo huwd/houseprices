@@ -28,6 +28,9 @@ build/
 .venv/
 .uv/
 
+# Secrets — never committed; copy .env.example and fill in values
+.env
+
 # Claude Code
 .claude/
 
