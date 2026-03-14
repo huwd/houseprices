@@ -1,7 +1,11 @@
 # Test Fixtures
 
 Small, internally consistent CSV fixtures for unit testing the pipeline join
-logic. All data is synthetic — no real addresses or transaction IDs.
+logic. All data is entirely synthetic — fictional transaction IDs, invented
+prices and floor areas, and postcodes in the "SD" area (Sodor), which is not
+a real Royal Mail postcode area. Place names (Knapford, Tidmouth, Wellsworth,
+Arlesburgh) are from the fictional Island of Sodor. No real property, address,
+or geographic data is reproduced here.
 
 ---
 
@@ -27,9 +31,9 @@ sides. Confirmed mappings:
 
 | PPD (saon, paon, street) | Normalised | EPC ADDRESS1 | Normalised |
 |---|---|---|---|
-| `"FLAT 2"`, `"5"`, `"BAKER RD"` | `FLAT 2 5 BAKER ROAD` | `FLAT 2 5 BAKER RD` | `FLAT 2 5 BAKER ROAD` |
-| `""`, `"22"`, `"GROVE AVE"` | `22 GROVE AVENUE` | `22 GROVE AVE` | `22 GROVE AVENUE` |
-| `""`, `"3"`, `"OAK CL"` | `3 OAK CLOSE` | `3 OAK CL` | `3 OAK CLOSE` |
+| `"FLAT 2"`, `"5"`, `"TIDMOUTH RD"` | `FLAT 2 5 TIDMOUTH ROAD` | `FLAT 2 5 TIDMOUTH RD` | `FLAT 2 5 TIDMOUTH ROAD` |
+| `""`, `"22"`, `"HARBOUR AVE"` | `22 HARBOUR AVENUE` | `22 HARBOUR AVE` | `22 HARBOUR AVENUE` |
+| `""`, `"3"`, `"VIADUCT CL"` | `3 VIADUCT CLOSE` | `3 VIADUCT CL` | `3 VIADUCT CLOSE` |
 
 ---
 
@@ -57,3 +61,12 @@ assert that the matched floor area is 80.0, not 78.0.
 
 Rows 3, 4, 5 intentionally absent — they are post-2022 or otherwise not
 covered by the UBDC lookup.
+
+---
+
+## Postcode districts (for aggregation tests)
+
+| District | Rows | total_price | total_floor_area | price_per_sqm |
+|---|---|---|---|---|
+| SD1 | 1, 2, 3 | 750,000 | 230.0 | 3,261 |
+| SD2 | 4 | 150,000 | 65.0 | 2,308 |
