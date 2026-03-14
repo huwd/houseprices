@@ -4,7 +4,13 @@ import pathlib
 
 import pytest
 
-from houseprices.pipeline import aggregate, join_datasets, load_epc, normalise_address
+from houseprices.pipeline import (
+    aggregate,
+    aggregate_by_postcode_district,
+    join_datasets,
+    load_epc,
+    normalise_address,
+)
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -173,3 +179,79 @@ def test_join_excludes_category_b(joined: "pd.DataFrame") -> None:  # type: igno
 def test_join_result_row_count(joined: "pd.DataFrame") -> None:  # type: ignore[name-defined]  # noqa: F821
     """Result must contain exactly the 4 matched category-A records."""
     assert len(joined) == 4
+
+
+# ---------------------------------------------------------------------------
+# aggregate_by_postcode_district
+#
+# Fixture data after joining (4 rows):
+#   SW1A 1AA  price=250000  floor_area=80.0   (TXN-001, Tier 1)
+#   SW1A 2AA  price=180000  floor_area=55.0   (TXN-002, Tier 2)
+#   SW1A 3AA  price=320000  floor_area=95.0   (TXN-003, Tier 2)
+#   N1   1AA  price=150000  floor_area=65.0   (TXN-004, Tier 2)
+#
+# SW1A: total_price=750000  total_area=230.0  price_per_sqm=3261
+# N1:   total_price=150000  total_area=65.0   price_per_sqm=2308
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def aggregated(joined: "pd.DataFrame") -> "pd.DataFrame":  # type: ignore[name-defined]  # noqa: F821
+    return aggregate_by_postcode_district(joined, min_sales=1)
+
+
+def test_aggregate_postcode_district_extraction(
+    aggregated: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+) -> None:
+    """Postcode district is the outward code — last 3 chars stripped."""
+    districts = set(aggregated["postcode_district"])
+    assert districts == {"SW1A", "N1"}
+
+
+def test_aggregate_price_per_sqm_is_total_over_total(
+    aggregated: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+) -> None:
+    """SW1A: 750000 / 230 = 3261 (total/total, not mean of ratios)."""
+    row = aggregated[aggregated["postcode_district"] == "SW1A"]
+    assert row.iloc[0]["price_per_sqm"] == 3261
+
+
+def test_aggregate_num_sales_count(
+    aggregated: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+) -> None:
+    """SW1A has 3 matched transactions; N1 has 1."""
+    sw1a = aggregated[aggregated["postcode_district"] == "SW1A"]
+    n1 = aggregated[aggregated["postcode_district"] == "N1"]
+    assert sw1a.iloc[0]["num_sales"] == 3
+    assert n1.iloc[0]["num_sales"] == 1
+
+
+def test_aggregate_min_sales_filter(
+    joined: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+) -> None:
+    """Districts below min_sales threshold are excluded from the result."""
+    result = aggregate_by_postcode_district(joined, min_sales=2)
+    districts = set(result["postcode_district"])
+    assert "SW1A" in districts
+    assert "N1" not in districts  # only 1 sale
+
+
+def test_aggregate_sorted_by_price_per_sqm_descending(
+    aggregated: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+) -> None:
+    """Result must be sorted highest price_per_sqm first."""
+    prices = list(aggregated["price_per_sqm"])
+    assert prices == sorted(prices, reverse=True)
+
+
+def test_aggregate_output_columns(
+    aggregated: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
+) -> None:
+    """Output must contain the expected columns."""
+    assert set(aggregated.columns) >= {
+        "postcode_district",
+        "num_sales",
+        "price_per_sqm",
+        "total_price",
+        "total_floor_area",
+    }
