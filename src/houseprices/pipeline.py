@@ -2,8 +2,23 @@
 
 import pathlib
 import re
+from enum import Enum
 
 import pandas as pd
+
+
+class Geography(Enum):
+    """Contiguous geographies supported for price-per-sqm aggregation.
+
+    The enum value is the output column name in the aggregated DataFrame.
+    For POSTCODE_DISTRICT the column is derived from the ``postcode`` field.
+    For all other geographies the column must already be present in the
+    matched DataFrame (populated by the spatial join step).
+    """
+
+    POSTCODE_DISTRICT = "postcode_district"
+    LSOA = "LSOA21CD"
+
 
 _ABBREVIATIONS: list[tuple[str, str]] = [
     (r"\bAPARTMENT\b", "FLAT"),
@@ -135,23 +150,32 @@ def match_report(matched: pd.DataFrame, total_ppd: int) -> dict[str, int | float
     }
 
 
-def aggregate_by_postcode_district(
+def aggregate_by_geography(
     matched: pd.DataFrame,
+    geography: Geography,
     min_sales: int = 10,
 ) -> pd.DataFrame:
-    """Aggregate matched records to price per m² by postcode district.
+    """Aggregate matched records to price per m² by the given geography.
 
-    Postcode district is the outward code: last three characters (the inward
-    code) are stripped, e.g. "SW1A 1AA" → "SW1A", "N1 1AA" → "N1".
+    For ``Geography.POSTCODE_DISTRICT`` the district is derived from the
+    ``postcode`` column (last three characters stripped).  For all other
+    geographies the column named by ``geography.value`` must already be
+    present in *matched* — it is populated by the spatial join step.
 
-    Districts with fewer than min_sales transactions are excluded.
+    Rows without a value for the target geography are excluded.
+    Geographies with fewer than *min_sales* transactions are excluded.
     Result is sorted by price_per_sqm descending.
     """
     df = matched.copy()
-    df["postcode_district"] = df["postcode"].str[:-3].str.strip()
+    col = geography.value
+
+    if geography is Geography.POSTCODE_DISTRICT:
+        df[col] = df["postcode"].str[:-3].str.strip()
+
+    df = df[df[col].notna()].copy()
 
     grouped = (
-        df.groupby("postcode_district")
+        df.groupby(col)
         .agg(
             num_sales=("price", "count"),
             total_price=("price", "sum"),
