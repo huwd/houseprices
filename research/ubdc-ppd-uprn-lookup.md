@@ -14,19 +14,53 @@ A lookup table with three fields:
 
 | Field | Description |
 |---|---|
-| `lmk` | PPD unique transaction identifier |
-| `UPRN` | Unique Property Reference Number |
-| `USRN` | Unique Street Reference Number |
+| `transactionid` | PPD unique transaction identifier — matches `transaction_unique_identifier` in HMLR PPD CSV |
+| `uprn` | Unique Property Reference Number |
+| `method` | Which of the 142 matching rules produced the link (e.g. `"method1"`) |
 
 - **Match rate**: 96% of PPD records successfully linked to a UPRN[^ubdc]
 - **Coverage**: January 1995 to January 2022[^ubdc]
 - **Licence**: Open Government Licence[^ubdc]
-- **Format**: zip / xlsx
+- **Format**: zip / CSV (confirm on download — earlier versions were xlsx)
 - **Last updated**: 10 March 2026[^ubdc]
 
 The linkage was produced using a 142-rule rules-based methodology[^github] —
 the same methodology as the companion EPC linkage, but applied to PPD, which
 the authors describe as "easier than Domestic EPCs."[^github]
+
+---
+
+## Field name correction (March 2026)
+
+**Earlier versions of this document (and PLAN.md) used `lmk` as the PPD
+identifier field name. This was incorrect.**
+
+The correct field name is `transactionid`, confirmed by inspecting the UBDC
+linkage source code (`lrppd_os_final.R`)[^rscript]. Key evidence:
+
+```r
+# From lrppd_os_final.R — the function that filters already-matched records:
+matchleft <- function(x, y) {
+  next0 <- x[!(x$transactionid %in% y$transactionid), ]
+  return(next0)
+}
+
+# The final output column list written to file:
+needlistf <- c("transactionid", "uprn", "method")
+```
+
+The variable `tran` (loaded from HMLR PPD) is also keyed on `transactionid`
+throughout the script. This field corresponds to HMLR's
+`transaction_unique_identifier` in the PPD CSV — a curly-braced UUID string,
+e.g. `{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}`.
+
+The `lmk` and `lmk_key` names appear in the companion EPC linkage and in some
+secondary documentation, which is likely the source of the earlier confusion.
+The PPD linkage consistently uses `transactionid`.
+
+**Action on download**: confirm the column is named `transactionid` in the
+published CSV. If the March 2026 release has renamed it, update the join code
+in `pipeline.py` accordingly.
 
 ---
 
@@ -39,10 +73,15 @@ This resolves the key unknown in our join strategy. We no longer need to:
 The Tier 1 join becomes:
 
 ```
-PPD lmk → UBDC lookup → UPRN
-EPC UPRN (from DLUHC backfill)
-→ direct UPRN join
+PPD transaction_unique_identifier
+  → UBDC lookup (transactionid) → UPRN
+  → EPC UPRN (from DLUHC backfill)
+  → direct UPRN join
 ```
+
+The `method` column in the lookup records which matching rule produced each
+link. This could be used to flag lower-confidence matches (high rule numbers
+tend to be fuzzier), but for our purposes we treat all UBDC matches as Tier 1.
 
 ### Estimated coverage
 
@@ -74,15 +113,6 @@ Note: the dataset was updated 10 March 2026 and may now extend beyond January
 
 ---
 
-## `lmk` field mapping
-
-The lookup uses `lmk` as the PPD identifier. Confirm this maps to the
-`transaction_id` field in the PPD CSV before joining. In Land Registry
-documentation this field is sometimes called `transaction_unique_identifier`
-or `lmk_key` — verify the exact column name on download.
-
----
-
 ## Licence note
 
 OGL — compatible with our use. No commercial restriction (unlike the GitHub
@@ -98,5 +128,7 @@ repo[^github] which is CC-BY-NC). Cite as:
 [^ubdc]: Urban Big Data Centre, "Price paid data to UPRN lookup" (updated 10 March 2026). <https://data.ubdc.ac.uk/dataset/a999fd05-e7fe-4243-ab9a-95ce98132956>
 
 [^github]: Urban Big Data Centre, `os_epc_ppd_linkage` GitHub repository. <https://github.com/urbanbigdatacentre/os_epc_ppd_linkage>
+
+[^rscript]: Bin Chi (UBDC), `lrppd_os_final.R` — PPD to UPRN linkage source code. <https://github.com/urbanbigdatacentre/os_epc_ppd_linkage/blob/main/PPD/lrppd_os_final.R>
 
 [^boswarva]: Owen Boswarva, "Allocating UPRNs to Energy Performance Certificates" (early 2022). <https://www.owenboswarva.com/blog/post-hou3.htm>
