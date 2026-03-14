@@ -91,26 +91,41 @@ def test_download_ppd_saves_as_csv(tmp_path: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_download_epc_uses_basic_auth(tmp_path: pathlib.Path) -> None:
+def test_download_epc_uses_basic_auth(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("EPC_EMAIL", "user@example.com")
+    monkeypatch.setenv("EPC_API_KEY", "s3cr3t")
     dl.EPC_BULK_URL = "http://example.com/epc.zip"
     with patch(
         "houseprices.download.requests.get",
         return_value=_mock_response(),
     ) as mock_get:
-        dl.download_epc(tmp_path, email="user@example.com", api_key="s3cr3t")
+        dl.download_epc(tmp_path)
     headers = mock_get.call_args.kwargs["headers"]
     expected = base64.b64encode(b"user@example.com:s3cr3t").decode()
     assert headers["Authorization"] == f"Basic {expected}"
 
 
-def test_download_epc_saves_as_zip(tmp_path: pathlib.Path) -> None:
+def test_download_epc_saves_as_zip(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("EPC_EMAIL", "u@e.com")
+    monkeypatch.setenv("EPC_API_KEY", "k")
     dl.EPC_BULK_URL = "http://example.com/epc.zip"
     with patch(
         "houseprices.download.requests.get",
         return_value=_mock_response(),
     ):
-        result = dl.download_epc(tmp_path, email="u@e.com", api_key="k")
+        result = dl.download_epc(tmp_path)
     assert result.name == "epc-domestic-all.zip"
+
+
+def test_download_epc_raises_if_env_missing(tmp_path: pathlib.Path) -> None:
+    """KeyError if EPC credentials are not set in the environment."""
+    dl.EPC_BULK_URL = "http://example.com/epc.zip"
+    with pytest.raises(KeyError):
+        dl.download_epc(tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -133,25 +148,38 @@ def test_download_ubdc_saves_as_zip(tmp_path: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_download_os_open_uprn_passes_api_key(tmp_path: pathlib.Path) -> None:
+def test_download_os_open_uprn_passes_api_key(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OS_DATA_HUB_API_KEY", "mykey")
     dl.OS_OPEN_UPRN_URL = "http://example.com/uprn"
     with patch(
         "houseprices.download.requests.get",
         return_value=_mock_response(),
     ) as mock_get:
-        dl.download_os_open_uprn(tmp_path, api_key="mykey")
+        dl.download_os_open_uprn(tmp_path)
     called_url: str = mock_get.call_args.args[0]
     assert "mykey" in called_url
 
 
-def test_download_os_open_uprn_saves_as_zip(tmp_path: pathlib.Path) -> None:
+def test_download_os_open_uprn_saves_as_zip(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OS_DATA_HUB_API_KEY", "k")
     dl.OS_OPEN_UPRN_URL = "http://example.com/uprn"
     with patch(
         "houseprices.download.requests.get",
         return_value=_mock_response(),
     ):
-        result = dl.download_os_open_uprn(tmp_path, api_key="k")
+        result = dl.download_os_open_uprn(tmp_path)
     assert result.name == "os-open-uprn.zip"
+
+
+def test_download_os_open_uprn_raises_if_env_missing(tmp_path: pathlib.Path) -> None:
+    """KeyError if OS Data Hub API key is not set in the environment."""
+    dl.OS_OPEN_UPRN_URL = "http://example.com/uprn"
+    with pytest.raises(KeyError):
+        dl.download_os_open_uprn(tmp_path)
 
 
 # ---------------------------------------------------------------------------

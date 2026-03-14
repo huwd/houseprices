@@ -3,12 +3,20 @@
 URL constants are declared at module level so they can be inspected and
 overridden without touching the download functions.  Fill in the TODO
 entries once you have confirmed the direct-download URLs.
+
+Credentials are read from environment variables at call time.  Copy
+.env.example to .env and fill in your values; python-dotenv loads the
+file automatically when this module is imported.
 """
 
 import base64
+import os
 import pathlib
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Source URLs
@@ -23,8 +31,9 @@ PPD_URL = (
 
 # EPC bulk download — ZIP of all domestic certificates (OGL).
 # Requires free registration at https://epc.opendatacommunities.org/
-# Authenticates via HTTP Basic Auth: email address + API key.
-# TODO: confirm the exact bulk-download endpoint URL after registration.
+# Authenticates via HTTP Basic Auth (EPC_EMAIL + EPC_API_KEY).
+# List available files first: GET https://epc.opendatacommunities.org/api/v1/files
+# TODO: confirm the direct-download URL for all domestic certificates.
 EPC_BULK_URL: str = ""
 
 # UBDC PPD → UPRN lookup — ZIP containing CSV (OGL).
@@ -33,7 +42,7 @@ EPC_BULK_URL: str = ""
 UBDC_URL: str = ""
 
 # OS Open UPRN — ZIP of all UPRNs with BNG coordinates (OGL).
-# Requires a free API key from https://osdatahub.os.uk/
+# Requires a free API key from https://osdatahub.os.uk/ (OS_DATA_HUB_API_KEY).
 # TODO: confirm the download endpoint; key is appended as ?key={api_key}.
 OS_OPEN_UPRN_URL: str = ""
 
@@ -83,17 +92,15 @@ def download_ppd(data_dir: pathlib.Path) -> pathlib.Path:
     return _stream_to_file(PPD_URL, data_dir / "pp-complete.csv")
 
 
-def download_epc(
-    data_dir: pathlib.Path,
-    *,
-    email: str,
-    api_key: str,
-) -> pathlib.Path:
+def download_epc(data_dir: pathlib.Path) -> pathlib.Path:
     """Download the EPC bulk ZIP.
 
-    Credentials are from the free epc.opendatacommunities.org registration.
-    Authenticates via HTTP Basic Auth (email address + API key).
+    Reads EPC_EMAIL and EPC_API_KEY from the environment (.env or shell).
+    Authenticates via HTTP Basic Auth per the EPC open data API documentation:
+    https://epc.opendatacommunities.org/docs/api/domestic#downloads
     """
+    email = os.environ["EPC_EMAIL"]
+    api_key = os.environ["EPC_API_KEY"]
     token = base64.b64encode(f"{email}:{api_key}".encode()).decode()
     return _stream_to_file(
         EPC_BULK_URL,
@@ -107,17 +114,15 @@ def download_ubdc(data_dir: pathlib.Path) -> pathlib.Path:
     return _stream_to_file(UBDC_URL, data_dir / "ppd-uprn-lookup.zip")
 
 
-def download_os_open_uprn(
-    data_dir: pathlib.Path,
-    *,
-    api_key: str,
-) -> pathlib.Path:
+def download_os_open_uprn(data_dir: pathlib.Path) -> pathlib.Path:
     """Download OS Open UPRN ZIP.
 
+    Reads OS_DATA_HUB_API_KEY from the environment (.env or shell).
     Requires a free API key from https://osdatahub.os.uk/
     The key is appended as a query parameter — confirm the exact mechanism
     against the OS Data Hub download documentation before running.
     """
+    api_key = os.environ["OS_DATA_HUB_API_KEY"]
     url = f"{OS_OPEN_UPRN_URL}?key={api_key}"
     return _stream_to_file(url, data_dir / "os-open-uprn.zip")
 
