@@ -5,8 +5,8 @@
     {
       "type": "Feature",
       "properties": {
-        "LSOA21CD": "E01000001",
-        "LSOA21NM": "Test LSOA 001"
+        "LSOA21CD": "SD0000001",
+        "LSOA21NM": "Sodor 001A"
       },
       "geometry": {
         "type": "Polygon",

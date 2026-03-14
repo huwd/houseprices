@@ -28,7 +28,7 @@ def uprn_df(uprn_path: pathlib.Path) -> pd.DataFrame:
 def test_point_in_polygon(uprn_path: pathlib.Path, lsoa_path: pathlib.Path) -> None:
     """Known UPRN coordinate should resolve to the expected LSOA."""
     result = build_uprn_lsoa(uprn_path, lsoa_path)
-    assert result.loc[result["UPRN"] == 12345678, "LSOA21CD"].iloc[0] == "E01000001"
+    assert result.loc[result["UPRN"] == 12345678, "LSOA21CD"].iloc[0] == "SD0000001"
 
 
 def test_uprn_outside_boundary_excluded(

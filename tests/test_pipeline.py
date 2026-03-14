@@ -186,13 +186,13 @@ def test_join_result_row_count(joined: "pd.DataFrame") -> None:  # type: ignore[
 # aggregate_by_postcode_district
 #
 # Fixture data after joining (4 rows):
-#   SW1A 1AA  price=250000  floor_area=80.0   (TXN-001, Tier 1)
-#   SW1A 2AA  price=180000  floor_area=55.0   (TXN-002, Tier 2)
-#   SW1A 3AA  price=320000  floor_area=95.0   (TXN-003, Tier 2)
-#   N1   1AA  price=150000  floor_area=65.0   (TXN-004, Tier 2)
+#   SD1 1AA  price=250000  floor_area=80.0   (TXN-001, Tier 1)
+#   SD1 2AA  price=180000  floor_area=55.0   (TXN-002, Tier 2)
+#   SD1 3AA  price=320000  floor_area=95.0   (TXN-003, Tier 2)
+#   SD2 1AA  price=150000  floor_area=65.0   (TXN-004, Tier 2)
 #
-# SW1A: total_price=750000  total_area=230.0  price_per_sqm=3261
-# N1:   total_price=150000  total_area=65.0   price_per_sqm=2308
+# SD1: total_price=750000  total_area=230.0  price_per_sqm=3261
+# SD2: total_price=150000  total_area=65.0   price_per_sqm=2308
 # ---------------------------------------------------------------------------
 
 
@@ -206,23 +206,23 @@ def test_aggregate_postcode_district_extraction(
 ) -> None:
     """Postcode district is the outward code — last 3 chars stripped."""
     districts = set(aggregated["postcode_district"])
-    assert districts == {"SW1A", "N1"}
+    assert districts == {"SD1", "SD2"}
 
 
 def test_aggregate_price_per_sqm_is_total_over_total(
     aggregated: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
 ) -> None:
-    """SW1A: 750000 / 230 = 3261 (total/total, not mean of ratios)."""
-    row = aggregated[aggregated["postcode_district"] == "SW1A"]
+    """SD1: 750000 / 230 = 3261 (total/total, not mean of ratios)."""
+    row = aggregated[aggregated["postcode_district"] == "SD1"]
     assert row.iloc[0]["price_per_sqm"] == 3261
 
 
 def test_aggregate_num_sales_count(
     aggregated: "pd.DataFrame",  # type: ignore[name-defined]  # noqa: F821
 ) -> None:
-    """SW1A has 3 matched transactions; N1 has 1."""
-    sw1a = aggregated[aggregated["postcode_district"] == "SW1A"]
-    n1 = aggregated[aggregated["postcode_district"] == "N1"]
+    """SD1 has 3 matched transactions; SD2 has 1."""
+    sw1a = aggregated[aggregated["postcode_district"] == "SD1"]
+    n1 = aggregated[aggregated["postcode_district"] == "SD2"]
     assert sw1a.iloc[0]["num_sales"] == 3
     assert n1.iloc[0]["num_sales"] == 1
 
@@ -233,8 +233,8 @@ def test_aggregate_min_sales_filter(
     """Districts below min_sales threshold are excluded from the result."""
     result = aggregate_by_postcode_district(joined, min_sales=2)
     districts = set(result["postcode_district"])
-    assert "SW1A" in districts
-    assert "N1" not in districts  # only 1 sale
+    assert "SD1" in districts
+    assert "SD2" not in districts  # only 1 sale
 
 
 def test_aggregate_sorted_by_price_per_sqm_descending(
