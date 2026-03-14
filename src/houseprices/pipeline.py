@@ -124,7 +124,25 @@ def aggregate_by_postcode_district(
     Districts with fewer than min_sales transactions are excluded.
     Result is sorted by price_per_sqm descending.
     """
-    raise NotImplementedError
+    df = matched.copy()
+    df["postcode_district"] = df["postcode"].str[:-3].str.strip()
+
+    grouped = (
+        df.groupby("postcode_district")
+        .agg(
+            num_sales=("price", "count"),
+            total_price=("price", "sum"),
+            total_floor_area=("TOTAL_FLOOR_AREA", "sum"),
+        )
+        .reset_index()
+    )
+
+    grouped = grouped[grouped["num_sales"] >= min_sales].copy()
+    grouped["price_per_sqm"] = (
+        (grouped["total_price"] / grouped["total_floor_area"]).round().astype(int)
+    )
+
+    return grouped.sort_values("price_per_sqm", ascending=False).reset_index(drop=True)
 
 
 def aggregate(rows: list[dict[str, float]]) -> dict[str, int]:
