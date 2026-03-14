@@ -1,8 +1,12 @@
-"""Tests for pipeline.py: address normalisation and aggregation."""
+"""Tests for pipeline.py: address normalisation, EPC loading, join, aggregation."""
+
+import pathlib
 
 import pytest
 
-from houseprices.pipeline import aggregate, normalise_address
+from houseprices.pipeline import aggregate, join_datasets, load_epc, normalise_address
+
+FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 # ---------------------------------------------------------------------------
 # normalise_address
@@ -73,3 +77,99 @@ def test_price_per_sqm_single_record() -> None:
 def test_aggregate_raises_on_empty_input() -> None:
     with pytest.raises((ValueError, ZeroDivisionError)):
         aggregate([])
+
+
+# ---------------------------------------------------------------------------
+# load_epc
+# ---------------------------------------------------------------------------
+
+
+def test_load_epc_deduplicates_by_uprn() -> None:
+    """Most recent certificate per UPRN must be kept; older duplicates dropped.
+
+    The fixture has two rows for UPRN 100001:
+      - 2020-01-15, TOTAL_FLOOR_AREA=80.0  ← must be kept
+      - 2018-06-01, TOTAL_FLOOR_AREA=78.0  ← must be dropped
+    """
+    result = load_epc(FIXTURES / "epc_sample.csv")
+    rows_for_uprn = result[result["UPRN"] == 100001]
+    assert len(rows_for_uprn) == 1
+    assert rows_for_uprn.iloc[0]["TOTAL_FLOOR_AREA"] == 80.0
+
+
+def test_load_epc_preserves_no_uprn_rows() -> None:
+    """Rows without a UPRN must be kept — they are Tier 2 address-match candidates."""
+    result = load_epc(FIXTURES / "epc_sample.csv")
+    no_uprn = result[result["UPRN"].isna()]
+    assert len(no_uprn) == 2
+
+
+def test_load_epc_total_row_count() -> None:
+    """After dedup: 2 unique UPRNs + 2 no-UPRN rows = 4 rows total."""
+    result = load_epc(FIXTURES / "epc_sample.csv")
+    assert len(result) == 4
+
+
+# ---------------------------------------------------------------------------
+# join_datasets
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def joined() -> "pd.DataFrame":  # type: ignore[name-defined]  # noqa: F821
+    import pandas as pd  # noqa: F401
+
+    return join_datasets(
+        FIXTURES / "ppd_sample.csv",
+        FIXTURES / "epc_sample.csv",
+        FIXTURES / "ubdc_sample.csv",
+    )
+
+
+TXN_001 = "{A0000001-0000-0000-0000-000000000000}"
+
+
+def test_join_tier1_match(joined: "pd.DataFrame") -> None:  # type: ignore[name-defined]  # noqa: F821
+    """TXN-001: UBDC entry + EPC UPRN present — must be a Tier 1 match."""
+    row = joined[joined["transaction_unique_identifier"] == TXN_001]
+    assert len(row) == 1
+    assert row.iloc[0]["match_tier"] == 1
+
+
+def test_join_tier1_uses_deduplicated_epc(joined: "pd.DataFrame") -> None:  # type: ignore[name-defined]  # noqa: F821
+    """TXN-001 must use the 2020 EPC row (80 m²), not the 2018 duplicate (78 m²)."""
+    row = joined[joined["transaction_unique_identifier"] == TXN_001]
+    assert row.iloc[0]["TOTAL_FLOOR_AREA"] == 80.0
+
+
+def test_join_tier2_matches(joined: "pd.DataFrame") -> None:  # type: ignore[name-defined]  # noqa: F821
+    """TXN-002, 003, 004 must all match via address normalisation (Tier 2)."""
+    tier2_txns = {
+        "{A0000002-0000-0000-0000-000000000000}",
+        "{A0000003-0000-0000-0000-000000000000}",
+        "{A0000004-0000-0000-0000-000000000000}",
+    }
+    tier2_rows = joined[joined["transaction_unique_identifier"].isin(tier2_txns)]
+    assert len(tier2_rows) == 3
+    assert (tier2_rows["match_tier"] == 2).all()
+
+
+def test_join_excludes_unmatched(joined: "pd.DataFrame") -> None:  # type: ignore[name-defined]  # noqa: F821
+    """TXN-005 has no matching EPC — must not appear in the result."""
+    assert (
+        "{A0000005-0000-0000-0000-000000000000}"
+        not in joined["transaction_unique_identifier"].values
+    )
+
+
+def test_join_excludes_category_b(joined: "pd.DataFrame") -> None:  # type: ignore[name-defined]  # noqa: F821
+    """TXN-006 is ppd_category_type='B' — must be filtered before joining."""
+    assert (
+        "{A0000006-0000-0000-0000-000000000000}"
+        not in joined["transaction_unique_identifier"].values
+    )
+
+
+def test_join_result_row_count(joined: "pd.DataFrame") -> None:  # type: ignore[name-defined]  # noqa: F821
+    """Result must contain exactly the 4 matched category-A records."""
+    assert len(joined) == 4
