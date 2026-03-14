@@ -121,7 +121,18 @@ def match_report(matched: pd.DataFrame, total_ppd: int) -> dict[str, int | float
 
     Returns a dict with tier1, tier2, unmatched counts and their percentages.
     """
-    raise NotImplementedError
+    tier1 = int((matched["match_tier"] == 1).sum())
+    tier2 = int((matched["match_tier"] == 2).sum())
+    unmatched = total_ppd - tier1 - tier2
+    return {
+        "tier1": tier1,
+        "tier2": tier2,
+        "unmatched": unmatched,
+        "total": total_ppd,
+        "tier1_pct": round(100 * tier1 / total_ppd, 1),
+        "tier2_pct": round(100 * tier2 / total_ppd, 1),
+        "unmatched_pct": round(100 * unmatched / total_ppd, 1),
+    }
 
 
 def aggregate_by_postcode_district(
