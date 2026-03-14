@@ -112,6 +112,21 @@ def join_datasets(
     return pd.concat([tier1, tier2], ignore_index=True)
 
 
+def aggregate_by_postcode_district(
+    matched: pd.DataFrame,
+    min_sales: int = 10,
+) -> pd.DataFrame:
+    """Aggregate matched records to price per m² by postcode district.
+
+    Postcode district is the outward code: last three characters (the inward
+    code) are stripped, e.g. "SW1A 1AA" → "SW1A", "N1 1AA" → "N1".
+
+    Districts with fewer than min_sales transactions are excluded.
+    Result is sorted by price_per_sqm descending.
+    """
+    raise NotImplementedError
+
+
 def aggregate(rows: list[dict[str, float]]) -> dict[str, int]:
     """Aggregate sales rows to price per m² (total price / total area)."""
     total_price = sum(r["price"] for r in rows)
