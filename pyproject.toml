@@ -23,6 +23,7 @@ dev = [
     "mypy>=1.10.0",
     "ruff>=0.5.0",
     "pandas-stubs>=2.2.0",
+    "types-requests>=2.32.0",
 ]
 
 [build-system]
