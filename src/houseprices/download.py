@@ -44,16 +44,23 @@ EPC_BULK_URL = (
 UBDC_URL: str = ""
 
 # OS Open UPRN — ZIP of all UPRNs with BNG coordinates (OGL).
-# Free bulk download; no API key required.
-# Requires a free OS OpenData Plan account: https://osdatahub.os.uk/plans
-# Download page: https://osdatahub.os.uk/downloads/open/OpenUPRN
-# TODO: confirm the direct-download URL from the download page (select CSV format).
-OS_OPEN_UPRN_URL: str = ""
+# Free bulk download via OS Data Hub Downloads API; no API key or account required.
+# CRS: BNG EPSG:27700 (X_COORDINATE, Y_COORDINATE columns).
+# Updated February 2026; ~616 MB zipped.
+OS_OPEN_UPRN_URL = (
+    "https://api.os.uk/downloads/v1/products/OpenUPRN/downloads"
+    "?area=GB&format=CSV&redirect"
+)
 
-# ONS LSOA December 2021 Boundaries EW BGC — GeoPackage, BNG (OGL).
-# See research/ons-boundary-format.md for format and CRS guidance.
-# TODO: confirm the direct-download URL from https://geoportal.statistics.gov.uk/
-LSOA_BGC_URL: str = ""
+# ONS LSOA December 2021 Boundaries EW BGC V5 — GeoPackage (OGL).
+# Source: ONS Open Geography Portal (ArcGIS Hub), item 68515293204e43ca8ab56fa13ae8a547.
+# CRS: BNG EPSG:27700 — matches OS Open UPRN, no reprojection needed.
+# ~79 MB.
+LSOA_BGC_URL = (
+    "https://opendata.arcgis.com/api/v3/datasets"
+    "/68515293204e43ca8ab56fa13ae8a547_0/downloads/data"
+    "?format=gpkg&spatialRefId=27700&where=1%3D1"
+)
 
 # ---------------------------------------------------------------------------
 # Internal helpers
