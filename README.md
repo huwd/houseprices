@@ -43,7 +43,7 @@ brew install gdal
 ```bash
 git clone https://github.com/huwd/houseprices.git
 cd houseprices
-uv sync
+make install
 ```
 
 ### 3. Set up credentials
@@ -52,55 +52,25 @@ The EPC bulk download requires a free account at [epc.opendatacommunities.org](h
 
 ```bash
 cp .env.example .env
-```
-
-Edit `.env`:
-
-```dotenv
-EPC_EMAIL=your-email@example.com
-EPC_API_KEY=your-epc-api-key
+# edit .env — add EPC_EMAIL and EPC_API_KEY
 ```
 
 Everything else downloads without credentials.
 
 ### 4. Download the data
 
-This takes a while (~25 GB total). Run it in a tmux session so it survives disconnects:
-
 ```bash
 tmux new -s download
+make download
 ```
 
-```bash
-uv run python - << 'EOF'
-import pathlib
-from houseprices.download import (
-    download_ppd,
-    download_epc, extract_epc,
-    download_ubdc, extract_ubdc,
-    download_os_open_uprn, extract_os_open_uprn,
-    download_lsoa_boundaries,
-)
-
-data = pathlib.Path("data")
-download_ppd(data)
-download_epc(data);   extract_epc(data)
-download_ubdc(data);  extract_ubdc(data)
-download_os_open_uprn(data); extract_os_open_uprn(data)
-download_lsoa_boundaries(data)
-EOF
-```
-
-Each download skips files that already exist, so it is safe to re-run if interrupted.
+~25 GB total. Each file is skipped if it already exists, so safe to re-run if interrupted.
 
 ### 5. Run the pipeline
 
 ```bash
 tmux new -s pipeline
-```
-
-```bash
-uv run python src/houseprices/pipeline.py
+make run
 ```
 
 The pipeline prints live progress — a spinner per step, elapsed time, and row counts on completion. First run takes ~20 minutes; subsequent runs use cached Parquet checkpoints and complete in ~2 minutes.
@@ -115,8 +85,7 @@ Output files are written to `output/`:
 To force a full re-run from scratch:
 
 ```bash
-make clean
-uv run python src/houseprices/pipeline.py
+make clean && make run
 ```
 
 ---
@@ -126,8 +95,8 @@ uv run python src/houseprices/pipeline.py
 The notebook at `notebooks/analysis.ipynb` compares the pipeline output against Anna Powell-Smith's reference figures.
 
 ```bash
-uv sync --all-extras   # install notebook dependencies
-uv run jupyter lab     # then open notebooks/analysis.ipynb
+make install                   # includes notebook extras
+uv run jupyter lab             # then open notebooks/analysis.ipynb
 ```
 
 ---
@@ -135,18 +104,12 @@ uv run jupyter lab     # then open notebooks/analysis.ipynb
 ## Development
 
 ```bash
-uv sync --all-extras          # install dev + notebook dependencies
-uv run pytest                 # run tests
-uv run pytest --cov           # tests with coverage
-uv run ruff check .           # lint
-uv run ruff format --check .  # check formatting
-uv run mypy src/              # type checking
-```
-
-Full CI check (mirrors what runs on pull requests):
-
-```bash
-uv run ruff check . && uv run ruff format --check . && uv run mypy src/ && uv run pytest --cov
+make test        # run tests
+make test-cov    # tests with coverage report
+make lint        # ruff check + format check
+make fmt         # auto-fix lint and formatting
+make typecheck   # mypy
+make check       # everything (lint + types + tests) — mirrors CI
 ```
 
 See [`PLAN.md`](PLAN.md) for full methodology and [`data/SOURCES.md`](data/SOURCES.md) for dataset details.

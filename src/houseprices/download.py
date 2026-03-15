@@ -299,3 +299,16 @@ def extract_ubdc(data_dir: pathlib.Path) -> pathlib.Path:
 
     src.unlink()
     return dest
+
+
+if __name__ == "__main__":  # pragma: no cover
+    data = pathlib.Path("data")
+    data.mkdir(exist_ok=True)
+    download_ppd(data)
+    download_epc(data)
+    extract_epc(data)
+    download_ubdc(data)
+    extract_ubdc(data)
+    download_os_open_uprn(data)
+    extract_os_open_uprn(data)
+    download_lsoa_boundaries(data)
