@@ -252,3 +252,140 @@ def test_download_lsoa_cleans_up_fgdb_zip(tmp_path: pathlib.Path) -> None:
         dl.download_lsoa_boundaries(tmp_path)
 
     assert not (tmp_path / "lsoa_boundaries.fgdb.zip").exists()
+
+
+# ---------------------------------------------------------------------------
+# extract_epc
+# ---------------------------------------------------------------------------
+
+
+def _make_epc_zip(path: pathlib.Path, las: dict[str, list[str]]) -> None:
+    """Write a minimal EPC-style ZIP.
+
+    *las* maps LA name to a list of data rows (without header).
+    A recommendations.csv is also written for each LA to confirm it is ignored.
+    """
+    header = "LMK_KEY,ADDRESS1,POSTCODE,TOTAL_FLOOR_AREA,UPRN,LODGEMENT_DATETIME\n"
+    with zipfile.ZipFile(path, "w") as zf:
+        for la, rows in las.items():
+            certs = header + "".join(rows)
+            zf.writestr(f"domestic-{la}/certificates.csv", certs)
+            zf.writestr(
+                f"domestic-{la}/recommendations.csv", "LMK_KEY,IMPROVEMENT_ITEM\n"
+            )
+        zf.writestr("LICENCE.txt", "OGL")
+
+
+def test_extract_epc_skips_if_csv_exists(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "epc-domestic-all.csv").write_text("existing")
+    epc_zip = tmp_path / "epc-domestic-all.zip"
+    _make_epc_zip(epc_zip, {"LA1": []})
+    result = dl.extract_epc(tmp_path)
+    assert result.read_text() == "existing"
+
+
+def test_extract_epc_writes_header_once(tmp_path: pathlib.Path) -> None:
+    _make_epc_zip(
+        tmp_path / "epc-domestic-all.zip",
+        {
+            "LA1": ["k1,a,SW1A1AA,80,100,2022-01-01\n"],
+            "LA2": ["k2,b,SW1A2AA,90,200,2022-02-01\n"],
+        },
+    )
+    result = dl.extract_epc(tmp_path)
+    lines = result.read_text().splitlines()
+    header = "LMK_KEY,ADDRESS1,POSTCODE,TOTAL_FLOOR_AREA,UPRN,LODGEMENT_DATETIME"
+    assert lines[0] == header
+    assert lines.count(header) == 1
+
+
+def test_extract_epc_concatenates_all_la_rows(tmp_path: pathlib.Path) -> None:
+    _make_epc_zip(
+        tmp_path / "epc-domestic-all.zip",
+        {
+            "LA1": [
+                "k1,a,SW1A1AA,80,100,2022-01-01\n",
+                "k2,b,SW1A1AB,70,101,2022-01-02\n",
+            ],
+            "LA2": ["k3,c,SW1A2AA,90,200,2022-02-01\n"],
+        },
+    )
+    result = dl.extract_epc(tmp_path)
+    lines = result.read_text().splitlines()
+    assert len(lines) == 4  # 1 header + 3 data rows
+
+
+def test_extract_epc_skips_recommendations(tmp_path: pathlib.Path) -> None:
+    _make_epc_zip(
+        tmp_path / "epc-domestic-all.zip",
+        {"LA1": ["k1,a,SW1A1AA,80,100,2022-01-01\n"]},
+    )
+    result = dl.extract_epc(tmp_path)
+    assert "IMPROVEMENT_ITEM" not in result.read_text()
+
+
+def test_extract_epc_deletes_zip(tmp_path: pathlib.Path) -> None:
+    epc_zip = tmp_path / "epc-domestic-all.zip"
+    _make_epc_zip(epc_zip, {"LA1": ["k1,a,SW1A1AA,80,100,2022-01-01\n"]})
+    dl.extract_epc(tmp_path)
+    assert not epc_zip.exists()
+
+
+# ---------------------------------------------------------------------------
+# extract_os_open_uprn
+# ---------------------------------------------------------------------------
+
+
+def _make_uprn_zip(path: pathlib.Path, content: str) -> None:
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("osopenuprn_202602.csv", content)
+        zf.writestr("licence.txt", "OGL")
+
+
+def test_extract_os_open_uprn_skips_if_csv_exists(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "os-open-uprn.csv").write_text("existing")
+    _make_uprn_zip(
+        tmp_path / "os-open-uprn.zip", "UPRN,X_COORDINATE,Y_COORDINATE\n1,100,200\n"
+    )
+    result = dl.extract_os_open_uprn(tmp_path)
+    assert result.read_text() == "existing"
+
+
+def test_extract_os_open_uprn_extracts_csv(tmp_path: pathlib.Path) -> None:
+    _make_uprn_zip(
+        tmp_path / "os-open-uprn.zip",
+        "UPRN,X_COORDINATE,Y_COORDINATE\n1,358260,172796\n",
+    )
+    result = dl.extract_os_open_uprn(tmp_path)
+    assert result.name == "os-open-uprn.csv"
+    assert "UPRN" in result.read_text()
+    assert "358260" in result.read_text()
+
+
+def test_extract_os_open_uprn_strips_bom(tmp_path: pathlib.Path) -> None:
+    """The OS UPRN CSV ships with a UTF-8 BOM that must be stripped."""
+    _make_uprn_zip(
+        tmp_path / "os-open-uprn.zip",
+        "\ufeffUPRN,X_COORDINATE,Y_COORDINATE\n1,358260,172796\n",
+    )
+    result = dl.extract_os_open_uprn(tmp_path)
+    assert not result.read_text().startswith("\ufeff")
+    assert result.read_text().startswith("UPRN")
+
+
+def test_extract_os_open_uprn_deletes_zip(tmp_path: pathlib.Path) -> None:
+    uprn_zip = tmp_path / "os-open-uprn.zip"
+    _make_uprn_zip(uprn_zip, "UPRN,X_COORDINATE,Y_COORDINATE\n1,358260,172796\n")
+    dl.extract_os_open_uprn(tmp_path)
+    assert not uprn_zip.exists()
+
+
+def test_extract_os_open_uprn_multi_chunk(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """All chunks after the first are written correctly."""
+    monkeypatch.setattr(dl, "_CHUNK_SIZE", 10)  # force multi-chunk read
+    content = "UPRN,X_COORDINATE,Y_COORDINATE\n" + "1,358260,172796\n" * 5
+    _make_uprn_zip(tmp_path / "os-open-uprn.zip", content)
+    result = dl.extract_os_open_uprn(tmp_path)
+    assert result.read_text() == content
