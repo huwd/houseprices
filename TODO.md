@@ -5,24 +5,53 @@ Format: `[ ] <title>` with body notes below each entry.
 
 ---
 
-## Data / Research
+## Data acquisition
 
-- [ ] **Download and validate UBDC PPD→UPRN lookup**
+- [x] **EPC bulk download: confirm auth and URL**
 
-  The UBDC lookup table (OGL, 96% match rate, 1995–January 2022) is the primary
-  source of UPRNs for PPD records. Needs downloading and validating before use.
+  HTTP Basic Auth (`EPC_EMAIL:EPC_API_KEY`, base64-encoded). Credentials
+  confirmed working. `EPC_BULK_URL` set in `download.py`.
+  File: `all-domestic-certificates.zip` (~6.4 GB).
 
-  URL: https://data.ubdc.ac.uk/dataset/a999fd05-e7fe-4243-ab9a-95ce98132956
+- [ ] **EPC bulk download: actually download and extract**
+
+  Run `download_epc(data_dir)` once on a good connection. Extract to
+  `data/epc-domestic-all.csv` (the pipeline expects a single flat CSV).
+
+- [x] **OS Open UPRN: confirm auth and URL**
+
+  No API key or account required. Direct URL confirmed via OS Data Hub
+  Downloads API (`api.os.uk/downloads/v1/products/OpenUPRN/downloads`).
+  `OS_OPEN_UPRN_URL` set in `download.py`. ~616 MB zipped, Feb 2026 build.
+
+- [ ] **OS Open UPRN: download**
+
+  Run `download_os_open_uprn(data_dir)`. (~616 MB zipped.)
+
+- [ ] **UBDC PPD→UPRN lookup: confirm URL and download**
+
+  Dataset page: https://data.ubdc.ac.uk/dataset/a999fd05-e7fe-4243-ab9a-95ce98132956
   DOI: https://doi.org/10.20394/agu7hprj
 
-  Acceptance criteria:
+  - Confirm direct-download URL and set `UBDC_URL` in `download.py`
   - Download zip, inspect fields (`lmk`, `UPRN`, `USRN`)
-  - Confirm `lmk` maps to the `transaction_id` / `transaction_unique_identifier`
-    field in the PPD CSV (verify column name match)
-  - Check whether the updated March 2026 version extends coverage beyond
-    January 2022
-  - Count rows; confirm ~96% coverage against PPD record count for same period
-  - Add to `src/houseprices/pipeline.py` download step
+  - Confirm `lmk` maps to `transaction_unique_identifier` in PPD CSV
+  - Check whether the March 2026 version extends coverage beyond January 2022
+  - Count rows; confirm ~96% match rate against PPD for the same period
+
+- [x] **ONS LSOA boundaries: confirm format, CRS, and URL**
+
+  GeoPackage confirmed. CRS is BNG EPSG:27700 — matches OS Open UPRN,
+  no reprojection needed in `spatial.py`. `LSOA_BGC_URL` set in `download.py`.
+  Dataset: LSOA Dec 2021 BGC V5, item 68515293204e43ca8ab56fa13ae8a547. ~79 MB.
+
+- [ ] **ONS LSOA boundaries: download**
+
+  Run `download_lsoa_boundaries(data_dir)`. (~79 MB.)
+
+---
+
+## Data / Research
 
 - [ ] **Measure EPC UPRN population rate by lodgement quarter**
 
@@ -34,14 +63,6 @@ Format: `[ ] <title>` with body notes below each entry.
   Acceptance criteria:
   - Pipeline prints UPRN coverage % broken down by lodgement year
   - Result appended to `research/uprn-coverage-in-epc-data.md`
-
-- [ ] **Confirm ONS boundary file format for DuckDB spatial extension**
-
-  DuckDB spatial can read GeoJSON and GeoParquet natively. The ONS geoportal
-  publishes boundaries in multiple formats. Identify which format works best
-  with DuckDB's `ST_Within` / `ST_GeomFromWKB` for LSOA point-in-polygon
-  lookups, and document the download URL and any CRS considerations
-  (OS Open UPRN uses BNG EPSG:27700; ONS boundaries may be WGS84 EPSG:4326).
 
 ---
 
