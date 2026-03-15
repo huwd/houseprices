@@ -32,9 +32,11 @@ PPD_URL = (
 # EPC bulk download — ZIP of all domestic certificates (OGL).
 # Requires free registration at https://epc.opendatacommunities.org/
 # Authenticates via HTTP Basic Auth (EPC_EMAIL + EPC_API_KEY).
-# List available files first: GET https://epc.opendatacommunities.org/api/v1/files
-# TODO: confirm the direct-download URL for all domestic certificates.
-EPC_BULK_URL: str = ""
+# List available files: GET https://epc.opendatacommunities.org/api/v1/files
+EPC_BULK_URL = (
+    "https://epc.opendatacommunities.org"
+    "/api/v1/files/all-domestic-certificates.zip"
+)
 
 # UBDC PPD → UPRN lookup — ZIP containing CSV (OGL).
 # Dataset page: https://data.ubdc.ac.uk/dataset/a999fd05-e7fe-4243-ab9a-95ce98132956
@@ -42,8 +44,10 @@ EPC_BULK_URL: str = ""
 UBDC_URL: str = ""
 
 # OS Open UPRN — ZIP of all UPRNs with BNG coordinates (OGL).
-# Requires a free API key from https://osdatahub.os.uk/ (OS_DATA_HUB_API_KEY).
-# TODO: confirm the download endpoint; key is appended as ?key={api_key}.
+# Free bulk download; no API key required.
+# Requires a free OS OpenData Plan account: https://osdatahub.os.uk/plans
+# Download page: https://osdatahub.os.uk/downloads/open/OpenUPRN
+# TODO: confirm the direct-download URL from the download page (select CSV format).
 OS_OPEN_UPRN_URL: str = ""
 
 # ONS LSOA December 2021 Boundaries EW BGC — GeoPackage, BNG (OGL).
@@ -117,14 +121,13 @@ def download_ubdc(data_dir: pathlib.Path) -> pathlib.Path:
 def download_os_open_uprn(data_dir: pathlib.Path) -> pathlib.Path:
     """Download OS Open UPRN ZIP.
 
-    Reads OS_DATA_HUB_API_KEY from the environment (.env or shell).
-    Requires a free API key from https://osdatahub.os.uk/
-    The key is appended as a query parameter — confirm the exact mechanism
-    against the OS Data Hub download documentation before running.
+    No API key required — OS Open UPRN is free open data under OGL.
+    A free OS OpenData Plan account is needed to obtain the download URL
+    (sign up at https://osdatahub.os.uk/plans, then visit the download page
+    at https://osdatahub.os.uk/downloads/open/OpenUPRN and select CSV format).
+    Set OS_OPEN_UPRN_URL to the URL shown on that page before calling this.
     """
-    api_key = os.environ["OS_DATA_HUB_API_KEY"]
-    url = f"{OS_OPEN_UPRN_URL}?key={api_key}"
-    return _stream_to_file(url, data_dir / "os-open-uprn.zip")
+    return _stream_to_file(OS_OPEN_UPRN_URL, data_dir / "os-open-uprn.zip")
 
 
 def download_lsoa_boundaries(data_dir: pathlib.Path) -> pathlib.Path:
