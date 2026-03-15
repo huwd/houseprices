@@ -16,29 +16,39 @@ All source data is Open Government Licence v3.0.
 4. **Aggregate** — computes `total_price / total_floor_area` per postcode district and LSOA
 5. **Output** — writes two CSVs to `output/`
 
-Intermediate results are checkpointed to `cache/` as Parquet files so re-runs are fast (~2 min vs ~20 min from scratch).
+Intermediate results are checkpointed to `cache/` as Parquet files so re-runs skip already-completed steps.
 
 ---
 
-## First-time setup
+## Quick start
 
-### Prerequisites
+### 1. Prerequisites
 
 - Python 3.12+
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- ~30 GB free disk space for data
-
-### 1. Clone and install dependencies
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- GDAL (`ogr2ogr` on PATH) — for converting the LSOA boundary file
 
 ```bash
-git clone https://github.com/huw/houseprices.git
-cd houseprices
-uv sync --all-extras
+# Ubuntu / Debian
+sudo apt install gdal-bin
+
+# macOS
+brew install gdal
 ```
 
-### 2. Set up environment variables
+- ~30 GB free disk space
 
-Copy the example env file and fill in your credentials:
+### 2. Clone and install
+
+```bash
+git clone https://github.com/huwd/houseprices.git
+cd houseprices
+uv sync
+```
+
+### 3. Set up credentials
+
+The EPC bulk download requires a free account at [epc.opendatacommunities.org](https://epc.opendatacommunities.org/login). Once registered, your API key is shown in account settings.
 
 ```bash
 cp .env.example .env
@@ -49,42 +59,51 @@ Edit `.env`:
 ```dotenv
 EPC_EMAIL=your-email@example.com
 EPC_API_KEY=your-epc-api-key
-OS_DATA_HUB_API_KEY=your-os-data-hub-api-key
 ```
 
-Where to get each key:
+Everything else downloads without credentials.
 
-| Variable | Where to get it |
-|---|---|
-| `EPC_EMAIL` | Register free at [epc.opendatacommunities.org](https://epc.opendatacommunities.org/login) |
-| `EPC_API_KEY` | Shown in your account settings after registering |
-| `OS_DATA_HUB_API_KEY` | Register free at [osdatahub.os.uk](https://osdatahub.os.uk/) and create an API key |
+### 4. Download the data
 
-### 3. Download the data
+This takes a while (~25 GB total). Run it in a tmux session so it survives disconnects:
 
 ```bash
-uv run python -c "
-from houseprices.download import download_ppd, download_epc, download_os_open_uprn, download_lsoa_boundaries
-download_ppd('data')
-download_epc('data')
-download_os_open_uprn('data')
-download_lsoa_boundaries('data')
-"
+tmux new -s download
 ```
 
-The UBDC PPD→UPRN lookup must be downloaded manually — see [`data/SOURCES.md`](data/SOURCES.md) for the DOI link and instructions.
+```bash
+uv run python - << 'EOF'
+import pathlib
+from houseprices.download import (
+    download_ppd,
+    download_epc, extract_epc,
+    download_ubdc, extract_ubdc,
+    download_os_open_uprn, extract_os_open_uprn,
+    download_lsoa_boundaries,
+)
 
-> Downloads skip files that already exist, so it is safe to re-run if interrupted.
+data = pathlib.Path("data")
+download_ppd(data)
+download_epc(data);   extract_epc(data)
+download_ubdc(data);  extract_ubdc(data)
+download_os_open_uprn(data); extract_os_open_uprn(data)
+download_lsoa_boundaries(data)
+EOF
+```
 
----
+Each download skips files that already exist, so it is safe to re-run if interrupted.
 
-## Running the pipeline
+### 5. Run the pipeline
+
+```bash
+tmux new -s pipeline
+```
 
 ```bash
 uv run python src/houseprices/pipeline.py
 ```
 
-On first run this takes ~20 minutes. Subsequent runs use cached Parquet checkpoints and complete in ~2 minutes.
+The pipeline prints live progress — a spinner per step, elapsed time, and row counts on completion. First run takes ~20 minutes; subsequent runs use cached Parquet checkpoints and complete in ~2 minutes.
 
 Output files are written to `output/`:
 
@@ -102,22 +121,13 @@ uv run python src/houseprices/pipeline.py
 
 ---
 
-## Running the notebook
+## Notebook
 
 The notebook at `notebooks/analysis.ipynb` compares the pipeline output against Anna Powell-Smith's reference figures.
 
-**Interactive:**
-
 ```bash
-uv run jupyter lab
-```
-
-Then open `notebooks/analysis.ipynb` in the browser.
-
-**Headless:**
-
-```bash
-uv run jupyter nbconvert --to notebook --execute notebooks/analysis.ipynb
+uv sync --all-extras   # install notebook dependencies
+uv run jupyter lab     # then open notebooks/analysis.ipynb
 ```
 
 ---
@@ -125,11 +135,12 @@ uv run jupyter nbconvert --to notebook --execute notebooks/analysis.ipynb
 ## Development
 
 ```bash
-uv run pytest                  # run tests
-uv run pytest --cov            # tests with coverage
-uv run ruff check .            # lint
-uv run ruff format --check .   # check formatting
-uv run mypy src/               # type checking
+uv sync --all-extras          # install dev + notebook dependencies
+uv run pytest                 # run tests
+uv run pytest --cov           # tests with coverage
+uv run ruff check .           # lint
+uv run ruff format --check .  # check formatting
+uv run mypy src/              # type checking
 ```
 
 Full CI check (mirrors what runs on pull requests):
@@ -138,4 +149,4 @@ Full CI check (mirrors what runs on pull requests):
 uv run ruff check . && uv run ruff format --check . && uv run mypy src/ && uv run pytest --cov
 ```
 
-See [`PLAN.md`](PLAN.md) for the full methodology.
+See [`PLAN.md`](PLAN.md) for full methodology and [`data/SOURCES.md`](data/SOURCES.md) for dataset details.
