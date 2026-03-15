@@ -160,7 +160,7 @@ def join_datasets(
         ),
         -- PPD: category A only (HMLR full download has no header row)
         ppd AS (
-            SELECT * FROM read_csv('{ppd}', header=false, names=[
+            SELECT * FROM read_csv('{ppd}', header=false, ignore_errors=true, names=[
                 'transaction_unique_identifier', 'price', 'date_of_transfer',
                 'postcode', 'property_type', 'new_build_flag', 'tenure_type',
                 'paon', 'saon', 'street', 'locality', 'town_city',
