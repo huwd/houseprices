@@ -5,6 +5,7 @@ import re
 from collections.abc import Callable
 from enum import Enum
 
+import duckdb
 import pandas as pd
 
 from houseprices.spatial import build_uprn_lsoa
@@ -60,16 +61,60 @@ def load_epc(epc_path: str | pathlib.Path) -> pd.DataFrame:
     Rows without a UPRN are kept as-is (they are candidates for Tier 2
     address-normalisation matching and cannot be deduplicated by UPRN).
     """
-    df = pd.read_csv(epc_path)
-    df["LODGEMENT_DATETIME"] = pd.to_datetime(df["LODGEMENT_DATETIME"])
+    path = str(epc_path)
+    return duckdb.execute(f"""
+        WITH
+        epc_raw AS (SELECT * FROM read_csv('{path}')),
+        with_uprn AS (
+            SELECT *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY UPRN
+                    ORDER BY LODGEMENT_DATETIME DESC
+                ) AS _rn
+            FROM epc_raw
+            WHERE UPRN IS NOT NULL
+        )
+        SELECT * EXCLUDE (_rn) FROM with_uprn WHERE _rn = 1
+        UNION ALL
+        SELECT * FROM epc_raw WHERE UPRN IS NULL
+    """).df()
 
-    with_uprn = df[df["UPRN"].notna()].copy()
-    without_uprn = df[df["UPRN"].isna()].copy()
 
-    with_uprn = with_uprn.sort_values("LODGEMENT_DATETIME", ascending=False)
-    with_uprn = with_uprn.drop_duplicates(subset=["UPRN"], keep="first")
-
-    return pd.concat([with_uprn, without_uprn], ignore_index=True)
+_NORMALISE_MACRO = r"""
+    CREATE OR REPLACE MACRO normalise_addr(s) AS (
+        trim(regexp_replace(
+            regexp_replace(
+                regexp_replace(
+                    regexp_replace(
+                        regexp_replace(
+                            regexp_replace(
+                                regexp_replace(
+                                    regexp_replace(
+                                        regexp_replace(
+                                            regexp_replace(
+                                                upper(s),
+                                                '[^\w\s]', '', 'g'
+                                            ),
+                                            '\s+', ' ', 'g'
+                                        ),
+                                        '\bAPARTMENT\b', 'FLAT', 'g'
+                                    ),
+                                    '\bRD\b', 'ROAD', 'g'
+                                ),
+                                '\bAVE?\b', 'AVENUE', 'g'
+                            ),
+                            '\bDR\b', 'DRIVE', 'g'
+                        ),
+                        '\bCL\b', 'CLOSE', 'g'
+                    ),
+                    '\bCT\b', 'COURT', 'g'
+                ),
+                '\bGDNS\b', 'GARDENS', 'g'
+            ),
+            '\bHSE\b', 'HOUSE', 'g'
+        ))
+    )
+"""
 
 
 def join_datasets(
@@ -86,79 +131,138 @@ def join_datasets(
     PPD records with ppd_category_type != 'A' are excluded before joining.
     Unmatched PPD records are not included in the result.
     """
-    ppd = pd.read_csv(
-        ppd_path,
-        header=None,
-        names=[
-            "transaction_unique_identifier",
-            "price",
-            "date",
-            "postcode",
-            "property_type",
-            "old_new",
-            "duration",
-            "paon",
-            "saon",
-            "street",
-            "locality",
-            "town",
-            "district",
-            "county",
-            "ppd_category_type",
-            "record_status",
-        ],
-        engine="python",
-        on_bad_lines="warn",
-    )
-    ppd = ppd[ppd["ppd_category_type"] == "A"].copy()
+    con = duckdb.connect()
+    con.execute(_NORMALISE_MACRO)
 
-    epc = load_epc(epc_path)
-    ubdc = pd.read_csv(ubdc_path)
+    ppd = str(ppd_path)
+    epc = str(epc_path)
+    ubdc = str(ubdc_path)
 
-    # Tier 1: exact UPRN join via UBDC lookup
-    epc_with_uprn = epc[epc["UPRN"].notna()].copy()
-    epc_with_uprn["UPRN"] = epc_with_uprn["UPRN"].astype(int)
+    return con.execute(f"""
+        WITH
+        -- EPC: deduplicate to most recent certificate per UPRN
+        epc_raw AS (SELECT * FROM read_csv('{epc}')),
+        epc_ranked AS (
+            SELECT *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY UPRN
+                    ORDER BY LODGEMENT_DATETIME DESC
+                ) AS _rn
+            FROM epc_raw
+            WHERE UPRN IS NOT NULL
+        ),
+        epc AS (
+            SELECT * EXCLUDE (_rn) FROM epc_ranked WHERE _rn = 1
+            UNION ALL
+            SELECT * FROM epc_raw WHERE UPRN IS NULL
+        ),
+        -- PPD: category A only (HMLR full download has no header row)
+        ppd AS (
+            SELECT * FROM read_csv('{ppd}', header=false, names=[
+                'transaction_unique_identifier', 'price', 'date_of_transfer',
+                'postcode', 'property_type', 'new_build_flag', 'tenure_type',
+                'paon', 'saon', 'street', 'locality', 'town_city',
+                'district', 'county', 'ppd_category_type', 'record_status'
+            ])
+            WHERE ppd_category_type = 'A'
+        ),
+        ubdc AS (SELECT * FROM read_csv('{ubdc}')),
 
-    tier1 = (
-        ppd.merge(
-            ubdc,
-            left_on="transaction_unique_identifier",
-            right_on="transactionid",
+        -- Tier 1: exact UPRN match via UBDC lookup
+        tier1 AS (
+            SELECT
+                ppd.transaction_unique_identifier,
+                ppd.price,
+                ppd.date_of_transfer,
+                ppd.postcode,
+                ppd.property_type,
+                ppd.new_build_flag,
+                ppd.tenure_type,
+                ppd.paon,
+                ppd.saon,
+                ppd.street,
+                ppd.locality,
+                ppd.town_city,
+                ppd.district,
+                ppd.county,
+                ppd.ppd_category_type,
+                ppd.record_status,
+                CAST(ubdc.uprn AS BIGINT) AS uprn,
+                epc.TOTAL_FLOOR_AREA,
+                epc.LODGEMENT_DATETIME,
+                epc.ADDRESS1,
+                epc.ADDRESS2,
+                epc.BUILT_FORM,
+                epc.CONSTRUCTION_AGE_BAND,
+                epc.CURRENT_ENERGY_RATING,
+                1 AS match_tier
+            FROM ppd
+            JOIN ubdc ON ppd.transaction_unique_identifier = ubdc.transactionid
+            JOIN epc ON CAST(ubdc.uprn AS BIGINT) = CAST(epc.UPRN AS BIGINT)
+        ),
+
+        -- Tier 2: address-normalisation fallback for unmatched PPD records
+        ppd_remaining AS (
+            SELECT * FROM ppd
+            WHERE transaction_unique_identifier NOT IN (
+                SELECT transaction_unique_identifier FROM tier1
+            )
+        ),
+        ppd_norm AS (
+            SELECT *,
+                normalise_addr(concat_ws(' ',
+                    NULLIF(COALESCE(CAST(saon AS VARCHAR), ''), ''),
+                    NULLIF(COALESCE(CAST(paon AS VARCHAR), ''), ''),
+                    NULLIF(COALESCE(CAST(street AS VARCHAR), ''), '')
+                )) AS norm_addr,
+                upper(trim(postcode)) AS postcode_norm
+            FROM ppd_remaining
+        ),
+        epc_norm AS (
+            SELECT *,
+                normalise_addr(concat_ws(' ',
+                    NULLIF(COALESCE(ADDRESS1, ''), ''),
+                    NULLIF(COALESCE(ADDRESS2, ''), '')
+                )) AS norm_addr,
+                upper(trim(POSTCODE)) AS postcode_norm
+            FROM epc
+        ),
+        tier2 AS (
+            SELECT
+                p.transaction_unique_identifier,
+                p.price,
+                p.date_of_transfer,
+                p.postcode,
+                p.property_type,
+                p.new_build_flag,
+                p.tenure_type,
+                p.paon,
+                p.saon,
+                p.street,
+                p.locality,
+                p.town_city,
+                p.district,
+                p.county,
+                p.ppd_category_type,
+                p.record_status,
+                NULL::BIGINT AS uprn,
+                e.TOTAL_FLOOR_AREA,
+                e.LODGEMENT_DATETIME,
+                e.ADDRESS1,
+                e.ADDRESS2,
+                e.BUILT_FORM,
+                e.CONSTRUCTION_AGE_BAND,
+                e.CURRENT_ENERGY_RATING,
+                2 AS match_tier
+            FROM ppd_norm AS p
+            JOIN epc_norm AS e
+                ON p.postcode_norm = e.postcode_norm
+               AND p.norm_addr = e.norm_addr
         )
-        .merge(epc_with_uprn, left_on="uprn", right_on="UPRN")
-        .assign(match_tier=1)
-    )
-
-    # Tier 2: address normalisation for records not matched in Tier 1
-    matched = set(tier1["transaction_unique_identifier"])
-    ppd_remaining = ppd[~ppd["transaction_unique_identifier"].isin(matched)].copy()
-
-    ppd_remaining["norm_addr"] = ppd_remaining.apply(
-        lambda r: normalise_address(
-            str(r["saon"]) if pd.notna(r["saon"]) else "",
-            str(r["paon"]) if pd.notna(r["paon"]) else "",
-            str(r["street"]) if pd.notna(r["street"]) else "",
-        ),
-        axis=1,
-    )
-    ppd_remaining["postcode_norm"] = ppd_remaining["postcode"].str.strip().str.upper()
-
-    epc_tier2 = epc.copy()
-    epc_tier2["norm_addr"] = epc_tier2.apply(
-        lambda r: normalise_address(
-            str(r["ADDRESS1"]) if pd.notna(r["ADDRESS1"]) else "",
-            str(r["ADDRESS2"]) if pd.notna(r["ADDRESS2"]) else "",
-            "",
-        ),
-        axis=1,
-    )
-    epc_tier2["postcode_norm"] = epc_tier2["POSTCODE"].str.strip().str.upper()
-
-    tier2 = ppd_remaining.merge(epc_tier2, on=["postcode_norm", "norm_addr"]).assign(
-        match_tier=2
-    )
-
-    return pd.concat([tier1, tier2], ignore_index=True)
+        SELECT * FROM tier1
+        UNION ALL
+        SELECT * FROM tier2
+    """).df()
 
 
 def match_report(matched: pd.DataFrame, total_ppd: int) -> dict[str, int | float]:
