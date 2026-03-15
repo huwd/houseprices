@@ -138,13 +138,23 @@ def test_download_epc_raises_if_env_missing(
 # ---------------------------------------------------------------------------
 
 
-def test_download_ubdc_saves_as_zip(tmp_path: pathlib.Path) -> None:
-    dl.UBDC_URL = "http://example.com/ubdc.zip"
+def test_download_ubdc_resolves_signed_url(tmp_path: pathlib.Path) -> None:
+    """download_ubdc must call the API to resolve the signed URL, then stream it."""
+    dl.UBDC_URL = "http://example.com/ubdc-api"
+    signed_url = "http://blob.example.com/signed?token=abc"
+
+    api_response = MagicMock()
+    api_response.raise_for_status.return_value = None
+    api_response.json.return_value = {"download": {"url": signed_url}}
+
     with patch(
         "houseprices.download.requests.get",
-        return_value=_mock_response(),
-    ):
+        side_effect=[api_response, _mock_response()],
+    ) as mock_get:
         result = dl.download_ubdc(tmp_path)
+
+    assert mock_get.call_args_list[0].args[0] == dl.UBDC_URL
+    assert mock_get.call_args_list[1].args[0] == signed_url
     assert result.name == "ppd-uprn-lookup.zip"
 
 

@@ -41,9 +41,10 @@ EPC_BULK_URL = (
 )
 
 # UBDC PPD → UPRN lookup — ZIP containing CSV (OGL).
-# Dataset page: https://data.ubdc.ac.uk/dataset/a999fd05-e7fe-4243-ab9a-95ce98132956
-# TODO: confirm the direct-download URL from the dataset page.
-UBDC_URL: str = ""
+# Dataset page: https://data.ubdc.ac.uk/datasets/a999fd05-e7fe-4243-ab9a-95ce98132956
+# Returns JSON {"download": {"url": "<signed-azure-url>"}} — URL is time-limited.
+# download_ubdc() resolves the signed URL at call time before streaming.
+UBDC_URL = "https://data.ubdc.ac.uk/api/resources/download?file_id=37&dataset_id=13"
 
 # OS Open UPRN — ZIP of all UPRNs with BNG coordinates (OGL).
 # Free bulk download via OS Data Hub Downloads API; no API key or account required.
@@ -124,8 +125,15 @@ def download_epc(data_dir: pathlib.Path) -> pathlib.Path:
 
 
 def download_ubdc(data_dir: pathlib.Path) -> pathlib.Path:
-    """Download the UBDC PPD → UPRN lookup ZIP."""
-    return _stream_to_file(UBDC_URL, data_dir / "ppd-uprn-lookup.zip")
+    """Download the UBDC PPD → UPRN lookup ZIP.
+
+    The UBDC API returns a time-limited pre-signed Azure blob URL. This
+    function resolves that URL first, then streams the ZIP.
+    """
+    response = requests.get(UBDC_URL, timeout=30)
+    response.raise_for_status()
+    signed_url: str = response.json()["download"]["url"]
+    return _stream_to_file(signed_url, data_dir / "ppd-uprn-lookup.zip")
 
 
 def download_os_open_uprn(data_dir: pathlib.Path) -> pathlib.Path:

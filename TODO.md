@@ -28,15 +28,16 @@ Format: `[ ] <title>` with body notes below each entry.
 
   Run `download_os_open_uprn(data_dir)`. (~616 MB zipped.)
 
-- [ ] **UBDC PPD→UPRN lookup: confirm URL and download**
+- [x] **UBDC PPD→UPRN lookup: confirm URL**
 
-  Dataset page: https://data.ubdc.ac.uk/dataset/a999fd05-e7fe-4243-ab9a-95ce98132956
-  DOI: https://doi.org/10.20394/agu7hprj
+  API endpoint confirmed: `https://data.ubdc.ac.uk/api/resources/download?file_id=37&dataset_id=13`
+  Returns JSON with a time-limited pre-signed Azure blob URL. `UBDC_URL` set
+  in `download.py`; `download_ubdc()` resolves the signed URL at call time.
 
-  - Confirm direct-download URL and set `UBDC_URL` in `download.py`
-  - Download zip, inspect fields (`lmk`, `UPRN`, `USRN`)
-  - Confirm `lmk` maps to `transaction_unique_identifier` in PPD CSV
-  - Check whether the March 2026 version extends coverage beyond January 2022
+- [ ] **UBDC PPD→UPRN lookup: download and validate**
+
+  - Inspect fields — confirm `lmk` maps to `transaction_unique_identifier` in PPD
+  - Check whether coverage extends beyond January 2022
   - Count rows; confirm ~96% match rate against PPD for the same period
 
 - [x] **ONS LSOA boundaries: confirm format, CRS, and URL**
