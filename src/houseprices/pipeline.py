@@ -2,11 +2,13 @@
 
 import pathlib
 import re
+import time
 from collections.abc import Callable
 from enum import Enum
 
 import duckdb
 import pandas as pd
+from rich.console import Console
 
 from houseprices.spatial import build_uprn_lsoa
 
@@ -363,6 +365,25 @@ def _checkpoint(
 
 
 # ---------------------------------------------------------------------------
+# Formatting helpers
+# ---------------------------------------------------------------------------
+
+
+def _fmt_elapsed(seconds: float) -> str:
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    return f"{s // 60}:{s % 60:02d}"
+
+
+def _fmt_size(num_bytes: int) -> str:
+    for unit, threshold in [("GB", 1_000_000_000), ("MB", 1_000_000), ("KB", 1_000)]:
+        if num_bytes >= threshold:
+            return f"{num_bytes / threshold:.1f} {unit}"
+    return f"{num_bytes} B"
+
+
+# ---------------------------------------------------------------------------
 # Top-level runner
 # ---------------------------------------------------------------------------
 
@@ -394,19 +415,49 @@ def run(
         output_dir:    Directory for output CSVs (default: output/).
         min_sales:     Minimum sales per geography unit to include in output.
     """
-    # Step 1: join PPD + EPC via UBDC UPRN lookup + address normalisation
-    matched = _checkpoint(
-        "matched",
-        cache_dir,
-        lambda: join_datasets(ppd_path, epc_path, ubdc_path),
-    )
+    console = Console()
 
-    # Step 2: build UPRN → LSOA spatial lookup
-    uprn_lsoa = _checkpoint(
-        "uprn_lsoa",
-        cache_dir,
-        lambda: build_uprn_lsoa(uprn_path, boundary_path),
-    )
+    # --- Input file summary --------------------------------------------------
+    console.print()
+    console.print("[bold]House prices pipeline[/bold]")
+    console.print()
+    inputs = [
+        ("PPD", ppd_path),
+        ("EPC", epc_path),
+        ("UBDC", ubdc_path),
+        ("UPRN", uprn_path),
+        ("Boundary", boundary_path),
+    ]
+    for label, path in inputs:
+        try:
+            size_str = _fmt_size(path.stat().st_size)
+        except FileNotFoundError:
+            size_str = "not found"
+        console.print(f"  {label:<10} {path.name:<44} [dim]{size_str}[/dim]")
+    console.print()
+
+    # --- Step helper ---------------------------------------------------------
+    # Inlines checkpoint logic so the display owns the full lifecycle.
+    def step(name: str, compute: Callable[[], pd.DataFrame]) -> pd.DataFrame:
+        parquet = cache_dir / f"{name}.parquet"
+        if parquet.exists():
+            console.print(f"  [dim]⊘  {name:<18} skipped (cached)[/dim]")
+            return pd.read_parquet(parquet)
+        t0 = time.monotonic()
+        with console.status(f"  [yellow]⏳  {name}…[/yellow]"):
+            df = compute()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(parquet, index=False)
+        elapsed = _fmt_elapsed(time.monotonic() - t0)
+        console.print(
+            f"  [green]✓[/green]  {name:<18} {elapsed:<8} {len(df):>14,} rows"
+        )
+        return df
+
+    # --- Steps ---------------------------------------------------------------
+    matched = step("matched", lambda: join_datasets(ppd_path, epc_path, ubdc_path))
+    uprn_lsoa = step("uprn_lsoa", lambda: build_uprn_lsoa(uprn_path, boundary_path))
+    console.print()
 
     # Step 3: attach LSOA codes to matched records via UPRN.
     # Only Tier 1 records have a UBDC-confirmed UPRN (`uprn` column);
@@ -426,12 +477,13 @@ def run(
     )
     total_ppd = int((ppd_meta["ppd_category_type"] == "A").sum())
     report = match_report(matched, total_ppd)
-    print(
-        f"\nMatch report — "
-        f"tier1: {report['tier1']} ({report['tier1_pct']}%), "
-        f"tier2: {report['tier2']} ({report['tier2_pct']}%), "
-        f"unmatched: {report['unmatched']} ({report['unmatched_pct']}%)\n"
+    console.print(
+        f"  Match  "
+        f"tier1 [green]{report['tier1']:,}[/green] ({report['tier1_pct']}%)  "
+        f"tier2 [yellow]{report['tier2']:,}[/yellow] ({report['tier2_pct']}%)  "
+        f"unmatched [red]{report['unmatched']:,}[/red] ({report['unmatched_pct']}%)"
     )
+    console.print()
 
     # Step 5: aggregate and write outputs
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -441,12 +493,16 @@ def run(
     )
     district_path = output_dir / "price_per_sqm_postcode_district.csv"
     district_df.to_csv(district_path, index=False)
-    print(f"  wrote {len(district_df)} postcode districts → {district_path}")
+    console.print(
+        f"  [green]✓[/green]  {len(district_df):,} postcode districts"
+        f"  →  {district_path}"
+    )
 
     lsoa_df = aggregate_by_geography(matched, Geography.LSOA, min_sales=min_sales)
     lsoa_path = output_dir / "price_per_sqm_lsoa.csv"
     lsoa_df.to_csv(lsoa_path, index=False)
-    print(f"  wrote {len(lsoa_df)} LSOAs → {lsoa_path}")
+    console.print(f"  [green]✓[/green]  {len(lsoa_df):,} LSOAs  →  {lsoa_path}")
+    console.print()
 
 
 if __name__ == "__main__":  # pragma: no cover
