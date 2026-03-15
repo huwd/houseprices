@@ -121,8 +121,12 @@ def test_download_epc_saves_as_zip(
     assert result.name == "epc-domestic-all.zip"
 
 
-def test_download_epc_raises_if_env_missing(tmp_path: pathlib.Path) -> None:
+def test_download_epc_raises_if_env_missing(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """KeyError if EPC credentials are not set in the environment."""
+    monkeypatch.delenv("EPC_EMAIL", raising=False)
+    monkeypatch.delenv("EPC_API_KEY", raising=False)
     dl.EPC_BULK_URL = "http://example.com/epc.zip"
     with pytest.raises(KeyError):
         dl.download_epc(tmp_path)
@@ -148,24 +152,18 @@ def test_download_ubdc_saves_as_zip(tmp_path: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_download_os_open_uprn_passes_api_key(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("OS_DATA_HUB_API_KEY", "mykey")
+def test_download_os_open_uprn_uses_os_open_uprn_url(tmp_path: pathlib.Path) -> None:
+    """No API key required; URL is used as-is."""
     dl.OS_OPEN_UPRN_URL = "http://example.com/uprn"
     with patch(
         "houseprices.download.requests.get",
         return_value=_mock_response(),
     ) as mock_get:
         dl.download_os_open_uprn(tmp_path)
-    called_url: str = mock_get.call_args.args[0]
-    assert "mykey" in called_url
+    assert mock_get.call_args.args[0] == dl.OS_OPEN_UPRN_URL
 
 
-def test_download_os_open_uprn_saves_as_zip(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("OS_DATA_HUB_API_KEY", "k")
+def test_download_os_open_uprn_saves_as_zip(tmp_path: pathlib.Path) -> None:
     dl.OS_OPEN_UPRN_URL = "http://example.com/uprn"
     with patch(
         "houseprices.download.requests.get",
@@ -173,13 +171,6 @@ def test_download_os_open_uprn_saves_as_zip(
     ):
         result = dl.download_os_open_uprn(tmp_path)
     assert result.name == "os-open-uprn.zip"
-
-
-def test_download_os_open_uprn_raises_if_env_missing(tmp_path: pathlib.Path) -> None:
-    """KeyError if OS Data Hub API key is not set in the environment."""
-    dl.OS_OPEN_UPRN_URL = "http://example.com/uprn"
-    with pytest.raises(KeyError):
-        dl.download_os_open_uprn(tmp_path)
 
 
 # ---------------------------------------------------------------------------
