@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import pathlib
+import zipfile
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -178,11 +179,76 @@ def test_download_os_open_uprn_saves_as_zip(tmp_path: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_download_lsoa_saves_as_gpkg(tmp_path: pathlib.Path) -> None:
-    dl.LSOA_BGC_URL = "http://example.com/lsoa.gpkg"
-    with patch(
-        "houseprices.download.requests.get",
-        return_value=_mock_response(),
-    ):
+def _make_fake_fgdb_zip(path: pathlib.Path) -> None:
+    """Write a minimal ZIP containing a fake .gdb directory."""
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("fake.gdb/placeholder", "")
+
+
+def test_download_lsoa_skips_if_gpkg_exists(tmp_path: pathlib.Path) -> None:
+    """If lsoa_boundaries.gpkg already exists the download is skipped."""
+    (tmp_path / "lsoa_boundaries.gpkg").write_bytes(b"existing")
+    with patch("houseprices.download.requests.get") as mock_get:
         result = dl.download_lsoa_boundaries(tmp_path)
+    mock_get.assert_not_called()
     assert result.name == "lsoa_boundaries.gpkg"
+
+
+def test_download_lsoa_calls_ogr2ogr(tmp_path: pathlib.Path) -> None:
+    """ogr2ogr must be called with GPKG output and EPSG:27700 reprojection."""
+    dl.LSOA_BGC_URL = "http://example.com/lsoa.fgdb.zip"
+
+    fake_zip = tmp_path / "fake.zip"
+    _make_fake_fgdb_zip(fake_zip)
+
+    with (
+        patch(
+            "houseprices.download.requests.get",
+            return_value=_mock_response(chunks=[fake_zip.read_bytes()]),
+        ),
+        patch("houseprices.download.subprocess.run") as mock_run,
+    ):
+        dl.download_lsoa_boundaries(tmp_path)
+
+    args = mock_run.call_args.args[0]
+    assert args[0] == "ogr2ogr"
+    assert "-t_srs" in args
+    assert "EPSG:27700" in args
+    assert args[args.index("-f") + 1] == "GPKG"
+
+
+def test_download_lsoa_raises_if_no_gdb_in_zip(tmp_path: pathlib.Path) -> None:
+    """FileNotFoundError if the ZIP contains no .gdb directory."""
+    dl.LSOA_BGC_URL = "http://example.com/lsoa.fgdb.zip"
+
+    empty_zip = tmp_path / "empty.zip"
+    with zipfile.ZipFile(empty_zip, "w") as zf:
+        zf.writestr("not_a_gdb/placeholder", "")
+
+    with (
+        patch(
+            "houseprices.download.requests.get",
+            return_value=_mock_response(chunks=[empty_zip.read_bytes()]),
+        ),
+        pytest.raises(FileNotFoundError, match=".gdb"),
+    ):
+        dl.download_lsoa_boundaries(tmp_path)
+
+
+def test_download_lsoa_cleans_up_fgdb_zip(tmp_path: pathlib.Path) -> None:
+    """The intermediate FGDB ZIP must be removed after conversion."""
+    dl.LSOA_BGC_URL = "http://example.com/lsoa.fgdb.zip"
+
+    fake_zip = tmp_path / "fake.zip"
+    _make_fake_fgdb_zip(fake_zip)
+
+    with (
+        patch(
+            "houseprices.download.requests.get",
+            return_value=_mock_response(chunks=[fake_zip.read_bytes()]),
+        ),
+        patch("houseprices.download.subprocess.run"),
+    ):
+        dl.download_lsoa_boundaries(tmp_path)
+
+    assert not (tmp_path / "lsoa_boundaries.fgdb.zip").exists()

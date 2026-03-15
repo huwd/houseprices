@@ -12,6 +12,9 @@ file automatically when this module is imported.
 import base64
 import os
 import pathlib
+import shutil
+import subprocess
+import zipfile
 
 import requests
 from dotenv import load_dotenv
@@ -52,14 +55,15 @@ OS_OPEN_UPRN_URL = (
     "?area=GB&format=CSV&redirect"
 )
 
-# ONS LSOA December 2021 Boundaries EW BGC V5 — GeoPackage (OGL).
+# ONS LSOA December 2021 Boundaries EW BGC V5 — FGDB (OGL).
 # Source: ONS Open Geography Portal (ArcGIS Hub), item 68515293204e43ca8ab56fa13ae8a547.
-# CRS: BNG EPSG:27700 — matches OS Open UPRN, no reprojection needed.
-# ~79 MB.
+# Only FGDB is pre-cached; GeoPackage/Shapefile generation returns 500.
+# download_lsoa_boundaries() downloads this and converts to GeoPackage via ogr2ogr,
+# reprojecting to BNG EPSG:27700 to match OS Open UPRN. ~18 MB zipped.
 LSOA_BGC_URL = (
     "https://opendata.arcgis.com/api/v3/datasets"
     "/68515293204e43ca8ab56fa13ae8a547_0/downloads/data"
-    "?format=gpkg&spatialRefId=27700&where=1%3D1"
+    "?format=fgdb&spatialRefId=4326"
 )
 
 # ---------------------------------------------------------------------------
@@ -138,5 +142,51 @@ def download_os_open_uprn(data_dir: pathlib.Path) -> pathlib.Path:
 
 
 def download_lsoa_boundaries(data_dir: pathlib.Path) -> pathlib.Path:
-    """Download ONS LSOA December 2021 BGC boundaries as a GeoPackage."""
-    return _stream_to_file(LSOA_BGC_URL, data_dir / "lsoa_boundaries.gpkg")
+    """Download ONS LSOA December 2021 BGC boundaries as a GeoPackage.
+
+    The ArcGIS Hub only pre-caches this dataset as FGDB. This function:
+      1. Downloads the FGDB ZIP (~18 MB)
+      2. Extracts it to a temporary directory
+      3. Converts to GeoPackage in BNG EPSG:27700 via ogr2ogr
+      4. Removes the ZIP and temporary directory
+
+    The output matches the CRS of OS Open UPRN (BNG EPSG:27700), so no
+    reprojection is needed in spatial.py.
+
+    Requires ogr2ogr (GDAL) to be available on PATH.
+    Skips all steps if lsoa_boundaries.gpkg already exists.
+    """
+    dest = data_dir / "lsoa_boundaries.gpkg"
+    if dest.exists():
+        print(f"  [skip] {dest.name} (already downloaded)")
+        return dest
+
+    fgdb_zip = _stream_to_file(LSOA_BGC_URL, data_dir / "lsoa_boundaries.fgdb.zip")
+
+    print(f"  [convert] {fgdb_zip.name} → {dest.name}")
+    tmp_dir = data_dir / "_lsoa_fgdb_tmp"
+    try:
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(fgdb_zip, "r") as zf:
+            zf.extractall(tmp_dir)
+
+        gdb_dirs = list(tmp_dir.glob("*.gdb"))
+        if not gdb_dirs:
+            raise FileNotFoundError(f"No .gdb directory found in {fgdb_zip.name}")
+
+        subprocess.run(
+            [
+                "ogr2ogr",
+                "-f", "GPKG",
+                str(dest),
+                str(gdb_dirs[0]),
+                "-t_srs", "EPSG:27700",
+                "-select", "LSOA21CD,LSOA21NM",
+            ],
+            check=True,
+        )
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        fgdb_zip.unlink(missing_ok=True)
+
+    return dest
