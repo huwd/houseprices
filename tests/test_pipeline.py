@@ -7,6 +7,8 @@ import pytest
 
 from houseprices.pipeline import (
     Geography,
+    _fmt_elapsed,
+    _fmt_size,
     aggregate,
     aggregate_by_geography,
     join_datasets,
@@ -400,3 +402,49 @@ def test_lsoa_aggregate_output_columns(lsoa_aggregated: pd.DataFrame) -> None:
         "total_price",
         "total_floor_area",
     }
+
+
+# ---------------------------------------------------------------------------
+# _fmt_elapsed
+# ---------------------------------------------------------------------------
+
+
+def test_fmt_elapsed_under_one_minute() -> None:
+    assert _fmt_elapsed(45) == "45s"
+
+
+def test_fmt_elapsed_zero() -> None:
+    assert _fmt_elapsed(0) == "0s"
+
+
+def test_fmt_elapsed_exactly_one_minute() -> None:
+    assert _fmt_elapsed(60) == "1:00"
+
+
+def test_fmt_elapsed_minutes_and_seconds() -> None:
+    assert _fmt_elapsed(90) == "1:30"
+
+
+def test_fmt_elapsed_pads_seconds() -> None:
+    assert _fmt_elapsed(125) == "2:05"
+
+
+# ---------------------------------------------------------------------------
+# _fmt_size
+# ---------------------------------------------------------------------------
+
+
+def test_fmt_size_bytes() -> None:
+    assert _fmt_size(500) == "500 B"
+
+
+def test_fmt_size_kilobytes() -> None:
+    assert _fmt_size(2_000) == "2.0 KB"
+
+
+def test_fmt_size_megabytes() -> None:
+    assert _fmt_size(5_000_000) == "5.0 MB"
+
+
+def test_fmt_size_gigabytes() -> None:
+    assert _fmt_size(2_700_000_000) == "2.7 GB"
