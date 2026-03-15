@@ -399,3 +399,35 @@ def test_extract_os_open_uprn_multi_chunk(
     _make_uprn_zip(tmp_path / "os-open-uprn.zip", content)
     result = dl.extract_os_open_uprn(tmp_path)
     assert result.read_text() == content
+
+
+# ---------------------------------------------------------------------------
+# extract_ubdc
+# ---------------------------------------------------------------------------
+
+
+def _make_ubdc_zip(path: pathlib.Path, content: str) -> None:
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("ppdid_uprn_usrn.csv", content)
+
+
+def test_extract_ubdc_skips_if_csv_exists(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "ppd-uprn-lookup.csv").write_text("existing")
+    _make_ubdc_zip(tmp_path / "ppd-uprn-lookup.zip", "uprn,transactionid\n")
+    result = dl.extract_ubdc(tmp_path)
+    assert result.read_text() == "existing"
+
+
+def test_extract_ubdc_extracts_csv(tmp_path: pathlib.Path) -> None:
+    content = "uprn,transactionid,parentuprn,usrn\n30,{ABC},,12345\n"
+    _make_ubdc_zip(tmp_path / "ppd-uprn-lookup.zip", content)
+    result = dl.extract_ubdc(tmp_path)
+    assert result.name == "ppd-uprn-lookup.csv"
+    assert result.read_text() == content
+
+
+def test_extract_ubdc_deletes_zip(tmp_path: pathlib.Path) -> None:
+    ubdc_zip = tmp_path / "ppd-uprn-lookup.zip"
+    _make_ubdc_zip(ubdc_zip, "uprn,transactionid\n30,{ABC}\n")
+    dl.extract_ubdc(tmp_path)
+    assert not ubdc_zip.exists()

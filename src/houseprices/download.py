@@ -272,3 +272,30 @@ def extract_os_open_uprn(data_dir: pathlib.Path) -> pathlib.Path:
 
     src.unlink()
     return dest
+
+
+def extract_ubdc(data_dir: pathlib.Path) -> pathlib.Path:
+    """Extract the UBDC PPD → UPRN lookup CSV from its ZIP.
+
+    The ZIP contains a single CSV (ppdid_uprn_usrn.csv). It is extracted
+    and renamed to ppd-uprn-lookup.csv.
+
+    The source ZIP is deleted after successful extraction.
+    Skips if ppd-uprn-lookup.csv already exists.
+    """
+    dest = data_dir / "ppd-uprn-lookup.csv"
+    if dest.exists():
+        print(f"  [skip] {dest.name} (already extracted)")
+        return dest
+
+    src = data_dir / "ppd-uprn-lookup.zip"
+    print(f"  [extract] {src.name} → {dest.name}")
+
+    with zipfile.ZipFile(src, "r") as zf:
+        csv_files = [n for n in zf.namelist() if n.endswith(".csv")]
+        with zf.open(csv_files[0]) as f, dest.open("wb") as out:
+            for chunk in iter(lambda: f.read(_CHUNK_SIZE), b""):
+                out.write(chunk)
+
+    src.unlink()
+    return dest
