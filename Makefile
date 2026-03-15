@@ -1,0 +1,57 @@
+.DEFAULT_GOAL := help
+
+# ── Setup ──────────────────────────────────────────────────────────────────
+
+.PHONY: install
+install:  ## Install all dependencies (dev + notebook extras)
+	uv sync --all-extras
+
+# ── Data ───────────────────────────────────────────────────────────────────
+
+.PHONY: download
+download:  ## Download and extract all raw data (~25 GB). Requires .env credentials.
+	uv run python src/houseprices/download.py
+
+.PHONY: clean
+clean:  ## Delete cache/ to force a full pipeline re-run
+	rm -rf cache/
+
+# ── Pipeline ───────────────────────────────────────────────────────────────
+
+.PHONY: run
+run:  ## Run the full pipeline (join → spatial → aggregate → output CSVs)
+	uv run python src/houseprices/pipeline.py
+
+# ── Development ────────────────────────────────────────────────────────────
+
+.PHONY: test
+test:  ## Run tests
+	uv run pytest
+
+.PHONY: test-cov
+test-cov:  ## Run tests with coverage report
+	uv run pytest --cov
+
+.PHONY: lint
+lint:  ## Check linting and formatting
+	uv run ruff check .
+	uv run ruff format --check .
+
+.PHONY: fmt
+fmt:  ## Auto-fix lint and formatting issues
+	uv run ruff check . --fix
+	uv run ruff format .
+
+.PHONY: typecheck
+typecheck:  ## Run mypy type checker
+	uv run mypy src/
+
+.PHONY: check
+check: lint typecheck test-cov  ## Full CI check (lint + types + tests with coverage)
+
+# ── Help ───────────────────────────────────────────────────────────────────
+
+.PHONY: help
+help:  ## Show available targets
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
