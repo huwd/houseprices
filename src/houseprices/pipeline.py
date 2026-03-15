@@ -86,7 +86,30 @@ def join_datasets(
     PPD records with ppd_category_type != 'A' are excluded before joining.
     Unmatched PPD records are not included in the result.
     """
-    ppd = pd.read_csv(ppd_path)
+    ppd = pd.read_csv(
+        ppd_path,
+        header=None,
+        names=[
+            "transaction_unique_identifier",
+            "price",
+            "date",
+            "postcode",
+            "property_type",
+            "old_new",
+            "duration",
+            "paon",
+            "saon",
+            "street",
+            "locality",
+            "town",
+            "district",
+            "county",
+            "ppd_category_type",
+            "record_status",
+        ],
+        engine="python",
+        on_bad_lines="warn",
+    )
     ppd = ppd[ppd["ppd_category_type"] == "A"].copy()
 
     epc = load_epc(epc_path)
@@ -289,7 +312,14 @@ def run(
     matched["LSOA21CD"] = matched["uprn"].map(uprn_to_lsoa)
 
     # Step 4: match report
-    ppd_meta = pd.read_csv(ppd_path, usecols=["ppd_category_type"])
+    ppd_meta = pd.read_csv(
+        ppd_path,
+        header=None,
+        usecols=[14],
+        names=["ppd_category_type"],
+        engine="python",
+        on_bad_lines="warn",
+    )
     total_ppd = int((ppd_meta["ppd_category_type"] == "A").sum())
     report = match_report(matched, total_ppd)
     print(
