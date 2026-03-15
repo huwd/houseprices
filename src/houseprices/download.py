@@ -37,8 +37,7 @@ PPD_URL = (
 # Authenticates via HTTP Basic Auth (EPC_EMAIL + EPC_API_KEY).
 # List available files: GET https://epc.opendatacommunities.org/api/v1/files
 EPC_BULK_URL = (
-    "https://epc.opendatacommunities.org"
-    "/api/v1/files/all-domestic-certificates.zip"
+    "https://epc.opendatacommunities.org/api/v1/files/all-domestic-certificates.zip"
 )
 
 # UBDC PPD → UPRN lookup — ZIP containing CSV (OGL).
@@ -177,11 +176,14 @@ def download_lsoa_boundaries(data_dir: pathlib.Path) -> pathlib.Path:
         subprocess.run(
             [
                 "ogr2ogr",
-                "-f", "GPKG",
+                "-f",
+                "GPKG",
                 str(dest),
                 str(gdb_dirs[0]),
-                "-t_srs", "EPSG:27700",
-                "-select", "LSOA21CD,LSOA21NM",
+                "-t_srs",
+                "EPSG:27700",
+                "-select",
+                "LSOA21CD,LSOA21NM",
             ],
             check=True,
         )
@@ -189,4 +191,76 @@ def download_lsoa_boundaries(data_dir: pathlib.Path) -> pathlib.Path:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         fgdb_zip.unlink(missing_ok=True)
 
+    return dest
+
+
+# ---------------------------------------------------------------------------
+# Extraction functions
+# ---------------------------------------------------------------------------
+
+
+def extract_epc(data_dir: pathlib.Path) -> pathlib.Path:
+    """Concatenate all per-LA certificates.csv files from the EPC ZIP.
+
+    The EPC bulk ZIP contains one folder per local authority, each with a
+    certificates.csv and a recommendations.csv.  This function streams all
+    347 certificates.csv files into a single epc-domestic-all.csv, writing
+    the header once and skipping recommendations files entirely.
+
+    The source ZIP is deleted after successful extraction.
+    Skips if epc-domestic-all.csv already exists.
+    """
+    dest = data_dir / "epc-domestic-all.csv"
+    if dest.exists():
+        print(f"  [skip] {dest.name} (already extracted)")
+        return dest
+
+    src = data_dir / "epc-domestic-all.zip"
+    print(f"  [extract] {src.name} → {dest.name}")
+
+    with zipfile.ZipFile(src, "r") as zf:
+        cert_files = [n for n in zf.namelist() if n.endswith("certificates.csv")]
+        with dest.open("wb") as out:
+            header_written = False
+            for name in cert_files:
+                with zf.open(name) as f:
+                    header = f.readline()
+                    if not header_written:
+                        out.write(header)
+                        header_written = True
+                    for chunk in iter(lambda: f.read(_CHUNK_SIZE), b""):
+                        out.write(chunk)
+
+    src.unlink()
+    return dest
+
+
+def extract_os_open_uprn(data_dir: pathlib.Path) -> pathlib.Path:
+    """Extract the OS Open UPRN CSV from its ZIP, stripping the UTF-8 BOM.
+
+    The ZIP contains a single versioned CSV (e.g. osopenuprn_202602.csv).
+    It is extracted and renamed to os-open-uprn.csv.  The UTF-8 BOM that OS
+    ships in the file is stripped so downstream readers don't see a mangled
+    first column name.
+
+    The source ZIP is deleted after successful extraction.
+    Skips if os-open-uprn.csv already exists.
+    """
+    dest = data_dir / "os-open-uprn.csv"
+    if dest.exists():
+        print(f"  [skip] {dest.name} (already extracted)")
+        return dest
+
+    src = data_dir / "os-open-uprn.zip"
+    print(f"  [extract] {src.name} → {dest.name}")
+
+    with zipfile.ZipFile(src, "r") as zf:
+        csv_files = [n for n in zf.namelist() if n.endswith(".csv")]
+        with zf.open(csv_files[0]) as f, dest.open("wb") as out:
+            first_chunk = f.read(_CHUNK_SIZE)
+            out.write(first_chunk.lstrip(b"\xef\xbb\xbf"))  # strip UTF-8 BOM
+            for chunk in iter(lambda: f.read(_CHUNK_SIZE), b""):
+                out.write(chunk)
+
+    src.unlink()
     return dest
