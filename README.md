@@ -85,13 +85,13 @@ Output files are written to `output/`:
 To re-run the join and spatial steps without re-downloading:
 
 ```bash
-make clean && make run
+make clean-cache && make run
 ```
 
 To force a complete reset (deletes slim Parquets — requires re-download):
 
 ```bash
-make clean-all && make download && make run
+make dump-cache && make download && make run
 ```
 
 ---
@@ -116,6 +116,8 @@ make lint        # ruff check + format check
 make fmt         # auto-fix lint and formatting
 make typecheck   # mypy
 make check       # everything (lint + types + tests) — mirrors CI
+make clean-cache # delete pipeline checkpoints (keeps slim Parquets)
+make dump-cache  # delete all cache contents (requires re-download to re-run)
 ```
 
 See [`PLAN.md`](PLAN.md) for full methodology and [`data/SOURCES.md`](data/SOURCES.md) for dataset details.
@@ -156,8 +158,8 @@ The pipeline manages disk space aggressively to stay viable on modest machines.
 
 ### `make clean` vs `make clean-all`
 
-- `make clean` — deletes `matched.parquet` and `uprn_lsoa.parquet` only. Slim Parquets are preserved, so re-running does not require re-downloading the raw data.
-- `make clean-all` — deletes the entire `cache/` directory including slim Parquets. A subsequent `make run` will fail unless you run `make download` first to re-fetch the raw data.
+- `make clean-cache` — deletes `matched.parquet` and `uprn_lsoa.parquet` only. Slim Parquets are preserved, so re-running does not require re-downloading the raw data.
+- `make dump-cache` — deletes all files in `cache/` including slim Parquets. A subsequent `make run` will fail unless you run `make download` first to re-fetch the raw data.
 
 ### RAM
 
