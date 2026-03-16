@@ -26,9 +26,16 @@ dump-cache:  ## Delete all cache/ contents and slim Parquets (pair with clean-da
 
 # ── Pipeline ───────────────────────────────────────────────────────────────
 
+# MEM_MAX: hard cgroup ceiling for the pipeline process.
+# Prevents oomd killing the whole terminal session if the pipeline spikes.
+# Must sit above DUCKDB_MEMORY_LIMIT + Python overhead (~2 GB), but below
+# available RAM. Adjust downward on machines with less than 8 GB free.
+MEM_MAX ?= 5G
+
 .PHONY: run
-run:  ## Run the full pipeline (join → spatial → aggregate → output CSVs)
-	uv run python src/houseprices/pipeline.py
+run:  ## Run the full pipeline with a hard memory cap (join → spatial → aggregate → output CSVs)
+	systemd-run --user --scope -p MemoryMax=$(MEM_MAX) -- \
+		uv run python src/houseprices/pipeline.py
 
 # ── Development ────────────────────────────────────────────────────────────
 
