@@ -517,8 +517,8 @@ def run(
     Args:
         ppd_path:      Path to the Price Paid Data CSV.
         epc_path:      Path to the EPC CSV (extracted from bulk ZIP).
-        ubdc_path:     Path to the UBDC PPD→UPRN lookup CSV.
-        uprn_path:     Path to the OS Open UPRN CSV.
+        ubdc_path:     Path to the slim UBDC PPD→UPRN Parquet (from make download).
+        uprn_path:     Path to the slim OS Open UPRN Parquet (from make download).
         boundary_path: Path to the LSOA boundary file (GeoPackage or GeoJSON).
         cache_dir:     Directory for Parquet checkpoints (default: cache/).
         output_dir:    Directory for output CSVs (default: output/).
@@ -540,39 +540,9 @@ def run(
     for label, path in inputs:
         try:
             size_str = _fmt_size(path.stat().st_size)
-        except FileNotFoundError:
+        except FileNotFoundError:  # pragma: no cover
             size_str = "not found"
         console.print(f"  {label:<10} {path.name:<44} [dim]{size_str}[/dim]")
-    console.print()
-
-    # --- Prepare helper ------------------------------------------------------
-    # Converts a raw source CSV to a column-pruned Parquet in cache/.
-    # Skips and reports if the slim Parquet already exists.
-    def prepare(
-        name: str,
-        src: pathlib.Path,
-        fn: Callable[[str | pathlib.Path, pathlib.Path], None],
-    ) -> pathlib.Path:
-        out = cache_dir / f"{name}.parquet"
-        if out.exists():
-            src.unlink(missing_ok=True)
-            console.print(f"  [dim]⊘  {name:<18} skipped (cached)[/dim]")
-            return out
-        t0 = time.monotonic()
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        with console.status(f"  [yellow]⏳  {name}…[/yellow]"):
-            fn(src, out)
-        src.unlink(missing_ok=True)
-        elapsed = _fmt_elapsed(time.monotonic() - t0)
-        size_str = _fmt_size(out.stat().st_size)
-        console.print(f"  [green]✓[/green]  {name:<18} {elapsed:<8} {size_str:>10}")
-        return out
-
-    console.print("[bold]Preparing sources[/bold]")
-    console.print()
-    epc_slim = prepare("epc_slim", epc_path, prepare_epc)
-    ubdc_slim = prepare("ubdc_slim", ubdc_path, prepare_ubdc)
-    uprn_slim = prepare("uprn_slim", uprn_path, prepare_uprn)
     console.print()
 
     # --- Step helper ---------------------------------------------------------
@@ -600,10 +570,10 @@ def run(
     matched = step(
         "matched",
         lambda: join_datasets(
-            ppd_path, epc_slim, ubdc_slim, on_tier1_complete=_on_tier1
+            ppd_path, epc_path, ubdc_path, on_tier1_complete=_on_tier1
         ),
     )
-    uprn_lsoa = step("uprn_lsoa", lambda: build_uprn_lsoa(uprn_slim, boundary_path))
+    uprn_lsoa = step("uprn_lsoa", lambda: build_uprn_lsoa(uprn_path, boundary_path))
     console.print()
 
     # Step 3: attach LSOA codes to matched records via UPRN.
@@ -613,16 +583,12 @@ def run(
     uprn_to_lsoa: pd.Series = uprn_lsoa.set_index("UPRN")["LSOA21CD"]
     matched["LSOA21CD"] = matched["uprn"].map(uprn_to_lsoa)
 
-    # Step 4: match report
-    ppd_meta = pd.read_csv(
-        ppd_path,
-        header=None,
-        usecols=[14],
-        names=["ppd_category_type"],
-        engine="python",
-        on_bad_lines="warn",
-    )
-    total_ppd = int((ppd_meta["ppd_category_type"] == "A").sum())
+    # Step 4: match report — count rows in the slim PPD (all category A).
+    is_parquet = str(ppd_path).endswith(".parquet")
+    total_ppd = duckdb.execute(
+        f"SELECT COUNT(*) FROM {_ppd_source(ppd_path)}"
+        + ("" if is_parquet else " WHERE ppd_category_type = 'A'")
+    ).fetchone()[0]  # type: ignore[index]
     report = match_report(matched, total_ppd)
     console.print(
         f"  Match  "
@@ -654,9 +620,9 @@ def run(
 
 if __name__ == "__main__":  # pragma: no cover
     run(
-        ppd_path=DATA / "pp-complete.csv",
-        epc_path=DATA / "epc-domestic-all.csv",
-        ubdc_path=DATA / "ppd-uprn-lookup.csv",
-        uprn_path=DATA / "os-open-uprn.csv",
+        ppd_path=CACHE / "ppd_slim.parquet",
+        epc_path=CACHE / "epc_slim.parquet",
+        ubdc_path=CACHE / "ubdc_slim.parquet",
+        uprn_path=CACHE / "uprn_slim.parquet",
         boundary_path=DATA / "lsoa_boundaries.gpkg",
     )
