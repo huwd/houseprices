@@ -15,6 +15,9 @@ from houseprices.pipeline import (
     load_epc,
     match_report,
     normalise_address,
+    prepare_epc,
+    prepare_ubdc,
+    prepare_uprn,
 )
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -448,3 +451,104 @@ def test_fmt_size_megabytes() -> None:
 
 def test_fmt_size_gigabytes() -> None:
     assert _fmt_size(2_700_000_000) == "2.7 GB"
+
+
+# ---------------------------------------------------------------------------
+# prepare_epc
+# ---------------------------------------------------------------------------
+
+
+EPC_COLUMNS = {
+    "UPRN",
+    "LODGEMENT_DATETIME",
+    "TOTAL_FLOOR_AREA",
+    "ADDRESS1",
+    "ADDRESS2",
+    "POSTCODE",
+    "BUILT_FORM",
+    "CONSTRUCTION_AGE_BAND",
+    "CURRENT_ENERGY_RATING",
+}
+
+
+def test_prepare_epc_writes_expected_columns(tmp_path: pathlib.Path) -> None:
+    dst = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_sample.csv", dst)
+    assert set(pd.read_parquet(dst).columns) == EPC_COLUMNS
+
+
+def test_prepare_epc_preserves_row_count(tmp_path: pathlib.Path) -> None:
+    dst = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_sample.csv", dst)
+    assert len(pd.read_parquet(dst)) == 5
+
+
+def test_prepare_epc_skips_if_exists(tmp_path: pathlib.Path) -> None:
+    dst = tmp_path / "epc_slim.parquet"
+    dst.write_bytes(b"sentinel")
+    prepare_epc(FIXTURES / "epc_sample.csv", dst)
+    assert dst.read_bytes() == b"sentinel"
+
+
+# ---------------------------------------------------------------------------
+# prepare_uprn
+# ---------------------------------------------------------------------------
+
+
+def test_prepare_uprn_writes_expected_columns(tmp_path: pathlib.Path) -> None:
+    dst = tmp_path / "uprn_slim.parquet"
+    prepare_uprn(FIXTURES / "uprn_sample.csv", dst)
+    assert set(pd.read_parquet(dst).columns) == {"UPRN", "X_COORDINATE", "Y_COORDINATE"}
+
+
+def test_prepare_uprn_preserves_row_count(tmp_path: pathlib.Path) -> None:
+    dst = tmp_path / "uprn_slim.parquet"
+    prepare_uprn(FIXTURES / "uprn_sample.csv", dst)
+    assert len(pd.read_parquet(dst)) == 2
+
+
+def test_prepare_uprn_skips_if_exists(tmp_path: pathlib.Path) -> None:
+    dst = tmp_path / "uprn_slim.parquet"
+    dst.write_bytes(b"sentinel")
+    prepare_uprn(FIXTURES / "uprn_sample.csv", dst)
+    assert dst.read_bytes() == b"sentinel"
+
+
+# ---------------------------------------------------------------------------
+# prepare_ubdc
+# ---------------------------------------------------------------------------
+
+
+def test_prepare_ubdc_writes_expected_columns(tmp_path: pathlib.Path) -> None:
+    dst = tmp_path / "ubdc_slim.parquet"
+    prepare_ubdc(FIXTURES / "ubdc_sample.csv", dst)
+    assert set(pd.read_parquet(dst).columns) == {"transactionid", "uprn"}
+
+
+def test_prepare_ubdc_preserves_row_count(tmp_path: pathlib.Path) -> None:
+    dst = tmp_path / "ubdc_slim.parquet"
+    prepare_ubdc(FIXTURES / "ubdc_sample.csv", dst)
+    assert len(pd.read_parquet(dst)) == 3
+
+
+def test_prepare_ubdc_skips_if_exists(tmp_path: pathlib.Path) -> None:
+    dst = tmp_path / "ubdc_slim.parquet"
+    dst.write_bytes(b"sentinel")
+    prepare_ubdc(FIXTURES / "ubdc_sample.csv", dst)
+    assert dst.read_bytes() == b"sentinel"
+
+
+# ---------------------------------------------------------------------------
+# join_datasets — accepts prepared Parquet inputs
+# ---------------------------------------------------------------------------
+
+
+def test_join_datasets_accepts_prepared_parquet(tmp_path: pathlib.Path) -> None:
+    """join_datasets must produce the same result when fed Parquet-prepared inputs."""
+    epc_slim = tmp_path / "epc_slim.parquet"
+    ubdc_slim = tmp_path / "ubdc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_sample.csv", epc_slim)
+    prepare_ubdc(FIXTURES / "ubdc_sample.csv", ubdc_slim)
+    result = join_datasets(FIXTURES / "ppd_sample.csv", epc_slim, ubdc_slim)
+    assert len(result) == 4
+    assert set(result["match_tier"]) == {1, 2}
