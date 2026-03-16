@@ -503,12 +503,14 @@ def run(
     ) -> pathlib.Path:
         out = cache_dir / f"{name}.parquet"
         if out.exists():
+            src.unlink(missing_ok=True)
             console.print(f"  [dim]⊘  {name:<18} skipped (cached)[/dim]")
             return out
         t0 = time.monotonic()
         cache_dir.mkdir(parents=True, exist_ok=True)
         with console.status(f"  [yellow]⏳  {name}…[/yellow]"):
             fn(src, out)
+        src.unlink(missing_ok=True)
         elapsed = _fmt_elapsed(time.monotonic() - t0)
         size_str = _fmt_size(out.stat().st_size)
         console.print(f"  [green]✓[/green]  {name:<18} {elapsed:<8} {size_str:>10}")
