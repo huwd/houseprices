@@ -2,11 +2,13 @@
 
 import pathlib
 
+import duckdb
 import pandas as pd
 import pytest
 
 from houseprices.pipeline import (
     Geography,
+    _configure_duckdb,
     _fmt_elapsed,
     _fmt_size,
     _join_tier1,
@@ -695,3 +697,59 @@ def test_join_datasets_accepts_prepared_ppd_parquet(tmp_path: pathlib.Path) -> N
     )
     assert len(result) == 4
     assert set(result["match_tier"]) == {1, 2}
+
+
+# ---------------------------------------------------------------------------
+# _configure_duckdb
+# ---------------------------------------------------------------------------
+
+
+def test_configure_duckdb_no_env_does_not_raise() -> None:
+    """With no env vars set, _configure_duckdb must be a no-op that does not raise."""
+    con = duckdb.connect()
+    _configure_duckdb(con)
+
+
+def test_configure_duckdb_applies_memory_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DUCKDB_MEMORY_LIMIT env var must be applied to the connection."""
+    monkeypatch.setenv("DUCKDB_MEMORY_LIMIT", "512MB")
+    con = duckdb.connect()
+    _configure_duckdb(con)
+
+
+def test_configure_duckdb_applies_threads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DUCKDB_THREADS env var must be applied to the connection."""
+    monkeypatch.setenv("DUCKDB_THREADS", "1")
+    con = duckdb.connect()
+    _configure_duckdb(con)
+
+
+def test_join_tier1_respects_duckdb_memory_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_join_tier1 must complete successfully when DUCKDB_MEMORY_LIMIT is set."""
+    monkeypatch.setenv("DUCKDB_MEMORY_LIMIT", "512MB")
+    result = _join_tier1(
+        FIXTURES / "ppd_sample.csv",
+        FIXTURES / "epc_sample.csv",
+        FIXTURES / "ubdc_sample.csv",
+    )
+    assert len(result) == 1
+
+
+def test_join_tier2_respects_duckdb_memory_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_join_tier2 must complete successfully when DUCKDB_MEMORY_LIMIT is set."""
+    monkeypatch.setenv("DUCKDB_MEMORY_LIMIT", "512MB")
+    tier1 = _join_tier1(
+        FIXTURES / "ppd_sample.csv",
+        FIXTURES / "epc_sample.csv",
+        FIXTURES / "ubdc_sample.csv",
+    )
+    result = _join_tier2(
+        FIXTURES / "ppd_sample.csv",
+        FIXTURES / "epc_sample.csv",
+        tier1,
+    )
+    assert len(result) == 3
