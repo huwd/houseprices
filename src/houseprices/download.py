@@ -331,13 +331,35 @@ def extract_ubdc(data_dir: pathlib.Path) -> pathlib.Path:
 
 
 if __name__ == "__main__":  # pragma: no cover
+    from houseprices.pipeline import (  # noqa: E402
+        prepare_epc,
+        prepare_ppd,
+        prepare_ubdc,
+        prepare_uprn,
+    )
+
     data = pathlib.Path("data")
+    cache = pathlib.Path("cache")
     data.mkdir(exist_ok=True)
-    download_ppd(data)
+    cache.mkdir(exist_ok=True)
+
+    ppd = download_ppd(data)
+    prepare_ppd(ppd, cache / "ppd_slim.parquet")
+    ppd.unlink(missing_ok=True)
+
     download_epc(data)
-    extract_epc(data)
+    epc = extract_epc(data)
+    prepare_epc(epc, cache / "epc_slim.parquet")
+    epc.unlink(missing_ok=True)
+
     download_ubdc(data)
-    extract_ubdc(data)
+    ubdc = extract_ubdc(data)
+    prepare_ubdc(ubdc, cache / "ubdc_slim.parquet")
+    ubdc.unlink(missing_ok=True)
+
     download_os_open_uprn(data)
-    extract_os_open_uprn(data)
+    uprn = extract_os_open_uprn(data)
+    prepare_uprn(uprn, cache / "uprn_slim.parquet")
+    uprn.unlink(missing_ok=True)
+
     download_lsoa_boundaries(data)

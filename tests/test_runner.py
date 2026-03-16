@@ -7,28 +7,27 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from houseprices.pipeline import _checkpoint, run
+from houseprices.pipeline import _checkpoint, prepare_ppd, run
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 
 def _fixture_data(tmp_path: pathlib.Path) -> dict[str, pathlib.Path]:
-    """Copy fixture CSVs into tmp_path/data/ so run() can delete them safely."""
+    """Build slim Parquets from fixture CSVs, mirroring what make download produces."""
+    cache = tmp_path / "cache"
+    cache.mkdir()
     data = tmp_path / "data"
     data.mkdir()
-    for name in [
-        "ppd_sample.csv",
-        "epc_sample.csv",
-        "ubdc_sample.csv",
-        "uprn_sample.csv",
-    ]:
-        shutil.copy(FIXTURES / name, data / name)
+
+    ppd_slim = cache / "ppd_slim.parquet"
+    prepare_ppd(FIXTURES / "ppd_sample.csv", ppd_slim)
+
     shutil.copy(FIXTURES / "lsoa_sample.geojson", data / "lsoa_sample.geojson")
     return {
-        "ppd_path": data / "ppd_sample.csv",
-        "epc_path": data / "epc_sample.csv",
-        "ubdc_path": data / "ubdc_sample.csv",
-        "uprn_path": data / "uprn_sample.csv",
+        "ppd_path": ppd_slim,
+        "epc_path": FIXTURES / "epc_sample.csv",
+        "ubdc_path": FIXTURES / "ubdc_sample.csv",
+        "uprn_path": FIXTURES / "uprn_sample.csv",
         "boundary_path": data / "lsoa_sample.geojson",
     }
 
@@ -83,7 +82,7 @@ def test_checkpoint_creates_cache_dir(tmp_path: pathlib.Path) -> None:
 def run_result(tmp_path: pathlib.Path) -> pathlib.Path:
     """Run the full pipeline against fixture data; return tmp_path.
 
-    tmp_path/data/   — copies of fixture CSVs (may be deleted by prepare steps)
+    tmp_path/data/   — copies of fixture CSVs (left in place; run() does not delete)
     tmp_path/cache/  — Parquet checkpoints
     tmp_path/output/ — output CSVs
     """
@@ -117,24 +116,6 @@ def test_run_postcode_district_has_expected_districts(
 ) -> None:
     df = pd.read_csv(run_result / "output" / "price_per_sqm_postcode_district.csv")
     assert set(df["postcode_district"]) == {"SD1", "SD2"}
-
-
-def test_run_deletes_source_csvs_after_prepare(tmp_path: pathlib.Path) -> None:
-    """EPC, UBDC, and UPRN raw CSVs must be deleted once slim Parquets are written.
-
-    PPD is not prepared to Parquet, so it must be left in place.
-    """
-    paths = _fixture_data(tmp_path)
-    run(
-        **paths,
-        cache_dir=tmp_path / "cache",
-        output_dir=tmp_path / "output",
-        min_sales=1,
-    )
-    assert not paths["epc_path"].exists()
-    assert not paths["ubdc_path"].exists()
-    assert not paths["uprn_path"].exists()
-    assert paths["ppd_path"].exists()
 
 
 def test_run_skips_join_on_second_call(tmp_path: pathlib.Path) -> None:
