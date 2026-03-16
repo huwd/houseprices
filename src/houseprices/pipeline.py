@@ -63,6 +63,58 @@ def _sql_source(path: str | pathlib.Path) -> str:
     return f"read_parquet('{p}')" if p.endswith(".parquet") else f"read_csv('{p}')"
 
 
+_PPD_NAMES = [
+    "transaction_unique_identifier",
+    "price",
+    "date_of_transfer",
+    "postcode",
+    "property_type",
+    "new_build_flag",
+    "tenure_type",
+    "paon",
+    "saon",
+    "street",
+    "locality",
+    "town_city",
+    "district",
+    "county",
+    "ppd_category_type",
+    "record_status",
+]
+
+
+def _ppd_source(path: str | pathlib.Path) -> str:
+    """Return a DuckDB table expression for a PPD file (CSV or Parquet).
+
+    Parquet files are read directly.  CSV files are read with ``header=false``
+    and the canonical PPD column names assigned, matching the schema HMLR
+    publishes (no header row, 16 columns).
+    """
+    p = str(path)
+    if p.endswith(".parquet"):
+        return f"read_parquet('{p}')"
+    names = ", ".join(f"'{n}'" for n in _PPD_NAMES)
+    return f"read_csv('{p}', header=false, ignore_errors=true, names=[{names}])"
+
+
+def prepare_ppd(src: str | pathlib.Path, dst: pathlib.Path) -> None:
+    """Write a category-A-only, column-named Parquet from the PPD CSV.
+
+    Filters to ppd_category_type = 'A' (standard residential sales) and
+    retains all 16 PPD columns.  No-ops if *dst* already exists.
+    """
+    if dst.exists():
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src_expr = _ppd_source(src)
+    duckdb.execute(f"""
+        COPY (
+            SELECT * FROM {src_expr}
+            WHERE ppd_category_type = 'A'
+        ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
+    """)
+
+
 def prepare_epc(src: str | pathlib.Path, dst: pathlib.Path) -> None:
     """Write a column-pruned Parquet from the EPC CSV.
 
@@ -183,7 +235,7 @@ def _join_tier1(
 ) -> pd.DataFrame:
     """UPRN-based join. Returns category-A PPD rows matched via the UBDC lookup."""
     con = duckdb.connect()
-    ppd = str(ppd_path)
+    ppd_src = _ppd_source(ppd_path)
     epc_src = _sql_source(epc_path)
     ubdc_src = _sql_source(ubdc_path)
     return con.execute(f"""
@@ -203,12 +255,7 @@ def _join_tier1(
             SELECT * FROM epc_raw WHERE UPRN IS NULL
         ),
         ppd AS (
-            SELECT * FROM read_csv('{ppd}', header=false, ignore_errors=true, names=[
-                'transaction_unique_identifier', 'price', 'date_of_transfer',
-                'postcode', 'property_type', 'new_build_flag', 'tenure_type',
-                'paon', 'saon', 'street', 'locality', 'town_city',
-                'district', 'county', 'ppd_category_type', 'record_status'
-            ])
+            SELECT * FROM {ppd_src}
             WHERE ppd_category_type = 'A'
         ),
         ubdc AS (SELECT * FROM {ubdc_src})
@@ -238,7 +285,7 @@ def _join_tier2(
     con = duckdb.connect()
     con.execute(_NORMALISE_MACRO)
     con.register("_tier1", tier1)
-    ppd = str(ppd_path)
+    ppd_src = _ppd_source(ppd_path)
     epc_src = _sql_source(epc_path)
     return con.execute(f"""
         WITH
@@ -257,12 +304,7 @@ def _join_tier2(
             SELECT * FROM epc_raw WHERE UPRN IS NULL
         ),
         ppd AS (
-            SELECT * FROM read_csv('{ppd}', header=false, ignore_errors=true, names=[
-                'transaction_unique_identifier', 'price', 'date_of_transfer',
-                'postcode', 'property_type', 'new_build_flag', 'tenure_type',
-                'paon', 'saon', 'street', 'locality', 'town_city',
-                'district', 'county', 'ppd_category_type', 'record_status'
-            ])
+            SELECT * FROM {ppd_src}
             WHERE ppd_category_type = 'A'
         ),
         ppd_remaining AS (
