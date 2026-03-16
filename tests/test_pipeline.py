@@ -13,6 +13,7 @@ from houseprices.pipeline import (
     _fmt_size,
     _join_tier1,
     _join_tier2,
+    _rss_mb,
     aggregate,
     aggregate_by_geography,
     join_datasets,
@@ -456,6 +457,23 @@ def test_fmt_size_megabytes() -> None:
 
 def test_fmt_size_gigabytes() -> None:
     assert _fmt_size(2_700_000_000) == "2.7 GB"
+
+
+# ---------------------------------------------------------------------------
+# _rss_mb
+# ---------------------------------------------------------------------------
+
+
+def test_rss_mb_returns_positive_integer() -> None:
+    rss = _rss_mb()
+    assert isinstance(rss, int)
+    assert rss > 0
+
+
+def test_rss_mb_plausible_range() -> None:
+    # A running Python process should use at least 10 MB and less than 100 GB
+    rss = _rss_mb()
+    assert 10 < rss < 100_000
 
 
 # ---------------------------------------------------------------------------

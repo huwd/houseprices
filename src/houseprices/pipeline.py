@@ -527,6 +527,15 @@ def _fmt_size(num_bytes: int) -> str:
     return f"{num_bytes} B"
 
 
+def _rss_mb() -> int:
+    """Return the current resident set size of this process in megabytes."""
+    status = pathlib.Path("/proc/self/status").read_text()
+    for line in status.splitlines():
+        if line.startswith("VmRSS:"):
+            return int(line.split()[1]) // 1024
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Top-level runner
 # ---------------------------------------------------------------------------
@@ -598,8 +607,10 @@ def run(
         cache_dir.mkdir(parents=True, exist_ok=True)
         df.to_parquet(parquet, index=False)
         elapsed = _fmt_elapsed(time.monotonic() - t0)
+        rss = _rss_mb()
         console.print(
             f"  [green]✓[/green]  {name:<18} {elapsed:<8} {len(df):>14,} rows"
+            f"  [dim]RSS {rss} MB[/dim]"
         )
         return df
 
