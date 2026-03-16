@@ -9,9 +9,12 @@ from enum import Enum
 
 import duckdb
 import pandas as pd
+from dotenv import load_dotenv
 from rich.console import Console
 
 from houseprices.spatial import build_uprn_lsoa
+
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Default paths (relative to project root)
