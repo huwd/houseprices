@@ -18,6 +18,7 @@ from houseprices.pipeline import (
     match_report,
     normalise_address,
     prepare_epc,
+    prepare_ppd,
     prepare_ubdc,
     prepare_uprn,
 )
@@ -624,3 +625,73 @@ def test_join_datasets_no_callback_does_not_raise() -> None:
         FIXTURES / "ubdc_sample.csv",
     )
     assert len(result) == 4
+
+
+# ---------------------------------------------------------------------------
+# prepare_ppd
+# ---------------------------------------------------------------------------
+
+PPD_COLUMNS = {
+    "transaction_unique_identifier",
+    "price",
+    "date_of_transfer",
+    "postcode",
+    "property_type",
+    "new_build_flag",
+    "tenure_type",
+    "paon",
+    "saon",
+    "street",
+    "locality",
+    "town_city",
+    "district",
+    "county",
+    "ppd_category_type",
+    "record_status",
+}
+
+
+def test_prepare_ppd_writes_expected_columns(tmp_path: pathlib.Path) -> None:
+    dst = tmp_path / "ppd_slim.parquet"
+    prepare_ppd(FIXTURES / "ppd_sample.csv", dst)
+    assert set(pd.read_parquet(dst).columns) == PPD_COLUMNS
+
+
+def test_prepare_ppd_filters_to_category_a(tmp_path: pathlib.Path) -> None:
+    """Category B rows must be excluded from the slim Parquet."""
+    dst = tmp_path / "ppd_slim.parquet"
+    prepare_ppd(FIXTURES / "ppd_sample.csv", dst)
+    result = pd.read_parquet(dst)
+    assert (result["ppd_category_type"] == "A").all()
+
+
+def test_prepare_ppd_preserves_category_a_row_count(tmp_path: pathlib.Path) -> None:
+    """ppd_sample.csv has 5 category-A rows and 1 category-B row."""
+    dst = tmp_path / "ppd_slim.parquet"
+    prepare_ppd(FIXTURES / "ppd_sample.csv", dst)
+    assert len(pd.read_parquet(dst)) == 5
+
+
+def test_prepare_ppd_skips_if_exists(tmp_path: pathlib.Path) -> None:
+    dst = tmp_path / "ppd_slim.parquet"
+    dst.write_bytes(b"sentinel")
+    prepare_ppd(FIXTURES / "ppd_sample.csv", dst)
+    assert dst.read_bytes() == b"sentinel"
+
+
+# ---------------------------------------------------------------------------
+# join_datasets — accepts prepared PPD Parquet input
+# ---------------------------------------------------------------------------
+
+
+def test_join_datasets_accepts_prepared_ppd_parquet(tmp_path: pathlib.Path) -> None:
+    """join_datasets must produce the same result when fed a slim PPD Parquet."""
+    ppd_slim = tmp_path / "ppd_slim.parquet"
+    prepare_ppd(FIXTURES / "ppd_sample.csv", ppd_slim)
+    result = join_datasets(
+        ppd_slim,
+        FIXTURES / "epc_sample.csv",
+        FIXTURES / "ubdc_sample.csv",
+    )
+    assert len(result) == 4
+    assert set(result["match_tier"]) == {1, 2}
