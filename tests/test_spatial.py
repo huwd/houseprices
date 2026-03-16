@@ -61,6 +61,17 @@ def test_build_uprn_lsoa_respects_duckdb_memory_limit(
     assert result.loc[result["UPRN"] == 12345678, "LSOA21CD"].iloc[0] == "SD0000001"
 
 
+def test_build_uprn_lsoa_respects_duckdb_threads(
+    monkeypatch: pytest.MonkeyPatch,
+    uprn_path: pathlib.Path,
+    lsoa_path: pathlib.Path,
+) -> None:
+    """build_uprn_lsoa must complete correctly when DUCKDB_THREADS is set."""
+    monkeypatch.setenv("DUCKDB_THREADS", "1")
+    result = build_uprn_lsoa(uprn_path, lsoa_path)
+    assert result.loc[result["UPRN"] == 12345678, "LSOA21CD"].iloc[0] == "SD0000001"
+
+
 def test_bng_coordinates_not_swapped(uprn_df: pd.DataFrame) -> None:
     """Easting (X) should be ~100k–700k, Northing (Y) ~0–1300k for England & Wales.
 
