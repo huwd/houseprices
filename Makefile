@@ -17,8 +17,8 @@ clean:  ## Delete pipeline checkpoints (keeps slim Parquets; safe to re-run with
 	rm -f cache/matched.parquet cache/uprn_lsoa.parquet
 
 .PHONY: clean-all
-clean-all:  ## Delete entire cache/ including slim Parquets (requires re-download to re-run)
-	rm -rf cache/
+clean-all:  ## Delete all cache/ contents including slim Parquets (requires re-download to re-run)
+	find cache/ -maxdepth 1 -type f ! -name '.*' -delete
 
 # ── Pipeline ───────────────────────────────────────────────────────────────
 
