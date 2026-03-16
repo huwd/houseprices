@@ -5,6 +5,7 @@ import pathlib
 import pandas as pd
 import pytest
 
+from houseprices.pipeline import prepare_uprn
 from houseprices.spatial import build_uprn_lsoa
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -37,6 +38,16 @@ def test_uprn_outside_boundary_excluded(
     """UPRNs that fall outside all boundary polygons should not appear in the result."""
     result = build_uprn_lsoa(uprn_path, lsoa_path)
     assert 87654321 not in result["UPRN"].values
+
+
+def test_build_uprn_lsoa_accepts_prepared_parquet(
+    tmp_path: pathlib.Path, lsoa_path: pathlib.Path
+) -> None:
+    """build_uprn_lsoa must work when passed a column-pruned Parquet UPRN file."""
+    uprn_slim = tmp_path / "uprn_slim.parquet"
+    prepare_uprn(FIXTURES / "uprn_sample.csv", uprn_slim)
+    result = build_uprn_lsoa(uprn_slim, lsoa_path)
+    assert result.loc[result["UPRN"] == 12345678, "LSOA21CD"].iloc[0] == "SD0000001"
 
 
 def test_bng_coordinates_not_swapped(uprn_df: pd.DataFrame) -> None:
