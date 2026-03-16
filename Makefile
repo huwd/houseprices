@@ -12,12 +12,16 @@ install:  ## Install all dependencies (dev + notebook extras)
 download:  ## Download and extract all raw data (~25 GB). Requires .env credentials.
 	uv run python src/houseprices/download.py
 
+.PHONY: clean-data
+clean-data:  ## Remove downloaded data files from data/ (preserves committed files and dotfiles)
+	find data/ -maxdepth 1 -type f ! -name '.*' ! -name 'SOURCES.md' ! -name 'anna_reference.json.example' -delete
+
 .PHONY: clean-cache
 clean-cache:  ## Delete pipeline checkpoints (keeps slim Parquets; safe to re-run without re-downloading)
 	rm -f cache/matched.parquet cache/uprn_lsoa.parquet
 
 .PHONY: dump-cache
-dump-cache:  ## Delete all cache/ contents including slim Parquets (requires re-download to re-run)
+dump-cache:  ## Delete all cache/ contents and slim Parquets (pair with clean-data + download for full reset)
 	find cache/ -maxdepth 1 -type f ! -name '.*' -delete
 
 # ── Pipeline ───────────────────────────────────────────────────────────────
