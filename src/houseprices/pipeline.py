@@ -1,5 +1,6 @@
 """Main pipeline: download → join → aggregate."""
 
+import os
 import pathlib
 import re
 import time
@@ -97,6 +98,27 @@ def _ppd_source(path: str | pathlib.Path) -> str:
     return f"read_csv('{p}', header=false, ignore_errors=true, names=[{names}])"
 
 
+def _configure_duckdb(con: duckdb.DuckDBPyConnection) -> None:
+    """Apply resource limits from environment variables to a DuckDB connection.
+
+    Reads ``DUCKDB_MEMORY_LIMIT`` and ``DUCKDB_THREADS`` from the environment.
+    When set, the corresponding DuckDB ``SET`` statements are issued so the
+    engine spills to disk rather than exhausting system RAM.  If a variable is
+    absent or empty the DuckDB default is preserved (no limit / all cores).
+
+    Typical ``.env`` values for an 8 GB laptop::
+
+        DUCKDB_MEMORY_LIMIT=4GB
+        DUCKDB_THREADS=2
+    """
+    memory_limit = os.environ.get("DUCKDB_MEMORY_LIMIT")
+    threads = os.environ.get("DUCKDB_THREADS")
+    if memory_limit:
+        con.execute(f"SET memory_limit = '{memory_limit}'")
+    if threads:
+        con.execute(f"SET threads = {int(threads)}")
+
+
 def prepare_ppd(src: str | pathlib.Path, dst: pathlib.Path) -> None:
     """Write a category-A-only, column-named Parquet from the PPD CSV.
 
@@ -106,8 +128,10 @@ def prepare_ppd(src: str | pathlib.Path, dst: pathlib.Path) -> None:
     if dst.exists():
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect()
+    _configure_duckdb(con)
     src_expr = _ppd_source(src)
-    duckdb.execute(f"""
+    con.execute(f"""
         COPY (
             SELECT * FROM {src_expr}
             WHERE ppd_category_type = 'A'
@@ -123,7 +147,9 @@ def prepare_epc(src: str | pathlib.Path, dst: pathlib.Path) -> None:
     if dst.exists():
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
-    duckdb.execute(f"""
+    con = duckdb.connect()
+    _configure_duckdb(con)
+    con.execute(f"""
         COPY (
             SELECT
                 UPRN, LODGEMENT_DATETIME, TOTAL_FLOOR_AREA,
@@ -142,7 +168,9 @@ def prepare_uprn(src: str | pathlib.Path, dst: pathlib.Path) -> None:
     if dst.exists():
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
-    duckdb.execute(f"""
+    con = duckdb.connect()
+    _configure_duckdb(con)
+    con.execute(f"""
         COPY (
             SELECT UPRN, X_COORDINATE, Y_COORDINATE
             FROM read_csv('{src}')
@@ -158,7 +186,9 @@ def prepare_ubdc(src: str | pathlib.Path, dst: pathlib.Path) -> None:
     if dst.exists():
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
-    duckdb.execute(f"""
+    con = duckdb.connect()
+    _configure_duckdb(con)
+    con.execute(f"""
         COPY (
             SELECT transactionid, uprn
             FROM read_csv('{src}')
@@ -235,6 +265,7 @@ def _join_tier1(
 ) -> pd.DataFrame:
     """UPRN-based join. Returns category-A PPD rows matched via the UBDC lookup."""
     con = duckdb.connect()
+    _configure_duckdb(con)
     ppd_src = _ppd_source(ppd_path)
     epc_src = _sql_source(epc_path)
     ubdc_src = _sql_source(ubdc_path)
@@ -283,6 +314,7 @@ def _join_tier2(
 ) -> pd.DataFrame:
     """Address-normalisation join. Returns PPD rows not already matched in tier1."""
     con = duckdb.connect()
+    _configure_duckdb(con)
     con.execute(_NORMALISE_MACRO)
     con.register("_tier1", tier1)
     ppd_src = _ppd_source(ppd_path)
@@ -543,6 +575,11 @@ def run(
         except FileNotFoundError:  # pragma: no cover
             size_str = "not found"
         console.print(f"  {label:<10} {path.name:<44} [dim]{size_str}[/dim]")
+    memory_limit = os.environ.get("DUCKDB_MEMORY_LIMIT", "unlimited")
+    threads = os.environ.get("DUCKDB_THREADS", "all")
+    console.print(
+        f"\n  [dim]DuckDB     memory_limit={memory_limit}  threads={threads}[/dim]"
+    )
     console.print()
 
     # --- Step helper ---------------------------------------------------------
