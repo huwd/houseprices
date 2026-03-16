@@ -9,6 +9,8 @@ from houseprices.pipeline import (
     Geography,
     _fmt_elapsed,
     _fmt_size,
+    _join_tier1,
+    _join_tier2,
     aggregate,
     aggregate_by_geography,
     join_datasets,
@@ -552,3 +554,79 @@ def test_join_datasets_accepts_prepared_parquet(tmp_path: pathlib.Path) -> None:
     result = join_datasets(FIXTURES / "ppd_sample.csv", epc_slim, ubdc_slim)
     assert len(result) == 4
     assert set(result["match_tier"]) == {1, 2}
+
+
+# ---------------------------------------------------------------------------
+# _join_tier1 / _join_tier2
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def tier1() -> pd.DataFrame:
+    return _join_tier1(
+        FIXTURES / "ppd_sample.csv",
+        FIXTURES / "epc_sample.csv",
+        FIXTURES / "ubdc_sample.csv",
+    )
+
+
+def test_join_tier1_returns_only_tier1_rows(tier1: pd.DataFrame) -> None:
+    assert (tier1["match_tier"] == 1).all()
+
+
+def test_join_tier1_contains_uprn_match(tier1: pd.DataFrame) -> None:
+    assert TXN_001 in tier1["transaction_unique_identifier"].values
+
+
+def test_join_tier1_deduplicates_epc(tier1: pd.DataFrame) -> None:
+    """Tier 1 must use the most recent EPC (80 m²), not the older duplicate (78 m²)."""
+    row = tier1[tier1["transaction_unique_identifier"] == TXN_001]
+    assert row.iloc[0]["TOTAL_FLOOR_AREA"] == 80.0
+
+
+def test_join_tier1_row_count(tier1: pd.DataFrame) -> None:
+    assert len(tier1) == 1
+
+
+def test_join_tier2_returns_only_tier2_rows(tier1: pd.DataFrame) -> None:
+    tier2 = _join_tier2(
+        FIXTURES / "ppd_sample.csv", FIXTURES / "epc_sample.csv", tier1
+    )
+    assert (tier2["match_tier"] == 2).all()
+
+
+def test_join_tier2_excludes_tier1_transactions(tier1: pd.DataFrame) -> None:
+    tier2 = _join_tier2(
+        FIXTURES / "ppd_sample.csv", FIXTURES / "epc_sample.csv", tier1
+    )
+    assert TXN_001 not in tier2["transaction_unique_identifier"].values
+
+
+def test_join_tier2_row_count(tier1: pd.DataFrame) -> None:
+    tier2 = _join_tier2(
+        FIXTURES / "ppd_sample.csv", FIXTURES / "epc_sample.csv", tier1
+    )
+    assert len(tier2) == 3
+
+
+def test_join_datasets_calls_callback_with_tier1_dataframe() -> None:
+    """on_tier1_complete is called once with the tier 1 DataFrame before tier 2 runs."""
+    calls: list[pd.DataFrame] = []
+    join_datasets(
+        FIXTURES / "ppd_sample.csv",
+        FIXTURES / "epc_sample.csv",
+        FIXTURES / "ubdc_sample.csv",
+        on_tier1_complete=calls.append,
+    )
+    assert len(calls) == 1
+    assert (calls[0]["match_tier"] == 1).all()
+
+
+def test_join_datasets_no_callback_does_not_raise() -> None:
+    """join_datasets without on_tier1_complete runs normally."""
+    result = join_datasets(
+        FIXTURES / "ppd_sample.csv",
+        FIXTURES / "epc_sample.csv",
+        FIXTURES / "ubdc_sample.csv",
+    )
+    assert len(result) == 4
