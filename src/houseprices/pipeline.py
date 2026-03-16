@@ -57,6 +57,63 @@ def normalise_address(saon: str, paon: str, street: str) -> str:
     return parts
 
 
+def _sql_source(path: str | pathlib.Path) -> str:
+    """Return a DuckDB table expression for *path* (CSV or Parquet)."""
+    p = str(path)
+    return f"read_parquet('{p}')" if p.endswith(".parquet") else f"read_csv('{p}')"
+
+
+def prepare_epc(src: str | pathlib.Path, dst: pathlib.Path) -> None:
+    """Write a column-pruned Parquet from the EPC CSV.
+
+    Selects the 9 columns used by the pipeline. No-ops if *dst* already exists.
+    """
+    if dst.exists():
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    duckdb.execute(f"""
+        COPY (
+            SELECT
+                UPRN, LODGEMENT_DATETIME, TOTAL_FLOOR_AREA,
+                ADDRESS1, ADDRESS2, POSTCODE,
+                BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING
+            FROM read_csv('{src}')
+        ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
+    """)
+
+
+def prepare_uprn(src: str | pathlib.Path, dst: pathlib.Path) -> None:
+    """Write a column-pruned Parquet from the OS Open UPRN CSV.
+
+    Selects UPRN, X_COORDINATE, Y_COORDINATE. No-ops if *dst* already exists.
+    """
+    if dst.exists():
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    duckdb.execute(f"""
+        COPY (
+            SELECT UPRN, X_COORDINATE, Y_COORDINATE
+            FROM read_csv('{src}')
+        ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
+    """)
+
+
+def prepare_ubdc(src: str | pathlib.Path, dst: pathlib.Path) -> None:
+    """Write a column-pruned Parquet from the UBDC PPD→UPRN lookup CSV.
+
+    Selects transactionid and uprn. No-ops if *dst* already exists.
+    """
+    if dst.exists():
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    duckdb.execute(f"""
+        COPY (
+            SELECT transactionid, uprn
+            FROM read_csv('{src}')
+        ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
+    """)
+
+
 def load_epc(epc_path: str | pathlib.Path) -> pd.DataFrame:
     """Load EPC CSV and deduplicate to the most recent certificate per UPRN.
 
@@ -137,13 +194,13 @@ def join_datasets(
     con.execute(_NORMALISE_MACRO)
 
     ppd = str(ppd_path)
-    epc = str(epc_path)
-    ubdc = str(ubdc_path)
+    epc_src = _sql_source(epc_path)
+    ubdc_src = _sql_source(ubdc_path)
 
     return con.execute(f"""
         WITH
         -- EPC: deduplicate to most recent certificate per UPRN
-        epc_raw AS (SELECT * FROM read_csv('{epc}')),
+        epc_raw AS (SELECT * FROM {epc_src}),
         epc_ranked AS (
             SELECT *,
                 ROW_NUMBER() OVER (
@@ -168,7 +225,7 @@ def join_datasets(
             ])
             WHERE ppd_category_type = 'A'
         ),
-        ubdc AS (SELECT * FROM read_csv('{ubdc}')),
+        ubdc AS (SELECT * FROM {ubdc_src}),
 
         -- Tier 1: exact UPRN match via UBDC lookup
         tier1 AS (
@@ -436,6 +493,36 @@ def run(
         console.print(f"  {label:<10} {path.name:<44} [dim]{size_str}[/dim]")
     console.print()
 
+    # --- Prepare helper ------------------------------------------------------
+    # Converts a raw source CSV to a column-pruned Parquet in cache/.
+    # Skips and reports if the slim Parquet already exists.
+    def prepare(
+        name: str,
+        src: pathlib.Path,
+        fn: Callable[[str | pathlib.Path, pathlib.Path], None],
+    ) -> pathlib.Path:
+        out = cache_dir / f"{name}.parquet"
+        if out.exists():
+            console.print(f"  [dim]⊘  {name:<18} skipped (cached)[/dim]")
+            return out
+        t0 = time.monotonic()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        with console.status(f"  [yellow]⏳  {name}…[/yellow]"):
+            fn(src, out)
+        elapsed = _fmt_elapsed(time.monotonic() - t0)
+        size_str = _fmt_size(out.stat().st_size)
+        console.print(
+            f"  [green]✓[/green]  {name:<18} {elapsed:<8} {size_str:>10}"
+        )
+        return out
+
+    console.print("[bold]Preparing sources[/bold]")
+    console.print()
+    epc_slim = prepare("epc_slim", epc_path, prepare_epc)
+    ubdc_slim = prepare("ubdc_slim", ubdc_path, prepare_ubdc)
+    uprn_slim = prepare("uprn_slim", uprn_path, prepare_uprn)
+    console.print()
+
     # --- Step helper ---------------------------------------------------------
     # Inlines checkpoint logic so the display owns the full lifecycle.
     def step(name: str, compute: Callable[[], pd.DataFrame]) -> pd.DataFrame:
@@ -455,8 +542,8 @@ def run(
         return df
 
     # --- Steps ---------------------------------------------------------------
-    matched = step("matched", lambda: join_datasets(ppd_path, epc_path, ubdc_path))
-    uprn_lsoa = step("uprn_lsoa", lambda: build_uprn_lsoa(uprn_path, boundary_path))
+    matched = step("matched", lambda: join_datasets(ppd_path, epc_slim, ubdc_slim))
+    uprn_lsoa = step("uprn_lsoa", lambda: build_uprn_lsoa(uprn_slim, boundary_path))
     console.print()
 
     # Step 3: attach LSOA codes to matched records via UPRN.
