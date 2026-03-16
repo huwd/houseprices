@@ -18,8 +18,19 @@ import zipfile
 
 import requests
 from dotenv import load_dotenv
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    TextColumn,
+    TimeRemainingColumn,
+    TransferSpeedColumn,
+)
 
 load_dotenv()
+
+_console = Console()
 
 # ---------------------------------------------------------------------------
 # Source URLs
@@ -79,20 +90,38 @@ def _stream_to_file(
     *,
     headers: dict[str, str] | None = None,
 ) -> pathlib.Path:
-    """Stream *url* to *dest*, skipping if the file already exists."""
+    """Stream *url* to *dest*, skipping if the file already exists.
+
+    Shows a rich progress bar with bytes transferred, speed, and ETA.
+    Falls back to an indeterminate bar when Content-Length is absent.
+    """
     if dest.exists():
-        print(f"  [skip] {dest.name} (already downloaded)")
+        _console.print(f"  [dim]⊘  {dest.name} already downloaded[/dim]")
         return dest
 
     dest.parent.mkdir(parents=True, exist_ok=True)
-    print(f"  [get]  {url} → {dest}")
 
     response = requests.get(url, headers=headers or {}, stream=True, timeout=120)
     response.raise_for_status()
 
-    with dest.open("wb") as fh:
-        for chunk in response.iter_content(chunk_size=_CHUNK_SIZE):
-            fh.write(chunk)
+    try:
+        total: int | None = int(response.headers["Content-Length"])
+    except (KeyError, ValueError, TypeError):
+        total = None
+
+    with Progress(
+        TextColumn("  [cyan]{task.description}"),
+        BarColumn(),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+        TimeRemainingColumn(),
+        console=_console,
+    ) as progress:
+        task = progress.add_task(dest.name, total=total)
+        with dest.open("wb") as fh:
+            for chunk in response.iter_content(chunk_size=_CHUNK_SIZE):
+                fh.write(chunk)
+                progress.update(task, advance=len(chunk))
 
     return dest
 
@@ -165,12 +194,12 @@ def download_lsoa_boundaries(data_dir: pathlib.Path) -> pathlib.Path:
     """
     dest = data_dir / "lsoa_boundaries.gpkg"
     if dest.exists():
-        print(f"  [skip] {dest.name} (already downloaded)")
+        _console.print(f"  [dim]⊘  {dest.name} already downloaded[/dim]")
         return dest
 
     fgdb_zip = _stream_to_file(LSOA_BGC_URL, data_dir / "lsoa_boundaries.fgdb.zip")
 
-    print(f"  [convert] {fgdb_zip.name} → {dest.name}")
+    _console.print(f"  [cyan]→[/cyan]  converting {fgdb_zip.name} → {dest.name}")
     tmp_dir = data_dir / "_lsoa_fgdb_tmp"
     try:
         tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -220,11 +249,11 @@ def extract_epc(data_dir: pathlib.Path) -> pathlib.Path:
     """
     dest = data_dir / "epc-domestic-all.csv"
     if dest.exists():
-        print(f"  [skip] {dest.name} (already extracted)")
+        _console.print(f"  [dim]⊘  {dest.name} already extracted[/dim]")
         return dest
 
     src = data_dir / "epc-domestic-all.zip"
-    print(f"  [extract] {src.name} → {dest.name}")
+    _console.print(f"  [cyan]→[/cyan]  extracting {src.name} → {dest.name}")
 
     with zipfile.ZipFile(src, "r") as zf:
         cert_files = [n for n in zf.namelist() if n.endswith("certificates.csv")]
@@ -256,11 +285,11 @@ def extract_os_open_uprn(data_dir: pathlib.Path) -> pathlib.Path:
     """
     dest = data_dir / "os-open-uprn.csv"
     if dest.exists():
-        print(f"  [skip] {dest.name} (already extracted)")
+        _console.print(f"  [dim]⊘  {dest.name} already extracted[/dim]")
         return dest
 
     src = data_dir / "os-open-uprn.zip"
-    print(f"  [extract] {src.name} → {dest.name}")
+    _console.print(f"  [cyan]→[/cyan]  extracting {src.name} → {dest.name}")
 
     with zipfile.ZipFile(src, "r") as zf:
         csv_files = [n for n in zf.namelist() if n.endswith(".csv")]
@@ -285,11 +314,11 @@ def extract_ubdc(data_dir: pathlib.Path) -> pathlib.Path:
     """
     dest = data_dir / "ppd-uprn-lookup.csv"
     if dest.exists():
-        print(f"  [skip] {dest.name} (already extracted)")
+        _console.print(f"  [dim]⊘  {dest.name} already extracted[/dim]")
         return dest
 
     src = data_dir / "ppd-uprn-lookup.zip"
-    print(f"  [extract] {src.name} → {dest.name}")
+    _console.print(f"  [cyan]→[/cyan]  extracting {src.name} → {dest.name}")
 
     with zipfile.ZipFile(src, "r") as zf:
         csv_files = [n for n in zf.namelist() if n.endswith(".csv")]
