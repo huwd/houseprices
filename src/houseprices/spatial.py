@@ -19,7 +19,10 @@ def build_uprn_lsoa(
     con.execute("INSTALL spatial; LOAD spatial;")
 
     uprn = str(uprn_path)
-    uprn_src = f"read_parquet('{uprn}')" if uprn.endswith(".parquet") else f"read_csv('{uprn}')"
+    if uprn.endswith(".parquet"):
+        uprn_src = f"read_parquet('{uprn}')"
+    else:
+        uprn_src = f"read_csv('{uprn}')"
     boundary = str(boundary_path)
 
     return con.execute(f"""
