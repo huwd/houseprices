@@ -13,7 +13,11 @@ download:  ## Download and extract all raw data (~25 GB). Requires .env credenti
 	uv run python src/houseprices/download.py
 
 .PHONY: clean
-clean:  ## Delete cache/ to force a full pipeline re-run
+clean:  ## Delete pipeline checkpoints (keeps slim Parquets; safe to re-run without re-downloading)
+	rm -f cache/matched.parquet cache/uprn_lsoa.parquet
+
+.PHONY: clean-all
+clean-all:  ## Delete entire cache/ including slim Parquets (requires re-download to re-run)
 	rm -rf cache/
 
 # ── Pipeline ───────────────────────────────────────────────────────────────
