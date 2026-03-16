@@ -511,9 +511,7 @@ def run(
             fn(src, out)
         elapsed = _fmt_elapsed(time.monotonic() - t0)
         size_str = _fmt_size(out.stat().st_size)
-        console.print(
-            f"  [green]✓[/green]  {name:<18} {elapsed:<8} {size_str:>10}"
-        )
+        console.print(f"  [green]✓[/green]  {name:<18} {elapsed:<8} {size_str:>10}")
         return out
 
     console.print("[bold]Preparing sources[/bold]")
