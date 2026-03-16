@@ -12,16 +12,46 @@ import pytest
 import houseprices.download as dl
 
 
-def _mock_response(chunks: list[bytes] | None = None) -> MagicMock:
+def _mock_response(
+    chunks: list[bytes] | None = None,
+    content_length: int | None = None,
+) -> MagicMock:
     resp = MagicMock()
     resp.raise_for_status.return_value = None
     resp.iter_content.return_value = iter(chunks or [b"data"])
+    resp.headers = (
+        {"Content-Length": str(content_length)} if content_length is not None else {}
+    )
     return resp
 
 
 # ---------------------------------------------------------------------------
 # _stream_to_file internals
 # ---------------------------------------------------------------------------
+
+
+def test_stream_to_file_uses_content_length_when_present(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Content-Length header is consumed and data is written correctly."""
+    dest = tmp_path / "file.csv"
+    with patch(
+        "houseprices.download.requests.get",
+        return_value=_mock_response([b"hello ", b"world"], content_length=11),
+    ):
+        dl._stream_to_file("http://example.com/f", dest)
+    assert dest.read_bytes() == b"hello world"
+
+
+def test_stream_to_file_handles_missing_content_length(tmp_path: pathlib.Path) -> None:
+    """Missing Content-Length falls back gracefully (no total shown)."""
+    dest = tmp_path / "file.csv"
+    with patch(
+        "houseprices.download.requests.get",
+        return_value=_mock_response([b"data"]),  # headers={}, no Content-Length
+    ):
+        dl._stream_to_file("http://example.com/f", dest)
+    assert dest.exists()
 
 
 def test_skips_download_if_file_exists(tmp_path: pathlib.Path) -> None:
