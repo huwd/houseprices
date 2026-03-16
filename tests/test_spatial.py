@@ -50,6 +50,18 @@ def test_build_uprn_lsoa_accepts_prepared_parquet(
     assert result.loc[result["UPRN"] == 12345678, "LSOA21CD"].iloc[0] == "SD0000001"
 
 
+def test_build_uprn_lsoa_no_duckdb_config(
+    monkeypatch: pytest.MonkeyPatch,
+    uprn_path: pathlib.Path,
+    lsoa_path: pathlib.Path,
+) -> None:
+    """build_uprn_lsoa must work correctly when no DuckDB env vars are set."""
+    monkeypatch.delenv("DUCKDB_MEMORY_LIMIT", raising=False)
+    monkeypatch.delenv("DUCKDB_THREADS", raising=False)
+    result = build_uprn_lsoa(uprn_path, lsoa_path)
+    assert result.loc[result["UPRN"] == 12345678, "LSOA21CD"].iloc[0] == "SD0000001"
+
+
 def test_build_uprn_lsoa_respects_duckdb_memory_limit(
     monkeypatch: pytest.MonkeyPatch,
     uprn_path: pathlib.Path,

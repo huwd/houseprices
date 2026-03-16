@@ -165,4 +165,14 @@ The pipeline manages disk space aggressively to stay viable on modest machines.
 
 ### RAM
 
-DuckDB processes data in chunks and spills to disk when memory is low. 8 GB RAM is sufficient; 16 GB is comfortable. The join step is the most memory-intensive.
+The tier-2 address-normalisation join is the most memory-intensive step. By default DuckDB uses all available RAM, which on a machine with 8 GB can exhaust RAM and swap and hard-freeze the OS.
+
+**Set `DUCKDB_MEMORY_LIMIT` and `DUCKDB_THREADS` in your `.env` before running.** When the memory limit is reached, DuckDB spills temporary data to disk rather than crashing the system — the pipeline runs slower but completes safely.
+
+```bash
+# .env — recommended for an 8 GB laptop
+DUCKDB_MEMORY_LIMIT=4GB   # leaves ~4 GB for OS, browser, etc.
+DUCKDB_THREADS=2          # matches physical core count; reduces peak load
+```
+
+The active values are printed at the start of each `make run` so you can confirm the config is being picked up. If neither variable is set, DuckDB defaults apply (no memory limit, all CPU threads) — safe on machines with 16 GB or more.
