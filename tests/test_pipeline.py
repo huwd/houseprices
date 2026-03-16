@@ -589,23 +589,17 @@ def test_join_tier1_row_count(tier1: pd.DataFrame) -> None:
 
 
 def test_join_tier2_returns_only_tier2_rows(tier1: pd.DataFrame) -> None:
-    tier2 = _join_tier2(
-        FIXTURES / "ppd_sample.csv", FIXTURES / "epc_sample.csv", tier1
-    )
+    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", FIXTURES / "epc_sample.csv", tier1)
     assert (tier2["match_tier"] == 2).all()
 
 
 def test_join_tier2_excludes_tier1_transactions(tier1: pd.DataFrame) -> None:
-    tier2 = _join_tier2(
-        FIXTURES / "ppd_sample.csv", FIXTURES / "epc_sample.csv", tier1
-    )
+    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", FIXTURES / "epc_sample.csv", tier1)
     assert TXN_001 not in tier2["transaction_unique_identifier"].values
 
 
 def test_join_tier2_row_count(tier1: pd.DataFrame) -> None:
-    tier2 = _join_tier2(
-        FIXTURES / "ppd_sample.csv", FIXTURES / "epc_sample.csv", tier1
-    )
+    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", FIXTURES / "epc_sample.csv", tier1)
     assert len(tier2) == 3
 
 
