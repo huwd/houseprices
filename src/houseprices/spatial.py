@@ -19,6 +19,7 @@ def build_uprn_lsoa(
     con.execute("INSTALL spatial; LOAD spatial;")
 
     uprn = str(uprn_path)
+    uprn_src = f"read_parquet('{uprn}')" if uprn.endswith(".parquet") else f"read_csv('{uprn}')"
     boundary = str(boundary_path)
 
     return con.execute(f"""
@@ -26,7 +27,7 @@ def build_uprn_lsoa(
             u.UPRN,
             l.LSOA21CD,
             l.LSOA21NM
-        FROM read_csv('{uprn}') AS u
+        FROM {uprn_src} AS u
         JOIN ST_Read('{boundary}') AS l
           ON ST_Within(
               ST_Point(u.X_COORDINATE, u.Y_COORDINATE),
