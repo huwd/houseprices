@@ -704,8 +704,12 @@ def test_join_datasets_accepts_prepared_ppd_parquet(tmp_path: pathlib.Path) -> N
 # ---------------------------------------------------------------------------
 
 
-def test_configure_duckdb_no_env_does_not_raise() -> None:
+def test_configure_duckdb_no_env_does_not_raise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """With no env vars set, _configure_duckdb must be a no-op that does not raise."""
+    monkeypatch.delenv("DUCKDB_MEMORY_LIMIT", raising=False)
+    monkeypatch.delenv("DUCKDB_THREADS", raising=False)
     con = duckdb.connect()
     _configure_duckdb(con)
 
