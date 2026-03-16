@@ -12,12 +12,12 @@ install:  ## Install all dependencies (dev + notebook extras)
 download:  ## Download and extract all raw data (~25 GB). Requires .env credentials.
 	uv run python src/houseprices/download.py
 
-.PHONY: clean
-clean:  ## Delete pipeline checkpoints (keeps slim Parquets; safe to re-run without re-downloading)
+.PHONY: clean-cache
+clean-cache:  ## Delete pipeline checkpoints (keeps slim Parquets; safe to re-run without re-downloading)
 	rm -f cache/matched.parquet cache/uprn_lsoa.parquet
 
-.PHONY: clean-all
-clean-all:  ## Delete all cache/ contents including slim Parquets (requires re-download to re-run)
+.PHONY: dump-cache
+dump-cache:  ## Delete all cache/ contents including slim Parquets (requires re-download to re-run)
 	find cache/ -maxdepth 1 -type f ! -name '.*' -delete
 
 # ── Pipeline ───────────────────────────────────────────────────────────────
