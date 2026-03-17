@@ -56,6 +56,7 @@ def compute_stats(price_data: dict[str, dict]) -> dict:
     return {
         "median_price_per_sqm": median,
         "num_districts": len(price_data),
+        "date_range": "Aug 2007–Jan 2026",
         "total_sales": total_sales,
         "top10": [
             {"district": r["district"], "price_per_sqm": r["price_per_sqm"]}
