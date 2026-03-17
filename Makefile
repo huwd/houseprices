@@ -41,6 +41,12 @@ run:  ## Run the full pipeline with a hard memory cap (join → spatial → aggr
 		env DUCKDB_MEMORY_LIMIT=$(DUCKDB_MEMORY_LIMIT) \
 		uv run python src/houseprices/pipeline.py
 
+# ── Notebook ───────────────────────────────────────────────────────────────
+
+.PHONY: explore
+explore:  ## Open the analysis notebook in Jupyter Lab
+	uv run jupyter lab notebooks/analysis.ipynb
+
 # ── Development ────────────────────────────────────────────────────────────
 
 .PHONY: test
