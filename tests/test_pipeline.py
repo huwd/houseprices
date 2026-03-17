@@ -549,6 +549,13 @@ def test_prepare_epc_skips_if_exists(tmp_path: pathlib.Path) -> None:
     assert dst.read_bytes() == b"sentinel"
 
 
+def test_prepare_epc_cleans_up_tmp_on_success(tmp_path: pathlib.Path) -> None:
+    """No .tmp.parquet file must remain after a successful prepare_epc call."""
+    dst = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_sample.csv", dst)
+    assert not dst.with_suffix(".tmp.parquet").exists()
+
+
 # ---------------------------------------------------------------------------
 # prepare_uprn
 # ---------------------------------------------------------------------------
