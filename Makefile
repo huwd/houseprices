@@ -41,6 +41,16 @@ run:  ## Run the full pipeline with a hard memory cap (join → spatial → aggr
 		env DUCKDB_MEMORY_LIMIT=$(DUCKDB_MEMORY_LIMIT) \
 		uv run python src/houseprices/pipeline.py
 
+# ── Output page ────────────────────────────────────────────────────────────
+
+.PHONY: boundaries
+boundaries:  ## Fetch + cache postcode district boundary GeoJSON (one-off, ~48 tile downloads)
+	uv run scripts/fetch_boundaries.py
+
+.PHONY: page
+page:  ## Build output/index.html from pipeline outputs (run boundaries + pipeline first)
+	uv run python scripts/build_page.py
+
 # ── Notebook ───────────────────────────────────────────────────────────────
 
 .PHONY: explore
