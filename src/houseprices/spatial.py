@@ -47,9 +47,7 @@ def build_uprn_lsoa(
     boundary = str(boundary_path)
 
     if uprn_filter is not None:
-        con.register(
-            "_uprn_filter", pd.DataFrame({"UPRN": list(uprn_filter)})
-        )
+        con.register("_uprn_filter", pd.DataFrame({"UPRN": list(uprn_filter)}))
         filter_clause = "WHERE u.UPRN IN (SELECT UPRN FROM _uprn_filter)"
     else:
         filter_clause = ""
