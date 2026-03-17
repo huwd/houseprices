@@ -361,6 +361,9 @@ def _join_tier2(
                 )) AS norm_addr,
                 upper(trim(POSTCODE)) AS postcode_norm
             FROM epc
+            WHERE upper(trim(POSTCODE)) IN (
+                SELECT DISTINCT postcode_norm FROM ppd_norm
+            )
         )
         SELECT
             p.transaction_unique_identifier,
