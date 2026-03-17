@@ -91,3 +91,27 @@ def test_bng_coordinates_not_swapped(uprn_df: pd.DataFrame) -> None:
     """
     assert uprn_df["X_COORDINATE"].between(100_000, 700_000).all()
     assert uprn_df["Y_COORDINATE"].between(0, 1_300_000).all()
+
+
+def test_build_uprn_lsoa_filter_restricts_output(
+    lsoa_path: pathlib.Path, uprn_path: pathlib.Path
+) -> None:
+    """When uprn_filter is given, only those UPRNs appear in the result."""
+    result = build_uprn_lsoa(uprn_path, lsoa_path, uprn_filter={12345678})
+    assert set(result["UPRN"]) == {12345678}
+
+
+def test_build_uprn_lsoa_empty_filter_returns_empty(
+    lsoa_path: pathlib.Path, uprn_path: pathlib.Path
+) -> None:
+    """An empty filter set returns an empty DataFrame."""
+    result = build_uprn_lsoa(uprn_path, lsoa_path, uprn_filter=set())
+    assert len(result) == 0
+
+
+def test_build_uprn_lsoa_none_filter_returns_all_within_boundary(
+    lsoa_path: pathlib.Path, uprn_path: pathlib.Path
+) -> None:
+    """Without a filter, all UPRNs within boundaries are returned."""
+    result = build_uprn_lsoa(uprn_path, lsoa_path)
+    assert 12345678 in result["UPRN"].values
