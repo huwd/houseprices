@@ -114,6 +114,7 @@ def _configure_duckdb(con: duckdb.DuckDBPyConnection) -> None:
         DUCKDB_MEMORY_LIMIT=4GB
         DUCKDB_THREADS=2
     """
+    con.execute("SET preserve_insertion_order = false")
     memory_limit = os.environ.get("DUCKDB_MEMORY_LIMIT")
     threads = os.environ.get("DUCKDB_THREADS")
     if memory_limit:
@@ -274,7 +275,13 @@ def _join_tier1(
     ubdc_src = _sql_source(ubdc_path)
     return con.execute(f"""
         WITH
-        epc_raw AS (SELECT * FROM {epc_src}),
+        epc_raw AS (
+            SELECT
+                UPRN, POSTCODE, LODGEMENT_DATETIME,
+                TOTAL_FLOOR_AREA, ADDRESS1, ADDRESS2,
+                BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING
+            FROM {epc_src}
+        ),
         epc_ranked AS (
             SELECT *,
                 ROW_NUMBER() OVER (
@@ -324,7 +331,13 @@ def _join_tier2(
     epc_src = _sql_source(epc_path)
     return con.execute(f"""
         WITH
-        epc_raw AS (SELECT * FROM {epc_src}),
+        epc_raw AS (
+            SELECT
+                UPRN, POSTCODE, LODGEMENT_DATETIME,
+                TOTAL_FLOOR_AREA, ADDRESS1, ADDRESS2,
+                BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING
+            FROM {epc_src}
+        ),
         epc_ranked AS (
             SELECT *,
                 ROW_NUMBER() OVER (
