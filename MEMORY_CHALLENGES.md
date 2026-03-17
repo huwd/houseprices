@@ -202,6 +202,20 @@ and still used by tests and the notebook.
 
 ---
 
+### 12. Load only needed columns from `matched.parquet` in notebook — current
+
+**Problem:** `analysis.ipynb` called `pd.read_parquet(CACHE / "matched.parquet")`
+with no column filter, loading the full 1.1 GB Parquet file (~4+ GB in Python
+heap) into the notebook kernel.  The kernel was killed by OOM before any cells
+could complete.
+
+**Fix:** Added `columns=["match_tier", "LSOA21CD"]` to the `read_parquet`
+call — the only two columns the notebook ever uses from the matched dataset.
+All other statistics (row counts, district and LSOA aggregates) come from the
+small CSV outputs in `output/`, not from the full matched file.
+
+---
+
 ## Current configuration (`MEM_MAX` / `DUCKDB_MEMORY_LIMIT`)
 
 | Setting | Value | Where |
