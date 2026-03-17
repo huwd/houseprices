@@ -108,8 +108,36 @@ included. For those:
 - But we cannot resolve the PPD transaction to a UPRN via the lookup table
 - Fallback: address normalisation between PPD address fields and EPC address
 
-Note: the dataset was updated 10 March 2026 and may now extend beyond January
-2022 — verify on download.
+**Confirmed (March 2026):** The dataset was updated 10 March 2026 but coverage
+has **not** extended beyond January 2022. Inspection of the three published
+dataset records on the UBDC data portal confirms no post-2022 transactions are
+included:
+
+- https://data.ubdc.ac.uk/datasets/5cfce5ed-59d4-4690-8e83-1b6dc86f55a2
+- https://data.ubdc.ac.uk/datasets/fc1179f2-e13a-47b2-b92e-189dd62b5460
+- https://data.ubdc.ac.uk/datasets/a999fd05-e7fe-4243-ab9a-95ce98132956
+
+This is consistent with our first full pipeline run, which showed essentially
+zero tier 1 matches from 2022 onwards (see match rates by year below). The
+coverage cliff is a **structural limitation** of the current release, not a
+stale download issue. The 2022–2026 gap remains dependent on address
+normalisation (Tier 2) until UBDC publish an extended release.
+
+**Match rates by year (pipeline run @ bd0e663):**
+
+| Year | Tier 1 | Tier 2 | Overall |
+|---|---|---|---|
+| 2019 | 95.4% | 1.1% | 96.4% |
+| 2020 | 89.9% | 4.0% | 94.0% |
+| 2021 | 64.4% | 17.0% | 81.4% |
+| 2022 | 0.1% | 59.1% | 59.2% |
+| 2023 | 0.0% | 60.1% | 60.1% |
+| 2024 | 0.0% | 60.2% | 60.2% |
+| 2025 | 0.0% | 59.6% | 59.6% |
+
+The 2021 partial coverage (64.4%) likely reflects the UBDC data lagging the
+PPD cut-off by several months — transactions registered late in 2021 may not
+have been included in the linkage run.
 
 ---
 
