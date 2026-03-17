@@ -8,7 +8,11 @@ data/*
 cache/*
 !cache/.gitkeep
 
-# Output CSVs are committed; notebook outputs are not
+# Output CSVs and comparison summary are committed; generated images are not
+output/*.png
+output/*.jpg
+
+# Notebook outputs are not committed (nbstripout handles this via git filter)
 notebooks/.ipynb_checkpoints/
 *.ipynb_checkpoints
 
