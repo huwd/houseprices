@@ -110,7 +110,9 @@ def main(force: bool = False) -> None:
             tile_bounds.west, tile_bounds.south,
             tile_bounds.east, tile_bounds.north,
         )
-        decoded = mapbox_vector_tile.decode(data, default_options={"y_coord_down": True})
+        decoded = mapbox_vector_tile.decode(
+            data, default_options={"y_coord_down": True}
+        )
 
         layer = decoded.get(LAYER, {})
         for feature in layer.get("features", []):
