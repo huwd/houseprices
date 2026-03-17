@@ -51,7 +51,7 @@ def fetch_tile(z: int, x: int, y: int) -> bytes | None:
 
 
 def mvt_coords_to_wgs84(
-    coords: list, tile_bounds: mercantile.Bounds, extent: int = 4096
+    coords: list, tile_bounds: tuple, extent: int = 4096
 ) -> list:
     """Recursively convert MVT tile coordinates to WGS84 [lon, lat]."""
     if not coords:
@@ -64,7 +64,7 @@ def mvt_coords_to_wgs84(
     return [mvt_coords_to_wgs84(c, tile_bounds, extent) for c in coords]
 
 
-def transform_geometry(geom: dict, tile_bounds: mercantile.Bounds) -> dict:
+def transform_geometry(geom: dict, tile_bounds: tuple) -> dict:
     return {
         "type": geom["type"],
         "coordinates": mvt_coords_to_wgs84(geom["coordinates"], tile_bounds),
