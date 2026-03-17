@@ -128,6 +128,73 @@ may still have a lag. Measure empirically once data is downloaded.
 
 ---
 
+## Empirical results from first pipeline run (March 2026)
+
+Pipeline version: bd0e663. EPC bulk export downloaded March 2026.
+
+### UPRN coverage by lodgement year
+
+| Year | Total certs | With UPRN | UPRN % |
+|---|---|---|---|
+| 2008 | 158,170 | 140,249 | 88.7% |
+| 2009 | 623,327 | 575,572 | 92.3% |
+| 2010 | 606,942 | 577,581 | 95.2% |
+| 2011 | 613,758 | 587,782 | 95.8% |
+| 2012 | 675,706 | 652,355 | 96.5% |
+| 2013 | 972,364 | 949,372 | 97.6% |
+| 2014 | 1,204,705 | 1,181,904 | 98.1% |
+| 2015 | 1,152,743 | 1,130,306 | 98.1% |
+| 2016 | 1,165,431 | 1,144,890 | 98.2% |
+| 2017 | 1,002,083 | 983,698 | 98.2% |
+| 2018 | 1,191,235 | 1,166,306 | 97.9% |
+| 2019 | 1,385,540 | 1,357,827 | 98.0% |
+| 2020 | 1,335,454 | 1,310,659 | 98.1% |
+| 2021 | 1,472,818 | 1,446,173 | 98.2% |
+| 2022 | 1,589,025 | 1,553,629 | 97.8% |
+| 2023 | 1,539,677 | 1,506,309 | 97.8% |
+| 2024 | 1,574,581 | 1,518,330 | 96.4% |
+| 2025 | 1,714,804 | 1,533,399 | 89.4% |
+| 2026 | 121,768 | 107,171 | 88.0% |
+
+Key observations:
+
+- **2010–2024**: 95–98% UPRN coverage — substantially better than Boswarva's
+  Q4 2021 figure of 92%. The DLUHC backfill has continued to improve coverage
+  since 2022.
+- **2025–2026**: drops to 88–89%, consistent with the new-build UPRN lag
+  (AddressBase doesn't yet contain UPRNs for recently constructed properties).
+- **2008**: 88.7% — some early records not yet backfilled by DLUHC.
+
+The earlier research prediction of 82–86% for 2020–2021 records is **not borne
+out** by the current dataset: 2020–2021 show 98%+ coverage. Either the DLUHC
+backfill has substantially closed the new-build gap since Boswarva's 2022
+analysis, or the bulk export has been updated with improved matching.
+
+### The 2022–2026 unmatched gap is a matching problem, not a data gap
+
+Cross-referencing unmatched PPD records (2022–2026) against EPC postcode
+coverage:
+
+| Year | Unmatched PPD | Postcode has EPC data | % |
+|---|---|---|---|
+| 2022 | 371,896 | 370,149 | 99.5% |
+| 2023 | 282,510 | 281,350 | 99.6% |
+| 2024 | 302,658 | 301,274 | 99.5% |
+| 2025 | 265,441 | 264,750 | 99.7% |
+| 2026 | 5,624 | 5,606 | 99.7% |
+
+**99.5–99.7% of unmatched 2022–2026 PPD records are in postcodes where EPC
+data exists.** Combined with 97–98% EPC UPRN coverage for 2022–2024, the
+EPC records are present and have UPRNs — they are simply not being linked
+because the UBDC lookup does not cover post-2022 PPD transactions and address
+normalisation (tier 2) achieves only ~60% for those years.
+
+This strongly motivates improving the tier 2 address normalisation (see
+GitHub issue #50). Nearly all of the ~1.2M unmatched 2022–2026 records are
+theoretically recoverable.
+
+---
+
 ## References
 
 [^boswarva]: Owen Boswarva, "Allocating UPRNs to Energy Performance Certificates" (early 2022). <https://www.owenboswarva.com/blog/post-hou3.htm>
