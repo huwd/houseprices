@@ -21,6 +21,7 @@ import sys
 import mapbox_vector_tile
 import mercantile
 import requests
+from shapely.geometry import box as shapely_box
 from shapely.geometry import mapping
 from shapely.geometry import shape as shapely_shape
 from shapely.ops import unary_union
@@ -71,6 +72,17 @@ def transform_geometry(geom: dict, tile_bounds: tuple) -> dict:
     }
 
 
+def _round_geom(obj: object, precision: int) -> object:
+    """Recursively round all floats in a GeoJSON geometry mapping."""
+    if isinstance(obj, float):
+        return round(obj, precision)
+    if isinstance(obj, list):
+        return [_round_geom(v, precision) for v in obj]
+    if isinstance(obj, dict):
+        return {k: _round_geom(v, precision) for k, v in obj.items()}
+    return obj
+
+
 def main(force: bool = False) -> None:
     if OUTPUT.exists() and not force:
         print(f"Already cached: {OUTPUT}")
@@ -92,6 +104,12 @@ def main(force: bool = False) -> None:
         print(f"{len(data):>8,} bytes")
 
         tile_bounds = mercantile.bounds(tile)
+        # Clip box: strip the MVT buffer zone so overlapping tile edges don't
+        # create self-intersecting polygons when fragments are merged.
+        tile_box = shapely_box(
+            tile_bounds.west, tile_bounds.south,
+            tile_bounds.east, tile_bounds.north,
+        )
         decoded = mapbox_vector_tile.decode(data, default_options={"y_coord_down": True})
 
         layer = decoded.get(LAYER, {})
@@ -102,29 +120,41 @@ def main(force: bool = False) -> None:
                 continue
             try:
                 raw_geom = transform_geometry(feature["geometry"], tile_bounds)
-                geom = shapely_shape(raw_geom)
+                geom = shapely_shape(raw_geom).buffer(0)  # repair winding
+                geom = geom.intersection(tile_box)        # strip buffer zone
                 if geom.is_valid and not geom.is_empty:
                     district_geoms.setdefault(dist, []).append(geom)
             except Exception:
                 errors += 1
+
+    # Simplification tolerance: 0.001° ≈ 100 m — matches snap buffer, removes
+    # tile-edge micro-vertices, and is imperceptible at district scale.
+    SIMPLIFY = 0.001
+    # Snap buffer closes quantisation gaps at tile seams (~38 m per MVT unit
+    # at zoom 8; 0.001° is safely above that threshold).
+    SNAP = 0.001
+    # Coordinate precision: 5 dp ≈ 1 m — half the bytes of full float64.
+    PRECISION = 5
 
     print(f"\nMerging geometries for {len(district_geoms)} districts…")
     features = []
     for dist, geoms in sorted(district_geoms.items()):
         try:
             merged = unary_union(geoms) if len(geoms) > 1 else geoms[0]
+            merged = merged.buffer(SNAP).buffer(-SNAP)
+            merged = merged.simplify(SIMPLIFY, preserve_topology=True)
             features.append(
                 {
                     "type": "Feature",
                     "properties": {"PostDist": dist},
-                    "geometry": mapping(merged),
+                    "geometry": _round_geom(mapping(merged), PRECISION),
                 }
             )
         except Exception:
             errors += 1
 
     geojson = {"type": "FeatureCollection", "features": features}
-    OUTPUT.write_text(json.dumps(geojson))
+    OUTPUT.write_text(json.dumps(geojson, separators=(",", ":")))
     size_kb = OUTPUT.stat().st_size // 1024
     print(f"Written → {OUTPUT} ({len(features)} districts, {size_kb:,} KB)")
     if errors:
