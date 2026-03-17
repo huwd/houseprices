@@ -30,7 +30,7 @@ dump-cache:  ## Delete all cache/ contents and slim Parquets (pair with clean-da
 # Prevents oomd killing the whole terminal session if the pipeline spikes.
 # Must sit above DUCKDB_MEMORY_LIMIT + Python overhead (~2 GB), but below
 # available RAM. Adjust downward on machines with less than 8 GB free.
-MEM_MAX ?= 7G
+MEM_MAX ?= 5G
 
 .PHONY: run
 run:  ## Run the full pipeline with a hard memory cap (join → spatial → aggregate → output CSVs)
