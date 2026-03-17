@@ -664,6 +664,34 @@ def test_join_tier2_row_count(tier1: pd.DataFrame, epc_slim: pathlib.Path) -> No
     assert len(tier2) == 3
 
 
+def test_join_tier2_postcode_filter_excludes_nonmatching_epc(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Tier 2 must still find address matches after postcode pre-filter."""
+    epc_slim = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_sample.csv", epc_slim)
+    tier1 = _join_tier1(
+        FIXTURES / "ppd_sample.csv", epc_slim, FIXTURES / "ubdc_sample.csv"
+    )
+    # Write a fresh EPC with an extra row in a completely different postcode —
+    # that row must never appear in tier2 results even after address normalisation
+    import duckdb as _duckdb
+
+    extra_epc = tmp_path / "epc_extra.parquet"
+    _duckdb.execute(f"""
+        COPY (
+            SELECT * FROM read_parquet('{epc_slim}')
+            UNION ALL
+            SELECT 999999::BIGINT, '2023-01-01 00:00:00'::TIMESTAMP, 50.0,
+                   'DECOY HOUSE', '', 'ZZ99 9ZZ',
+                   'Detached', '2007-2011', 'A'
+        ) TO '{extra_epc}' (FORMAT PARQUET)
+    """)
+    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", extra_epc, tier1)
+    assert len(tier2) == 3
+    assert 999999 not in (tier2["uprn"].dropna().tolist())
+
+
 def test_join_datasets_calls_callback_with_tier1_dataframe(
     epc_slim: pathlib.Path,
 ) -> None:
