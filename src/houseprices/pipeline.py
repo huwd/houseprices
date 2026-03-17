@@ -1,6 +1,5 @@
 """Main pipeline: download → join → aggregate."""
 
-import gc
 import os
 import pathlib
 import re
@@ -310,110 +309,121 @@ def _join_tier1(
     ppd_path: str | pathlib.Path,
     epc_path: str | pathlib.Path,
     ubdc_path: str | pathlib.Path,
-) -> pd.DataFrame:
-    """UPRN-based join. Returns category-A PPD rows matched via the UBDC lookup."""
+    dst: pathlib.Path,
+) -> int:
+    """UPRN-based join. Writes category-A PPD rows matched via the UBDC lookup to dst.
+
+    Returns the number of rows written. Uses DuckDB COPY to stream directly to
+    Parquet, avoiding materialising the join result into Python heap memory.
+    """
     con = duckdb.connect()
     _configure_duckdb(con)
     ppd_src = _ppd_source(ppd_path)
     epc_src = _sql_source(epc_path)
     ubdc_src = _sql_source(ubdc_path)
-    return con.execute(f"""
-        WITH
-        epc AS (SELECT * FROM {epc_src}),
-        ppd AS (
-            SELECT * FROM {ppd_src}
-            WHERE ppd_category_type = 'A'
-        ),
-        ubdc AS (SELECT * FROM {ubdc_src})
-        SELECT
-            ppd.transaction_unique_identifier,
-            ppd.price, ppd.date_of_transfer, ppd.postcode,
-            ppd.property_type, ppd.new_build_flag, ppd.tenure_type,
-            ppd.paon, ppd.saon, ppd.street, ppd.locality, ppd.town_city,
-            ppd.district, ppd.county, ppd.ppd_category_type, ppd.record_status,
-            CAST(ubdc.uprn AS BIGINT) AS uprn,
-            epc.TOTAL_FLOOR_AREA, epc.LODGEMENT_DATETIME,
-            epc.ADDRESS1, epc.ADDRESS2,
-            epc.BUILT_FORM, epc.CONSTRUCTION_AGE_BAND, epc.CURRENT_ENERGY_RATING,
-            1 AS match_tier
-        FROM ppd
-        JOIN ubdc ON ppd.transaction_unique_identifier = ubdc.transactionid
-        JOIN epc ON CAST(ubdc.uprn AS BIGINT) = CAST(epc.UPRN AS BIGINT)
-    """).df()
+    con.execute(f"""
+        COPY (
+            WITH
+            epc AS (SELECT * FROM {epc_src}),
+            ppd AS (
+                SELECT * FROM {ppd_src}
+                WHERE ppd_category_type = 'A'
+            ),
+            ubdc AS (SELECT * FROM {ubdc_src})
+            SELECT
+                ppd.transaction_unique_identifier,
+                ppd.price, ppd.date_of_transfer, ppd.postcode,
+                ppd.property_type, ppd.new_build_flag, ppd.tenure_type,
+                ppd.paon, ppd.saon, ppd.street, ppd.locality, ppd.town_city,
+                ppd.district, ppd.county, ppd.ppd_category_type, ppd.record_status,
+                CAST(ubdc.uprn AS BIGINT) AS uprn,
+                epc.TOTAL_FLOOR_AREA, epc.LODGEMENT_DATETIME,
+                epc.ADDRESS1, epc.ADDRESS2,
+                epc.BUILT_FORM, epc.CONSTRUCTION_AGE_BAND, epc.CURRENT_ENERGY_RATING,
+                1 AS match_tier
+            FROM ppd
+            JOIN ubdc ON ppd.transaction_unique_identifier = ubdc.transactionid
+            JOIN epc ON CAST(ubdc.uprn AS BIGINT) = CAST(epc.UPRN AS BIGINT)
+        ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
+    """)
+    row = con.execute(f"SELECT COUNT(*) FROM read_parquet('{dst}')").fetchone()
+    result: int = row[0]  # type: ignore[index]
+    return result
 
 
 def _join_tier2(
     ppd_path: str | pathlib.Path,
     epc_path: str | pathlib.Path,
-    tier1: pd.DataFrame | pathlib.Path,
-) -> pd.DataFrame:
-    """Address-normalisation join. Returns PPD rows not already matched in tier1.
+    tier1_path: pathlib.Path,
+    dst: pathlib.Path,
+) -> int:
+    """Address-normalisation join. Writes PPD rows not in tier1 to dst.
 
-    *tier1* may be a DataFrame (registered in-memory) or a Parquet path
-    (read from disk), allowing the caller to free the DataFrame before
-    running tier 2.
+    Returns the number of rows written. Uses DuckDB COPY to stream directly to
+    Parquet, avoiding materialising the join result into Python heap memory.
     """
     con = duckdb.connect()
     _configure_duckdb(con)
     con.execute(_NORMALISE_MACRO)
-    if isinstance(tier1, pathlib.Path):
-        tier1_expr = f"read_parquet('{tier1}')"
-    else:
-        con.register("_tier1", tier1)
-        tier1_expr = "_tier1"
+    tier1_expr = f"read_parquet('{tier1_path}')"
     ppd_src = _ppd_source(ppd_path)
     epc_src = _sql_source(epc_path)
-    return con.execute(f"""
-        WITH
-        epc AS (SELECT * FROM {epc_src}),
-        ppd AS (
-            SELECT * FROM {ppd_src}
-            WHERE ppd_category_type = 'A'
-        ),
-        ppd_remaining AS (
-            SELECT * FROM ppd
-            WHERE transaction_unique_identifier NOT IN (
-                SELECT transaction_unique_identifier FROM {tier1_expr}
+    con.execute(f"""
+        COPY (
+            WITH
+            epc AS (SELECT * FROM {epc_src}),
+            ppd AS (
+                SELECT * FROM {ppd_src}
+                WHERE ppd_category_type = 'A'
+            ),
+            ppd_remaining AS (
+                SELECT * FROM ppd
+                WHERE transaction_unique_identifier NOT IN (
+                    SELECT transaction_unique_identifier FROM {tier1_expr}
+                )
+            ),
+            ppd_norm AS (
+                SELECT *,
+                    normalise_addr(concat_ws(' ',
+                        NULLIF(COALESCE(CAST(saon AS VARCHAR), ''), ''),
+                        NULLIF(COALESCE(CAST(paon AS VARCHAR), ''), ''),
+                        NULLIF(COALESCE(CAST(street AS VARCHAR), ''), '')
+                    )) AS norm_addr,
+                    upper(trim(postcode)) AS postcode_norm
+                FROM ppd_remaining
+            ),
+            epc_norm AS (
+                SELECT *,
+                    normalise_addr(concat_ws(' ',
+                        NULLIF(COALESCE(ADDRESS1, ''), ''),
+                        NULLIF(COALESCE(ADDRESS2, ''), '')
+                    )) AS norm_addr,
+                    upper(trim(POSTCODE)) AS postcode_norm
+                FROM epc
+                WHERE upper(trim(POSTCODE)) IN (
+                    SELECT DISTINCT postcode_norm FROM ppd_norm
+                )
             )
-        ),
-        ppd_norm AS (
-            SELECT *,
-                normalise_addr(concat_ws(' ',
-                    NULLIF(COALESCE(CAST(saon AS VARCHAR), ''), ''),
-                    NULLIF(COALESCE(CAST(paon AS VARCHAR), ''), ''),
-                    NULLIF(COALESCE(CAST(street AS VARCHAR), ''), '')
-                )) AS norm_addr,
-                upper(trim(postcode)) AS postcode_norm
-            FROM ppd_remaining
-        ),
-        epc_norm AS (
-            SELECT *,
-                normalise_addr(concat_ws(' ',
-                    NULLIF(COALESCE(ADDRESS1, ''), ''),
-                    NULLIF(COALESCE(ADDRESS2, ''), '')
-                )) AS norm_addr,
-                upper(trim(POSTCODE)) AS postcode_norm
-            FROM epc
-            WHERE upper(trim(POSTCODE)) IN (
-                SELECT DISTINCT postcode_norm FROM ppd_norm
-            )
-        )
-        SELECT
-            p.transaction_unique_identifier,
-            p.price, p.date_of_transfer, p.postcode,
-            p.property_type, p.new_build_flag, p.tenure_type,
-            p.paon, p.saon, p.street, p.locality, p.town_city,
-            p.district, p.county, p.ppd_category_type, p.record_status,
-            NULL::BIGINT AS uprn,
-            e.TOTAL_FLOOR_AREA, e.LODGEMENT_DATETIME,
-            e.ADDRESS1, e.ADDRESS2,
-            e.BUILT_FORM, e.CONSTRUCTION_AGE_BAND, e.CURRENT_ENERGY_RATING,
-            2 AS match_tier
-        FROM ppd_norm AS p
-        JOIN epc_norm AS e
-            ON p.postcode_norm = e.postcode_norm
-           AND p.norm_addr = e.norm_addr
-    """).df()
+            SELECT
+                p.transaction_unique_identifier,
+                p.price, p.date_of_transfer, p.postcode,
+                p.property_type, p.new_build_flag, p.tenure_type,
+                p.paon, p.saon, p.street, p.locality, p.town_city,
+                p.district, p.county, p.ppd_category_type, p.record_status,
+                NULL::BIGINT AS uprn,
+                e.TOTAL_FLOOR_AREA, e.LODGEMENT_DATETIME,
+                e.ADDRESS1, e.ADDRESS2,
+                e.BUILT_FORM, e.CONSTRUCTION_AGE_BAND, e.CURRENT_ENERGY_RATING,
+                2 AS match_tier
+            FROM ppd_norm AS p
+            JOIN epc_norm AS e
+                ON p.postcode_norm = e.postcode_norm
+               AND p.norm_addr = e.norm_addr
+        ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
+    """)
+    row = con.execute(f"SELECT COUNT(*) FROM read_parquet('{dst}')").fetchone()
+    result: int = row[0]  # type: ignore[index]
+    return result
 
 
 def join_datasets(
@@ -422,7 +432,7 @@ def join_datasets(
     ubdc_path: str | pathlib.Path,
     dst: pathlib.Path,
     *,
-    on_tier1_complete: Callable[[pd.DataFrame], None] | None = None,
+    on_tier1_complete: Callable[[int], None] | None = None,
 ) -> None:
     """Join PPD to EPC using a tiered strategy, writing result to *dst*.
 
@@ -433,10 +443,10 @@ def join_datasets(
     `match_tier` column (1 or 2).  PPD records with ppd_category_type != 'A'
     are excluded before joining.  Unmatched PPD records are not included.
 
-    The final combine step uses DuckDB COPY to stream directly to disk,
-    avoiding materialising the full result into Python heap memory.
+    All intermediate results are streamed to temp Parquet files via DuckDB
+    COPY, so no join result is materialised into Python heap memory.
 
-    If *on_tier1_complete* is provided it is called with the tier-1 DataFrame
+    If *on_tier1_complete* is provided it is called with the tier-1 row count
     before tier-2 begins, allowing callers to report intermediate progress.
     """
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -445,17 +455,11 @@ def join_datasets(
         tier1_path = tmp / "tier1.parquet"
         tier2_path = tmp / "tier2.parquet"
 
-        tier1 = _join_tier1(ppd_path, epc_path, ubdc_path)
-        tier1.to_parquet(tier1_path, index=False)
+        n_tier1 = _join_tier1(ppd_path, epc_path, ubdc_path, tier1_path)
         if on_tier1_complete is not None:
-            on_tier1_complete(tier1)
-        del tier1
-        gc.collect()
+            on_tier1_complete(n_tier1)
 
-        tier2 = _join_tier2(ppd_path, epc_path, tier1_path)
-        tier2.to_parquet(tier2_path, index=False)
-        del tier2
-        gc.collect()
+        _join_tier2(ppd_path, epc_path, tier1_path, tier2_path)
 
         duckdb.execute(f"""
             COPY (
@@ -674,8 +678,8 @@ def run(
         return df
 
     # --- Steps ---------------------------------------------------------------
-    def _on_tier1(df: pd.DataFrame) -> None:
-        console.print(f"      [dim]tier 1: {len(df):,} UPRN matches[/dim]")
+    def _on_tier1(n: int) -> None:
+        console.print(f"      [dim]tier 1: {n:,} UPRN matches[/dim]")
 
     matched_parquet = cache_dir / "matched.parquet"
     if matched_parquet.exists():
