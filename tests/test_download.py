@@ -461,3 +461,215 @@ def test_extract_ubdc_deletes_zip(tmp_path: pathlib.Path) -> None:
     _make_ubdc_zip(ubdc_zip, "uprn,transactionid\n30,{ABC}\n")
     dl.extract_ubdc(tmp_path)
     assert not ubdc_zip.exists()
+
+
+# ---------------------------------------------------------------------------
+# _meta_path / _save_meta / _load_meta
+# ---------------------------------------------------------------------------
+
+
+def test_meta_path_derives_json_sidecar(tmp_path: pathlib.Path) -> None:
+    slim = tmp_path / "epc_slim.parquet"
+    assert dl._meta_path(slim) == tmp_path / "epc_slim.meta.json"
+
+
+def test_save_and_load_meta_round_trips(tmp_path: pathlib.Path) -> None:
+    slim = tmp_path / "epc_slim.parquet"
+    meta = {"ETag": '"abc123"', "Content-Length": "6400000000"}
+    dl._save_meta(slim, meta)
+    assert dl._load_meta(slim) == meta
+
+
+def test_load_meta_returns_empty_when_file_absent(tmp_path: pathlib.Path) -> None:
+    assert dl._load_meta(tmp_path / "nonexistent.parquet") == {}
+
+
+def test_save_meta_is_noop_for_empty_dict(tmp_path: pathlib.Path) -> None:
+    slim = tmp_path / "epc_slim.parquet"
+    dl._save_meta(slim, {})
+    assert not dl._meta_path(slim).exists()
+
+
+# ---------------------------------------------------------------------------
+# _meta_matches
+# ---------------------------------------------------------------------------
+
+
+def test_meta_matches_equal_etags() -> None:
+    assert dl._meta_matches({"ETag": '"abc"'}, {"ETag": '"abc"'}) is True
+
+
+def test_meta_matches_different_etags() -> None:
+    assert dl._meta_matches({"ETag": '"abc"'}, {"ETag": '"xyz"'}) is False
+
+
+def test_meta_matches_etag_priority_over_content_length() -> None:
+    """ETag match wins even when Content-Length would differ."""
+    stored = {"ETag": '"abc"', "Content-Length": "99"}
+    remote = {"ETag": '"abc"', "Content-Length": "100"}
+    assert dl._meta_matches(stored, remote) is True
+
+
+def test_meta_matches_falls_back_to_last_modified() -> None:
+    ts = "Mon, 01 Jan 2024 00:00:00 GMT"
+    assert dl._meta_matches({"Last-Modified": ts}, {"Last-Modified": ts}) is True
+
+
+def test_meta_matches_last_modified_change() -> None:
+    assert (
+        dl._meta_matches(
+            {"Last-Modified": "Mon, 01 Jan 2024 00:00:00 GMT"},
+            {"Last-Modified": "Tue, 02 Jan 2024 00:00:00 GMT"},
+        )
+        is False
+    )
+
+
+def test_meta_matches_falls_back_to_content_length() -> None:
+    assert dl._meta_matches({"Content-Length": "99"}, {"Content-Length": "99"}) is True
+
+
+def test_meta_matches_content_length_change() -> None:
+    assert (
+        dl._meta_matches({"Content-Length": "99"}, {"Content-Length": "100"}) is False
+    )
+
+
+def test_meta_matches_no_common_keys_returns_false() -> None:
+    assert dl._meta_matches({"ETag": '"x"'}, {"Last-Modified": "Mon..."}) is False
+
+
+def test_meta_matches_empty_dicts_returns_false() -> None:
+    assert dl._meta_matches({}, {}) is False
+
+
+# ---------------------------------------------------------------------------
+# _http_meta
+# ---------------------------------------------------------------------------
+
+
+def _fake_head_response(headers: dict[str, str]) -> MagicMock:
+    r = MagicMock()
+    r.headers = headers
+    r.raise_for_status = MagicMock()
+    return r
+
+
+def test_http_meta_extracts_etag_last_modified_content_length(
+    tmp_path: pathlib.Path,
+) -> None:
+    r = _fake_head_response(
+        {
+            "ETag": '"abc123"',
+            "Last-Modified": "Mon, 01 Jan 2024 00:00:00 GMT",
+            "Content-Length": "12345",
+            "Content-Type": "application/zip",  # excluded
+        }
+    )
+    with patch("houseprices.download.requests.head", return_value=r):
+        meta = dl._http_meta("https://example.com/file.zip")
+
+    assert meta == {
+        "ETag": '"abc123"',
+        "Last-Modified": "Mon, 01 Jan 2024 00:00:00 GMT",
+        "Content-Length": "12345",
+    }
+
+
+def test_http_meta_returns_empty_on_request_exception() -> None:
+    import requests as _req
+
+    with patch(
+        "houseprices.download.requests.head",
+        side_effect=_req.RequestException("timeout"),
+    ):
+        assert dl._http_meta("https://example.com/") == {}
+
+
+def test_http_meta_returns_empty_on_unexpected_exception() -> None:
+    with patch(
+        "houseprices.download.requests.head",
+        side_effect=Exception("SSL error"),
+    ):
+        assert dl._http_meta("https://example.com/") == {}
+
+
+def test_http_meta_passes_auth_headers() -> None:
+    r = _fake_head_response({"ETag": '"x"'})
+    with patch("houseprices.download.requests.head", return_value=r) as mock_head:
+        dl._http_meta("https://example.com/", headers={"Authorization": "Basic abc"})
+    mock_head.assert_called_once_with(
+        "https://example.com/",
+        headers={"Authorization": "Basic abc"},
+        timeout=30,
+        allow_redirects=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# _check_freshness
+# ---------------------------------------------------------------------------
+
+
+def test_check_freshness_slim_absent_returns_not_fresh(
+    tmp_path: pathlib.Path,
+) -> None:
+    slim = tmp_path / "ppd_slim.parquet"
+    with patch("houseprices.download._http_meta", return_value={"ETag": '"abc"'}):
+        is_fresh, meta = dl._check_freshness(slim, "https://example.com/")
+    assert is_fresh is False
+    assert meta == {"ETag": '"abc"'}
+
+
+def test_check_freshness_present_and_matching_etag(tmp_path: pathlib.Path) -> None:
+    slim = tmp_path / "ppd_slim.parquet"
+    slim.write_bytes(b"data")
+    dl._save_meta(slim, {"ETag": '"abc"'})
+    with patch("houseprices.download._http_meta", return_value={"ETag": '"abc"'}):
+        is_fresh, _ = dl._check_freshness(slim, "https://example.com/")
+    assert is_fresh is True
+
+
+def test_check_freshness_present_and_stale(tmp_path: pathlib.Path) -> None:
+    slim = tmp_path / "ppd_slim.parquet"
+    slim.write_bytes(b"data")
+    dl._save_meta(slim, {"ETag": '"old"'})
+    with patch("houseprices.download._http_meta", return_value={"ETag": '"new"'}):
+        is_fresh, meta = dl._check_freshness(slim, "https://example.com/")
+    assert is_fresh is False
+    assert meta["ETag"] == '"new"'
+
+
+def test_check_freshness_present_no_stored_meta_treated_as_stale(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Parquet present, no .meta.json → stale so meta is written on next prepare."""
+    slim = tmp_path / "ppd_slim.parquet"
+    slim.write_bytes(b"data")
+    with patch("houseprices.download._http_meta", return_value={"ETag": '"abc"'}):
+        is_fresh, meta = dl._check_freshness(slim, "https://example.com/")
+    assert is_fresh is False
+    assert meta == {"ETag": '"abc"'}
+
+
+def test_check_freshness_head_fails_trusts_existing_parquet(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Network failure when parquet exists → keep it, don't force a re-download."""
+    slim = tmp_path / "ppd_slim.parquet"
+    slim.write_bytes(b"data")
+    dl._save_meta(slim, {"ETag": '"abc"'})
+    with patch("houseprices.download._http_meta", return_value={}):
+        is_fresh, meta = dl._check_freshness(slim, "https://example.com/")
+    assert is_fresh is True
+    assert meta == {}
+
+
+def test_check_freshness_head_fails_slim_absent_returns_not_fresh(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Network failure with no parquet → return not-fresh so download proceeds."""
+    slim = tmp_path / "ppd_slim.parquet"
+    with patch("houseprices.download._http_meta", return_value={}):
+        is_fresh, meta = dl._check_freshness(slim, "https://example.com/")
+    assert is_fresh is False
