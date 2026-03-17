@@ -144,9 +144,12 @@ def prepare_ppd(src: str | pathlib.Path, dst: pathlib.Path) -> None:
 
 
 def prepare_epc(src: str | pathlib.Path, dst: pathlib.Path) -> None:
-    """Write a column-pruned Parquet from the EPC CSV.
+    """Write a column-pruned, deduplicated Parquet from the EPC CSV.
 
-    Selects the 9 columns used by the pipeline. No-ops if *dst* already exists.
+    Selects the 9 columns used by the pipeline and deduplicates by UPRN,
+    keeping only the most recent certificate per UPRN (by LODGEMENT_DATETIME
+    DESC).  Rows without a UPRN are kept as-is (Tier 2 candidates).
+    No-ops if *dst* already exists.
     """
     if dst.exists():
         return
@@ -155,11 +158,28 @@ def prepare_epc(src: str | pathlib.Path, dst: pathlib.Path) -> None:
     _configure_duckdb(con)
     con.execute(f"""
         COPY (
+            WITH
+            ranked AS (
+                SELECT *,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY UPRN
+                        ORDER BY LODGEMENT_DATETIME DESC
+                    ) AS _rn
+                FROM read_csv('{src}')
+                WHERE UPRN IS NOT NULL
+            )
+            SELECT
+                UPRN, LODGEMENT_DATETIME, TOTAL_FLOOR_AREA,
+                ADDRESS1, ADDRESS2, POSTCODE,
+                BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING
+            FROM ranked WHERE _rn = 1
+            UNION ALL
             SELECT
                 UPRN, LODGEMENT_DATETIME, TOTAL_FLOOR_AREA,
                 ADDRESS1, ADDRESS2, POSTCODE,
                 BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING
             FROM read_csv('{src}')
+            WHERE UPRN IS NULL
         ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
     """)
 
@@ -275,26 +295,7 @@ def _join_tier1(
     ubdc_src = _sql_source(ubdc_path)
     return con.execute(f"""
         WITH
-        epc_raw AS (
-            SELECT
-                UPRN, POSTCODE, LODGEMENT_DATETIME,
-                TOTAL_FLOOR_AREA, ADDRESS1, ADDRESS2,
-                BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING
-            FROM {epc_src}
-        ),
-        epc_ranked AS (
-            SELECT *,
-                ROW_NUMBER() OVER (
-                    PARTITION BY UPRN
-                    ORDER BY LODGEMENT_DATETIME DESC
-                ) AS _rn
-            FROM epc_raw WHERE UPRN IS NOT NULL
-        ),
-        epc AS (
-            SELECT * EXCLUDE (_rn) FROM epc_ranked WHERE _rn = 1
-            UNION ALL
-            SELECT * FROM epc_raw WHERE UPRN IS NULL
-        ),
+        epc AS (SELECT * FROM {epc_src}),
         ppd AS (
             SELECT * FROM {ppd_src}
             WHERE ppd_category_type = 'A'
@@ -331,26 +332,7 @@ def _join_tier2(
     epc_src = _sql_source(epc_path)
     return con.execute(f"""
         WITH
-        epc_raw AS (
-            SELECT
-                UPRN, POSTCODE, LODGEMENT_DATETIME,
-                TOTAL_FLOOR_AREA, ADDRESS1, ADDRESS2,
-                BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING
-            FROM {epc_src}
-        ),
-        epc_ranked AS (
-            SELECT *,
-                ROW_NUMBER() OVER (
-                    PARTITION BY UPRN
-                    ORDER BY LODGEMENT_DATETIME DESC
-                ) AS _rn
-            FROM epc_raw WHERE UPRN IS NOT NULL
-        ),
-        epc AS (
-            SELECT * EXCLUDE (_rn) FROM epc_ranked WHERE _rn = 1
-            UNION ALL
-            SELECT * FROM epc_raw WHERE UPRN IS NULL
-        ),
+        epc AS (SELECT * FROM {epc_src}),
         ppd AS (
             SELECT * FROM {ppd_src}
             WHERE ppd_category_type = 'A'

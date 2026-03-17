@@ -664,12 +664,14 @@ def test_join_tier2_row_count(tier1: pd.DataFrame, epc_slim: pathlib.Path) -> No
     assert len(tier2) == 3
 
 
-def test_join_datasets_calls_callback_with_tier1_dataframe() -> None:
+def test_join_datasets_calls_callback_with_tier1_dataframe(
+    epc_slim: pathlib.Path,
+) -> None:
     """on_tier1_complete is called once with the tier 1 DataFrame before tier 2 runs."""
     calls: list[pd.DataFrame] = []
     join_datasets(
         FIXTURES / "ppd_sample.csv",
-        FIXTURES / "epc_sample.csv",
+        epc_slim,
         FIXTURES / "ubdc_sample.csv",
         on_tier1_complete=calls.append,
     )
@@ -677,11 +679,11 @@ def test_join_datasets_calls_callback_with_tier1_dataframe() -> None:
     assert (calls[0]["match_tier"] == 1).all()
 
 
-def test_join_datasets_no_callback_does_not_raise() -> None:
+def test_join_datasets_no_callback_does_not_raise(epc_slim: pathlib.Path) -> None:
     """join_datasets without on_tier1_complete runs normally."""
     result = join_datasets(
         FIXTURES / "ppd_sample.csv",
-        FIXTURES / "epc_sample.csv",
+        epc_slim,
         FIXTURES / "ubdc_sample.csv",
     )
     assert len(result) == 4
@@ -744,13 +746,15 @@ def test_prepare_ppd_skips_if_exists(tmp_path: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_join_datasets_accepts_prepared_ppd_parquet(tmp_path: pathlib.Path) -> None:
+def test_join_datasets_accepts_prepared_ppd_parquet(
+    tmp_path: pathlib.Path, epc_slim: pathlib.Path
+) -> None:
     """join_datasets must produce the same result when fed a slim PPD Parquet."""
     ppd_slim = tmp_path / "ppd_slim.parquet"
     prepare_ppd(FIXTURES / "ppd_sample.csv", ppd_slim)
     result = join_datasets(
         ppd_slim,
-        FIXTURES / "epc_sample.csv",
+        epc_slim,
         FIXTURES / "ubdc_sample.csv",
     )
     assert len(result) == 4
