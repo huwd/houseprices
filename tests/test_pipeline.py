@@ -28,6 +28,15 @@ from houseprices.pipeline import (
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
+
+@pytest.fixture
+def epc_slim(tmp_path: pathlib.Path) -> pathlib.Path:
+    """Pre-deduplicated EPC Parquet, written to tmp_path."""
+    dst = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_sample.csv", dst)
+    return dst
+
+
 # ---------------------------------------------------------------------------
 # normalise_address
 # ---------------------------------------------------------------------------
@@ -136,12 +145,12 @@ def test_load_epc_total_row_count() -> None:
 
 
 @pytest.fixture
-def joined() -> "pd.DataFrame":  # type: ignore[name-defined]  # noqa: F821
+def joined(epc_slim: pathlib.Path) -> "pd.DataFrame":  # type: ignore[name-defined]  # noqa: F821
     import pandas as pd  # noqa: F401
 
     return join_datasets(
         FIXTURES / "ppd_sample.csv",
-        FIXTURES / "epc_sample.csv",
+        epc_slim,
         FIXTURES / "ubdc_sample.csv",
     )
 
@@ -503,7 +512,34 @@ def test_prepare_epc_writes_expected_columns(tmp_path: pathlib.Path) -> None:
 def test_prepare_epc_preserves_row_count(tmp_path: pathlib.Path) -> None:
     dst = tmp_path / "epc_slim.parquet"
     prepare_epc(FIXTURES / "epc_sample.csv", dst)
-    assert len(pd.read_parquet(dst)) == 5
+    assert len(pd.read_parquet(dst)) == 4
+
+
+def test_prepare_epc_deduplicates_by_uprn(tmp_path: pathlib.Path) -> None:
+    """Output must contain at most one row per non-null UPRN."""
+    dst = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_sample.csv", dst)
+    df = pd.read_parquet(dst)
+    with_uprn = df[df["UPRN"].notna()]
+    assert with_uprn["UPRN"].nunique() == len(with_uprn)
+
+
+def test_prepare_epc_keeps_most_recent_per_uprn(tmp_path: pathlib.Path) -> None:
+    """For UPRN 100001, the 2020 row (80 m²) must be kept, not the 2018 row (78 m²)."""
+    dst = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_sample.csv", dst)
+    df = pd.read_parquet(dst)
+    row = df[df["UPRN"] == 100001]
+    assert len(row) == 1
+    assert row.iloc[0]["TOTAL_FLOOR_AREA"] == 80.0
+
+
+def test_prepare_epc_preserves_null_uprn_rows(tmp_path: pathlib.Path) -> None:
+    """Rows with no UPRN must all be kept — they are Tier 2 candidates."""
+    dst = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_sample.csv", dst)
+    df = pd.read_parquet(dst)
+    assert len(df[df["UPRN"].isna()]) == 2
 
 
 def test_prepare_epc_skips_if_exists(tmp_path: pathlib.Path) -> None:
@@ -583,10 +619,10 @@ def test_join_datasets_accepts_prepared_parquet(tmp_path: pathlib.Path) -> None:
 
 
 @pytest.fixture
-def tier1() -> pd.DataFrame:
+def tier1(epc_slim: pathlib.Path) -> pd.DataFrame:
     return _join_tier1(
         FIXTURES / "ppd_sample.csv",
-        FIXTURES / "epc_sample.csv",
+        epc_slim,
         FIXTURES / "ubdc_sample.csv",
     )
 
@@ -609,18 +645,22 @@ def test_join_tier1_row_count(tier1: pd.DataFrame) -> None:
     assert len(tier1) == 1
 
 
-def test_join_tier2_returns_only_tier2_rows(tier1: pd.DataFrame) -> None:
-    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", FIXTURES / "epc_sample.csv", tier1)
+def test_join_tier2_returns_only_tier2_rows(
+    tier1: pd.DataFrame, epc_slim: pathlib.Path
+) -> None:
+    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1)
     assert (tier2["match_tier"] == 2).all()
 
 
-def test_join_tier2_excludes_tier1_transactions(tier1: pd.DataFrame) -> None:
-    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", FIXTURES / "epc_sample.csv", tier1)
+def test_join_tier2_excludes_tier1_transactions(
+    tier1: pd.DataFrame, epc_slim: pathlib.Path
+) -> None:
+    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1)
     assert TXN_001 not in tier2["transaction_unique_identifier"].values
 
 
-def test_join_tier2_row_count(tier1: pd.DataFrame) -> None:
-    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", FIXTURES / "epc_sample.csv", tier1)
+def test_join_tier2_row_count(tier1: pd.DataFrame, epc_slim: pathlib.Path) -> None:
+    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1)
     assert len(tier2) == 3
 
 
@@ -758,12 +798,13 @@ def test_configure_duckdb_applies_threads(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_join_tier1_respects_duckdb_memory_limit(
     monkeypatch: pytest.MonkeyPatch,
+    epc_slim: pathlib.Path,
 ) -> None:
     """_join_tier1 must complete successfully when DUCKDB_MEMORY_LIMIT is set."""
     monkeypatch.setenv("DUCKDB_MEMORY_LIMIT", "512MB")
     result = _join_tier1(
         FIXTURES / "ppd_sample.csv",
-        FIXTURES / "epc_sample.csv",
+        epc_slim,
         FIXTURES / "ubdc_sample.csv",
     )
     assert len(result) == 1
@@ -771,17 +812,18 @@ def test_join_tier1_respects_duckdb_memory_limit(
 
 def test_join_tier2_respects_duckdb_memory_limit(
     monkeypatch: pytest.MonkeyPatch,
+    epc_slim: pathlib.Path,
 ) -> None:
     """_join_tier2 must complete successfully when DUCKDB_MEMORY_LIMIT is set."""
     monkeypatch.setenv("DUCKDB_MEMORY_LIMIT", "512MB")
     tier1 = _join_tier1(
         FIXTURES / "ppd_sample.csv",
-        FIXTURES / "epc_sample.csv",
+        epc_slim,
         FIXTURES / "ubdc_sample.csv",
     )
     result = _join_tier2(
         FIXTURES / "ppd_sample.csv",
-        FIXTURES / "epc_sample.csv",
+        epc_slim,
         tier1,
     )
     assert len(result) == 3
