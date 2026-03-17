@@ -92,7 +92,7 @@ def main(force: bool = False) -> None:
         print(f"{len(data):>8,} bytes")
 
         tile_bounds = mercantile.bounds(tile)
-        decoded = mapbox_vector_tile.decode(data, y_coord_down=True)
+        decoded = mapbox_vector_tile.decode(data, default_options={"y_coord_down": True})
 
         layer = decoded.get(LAYER, {})
         for feature in layer.get("features", []):
