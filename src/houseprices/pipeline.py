@@ -420,21 +420,26 @@ def join_datasets(
     ppd_path: str | pathlib.Path,
     epc_path: str | pathlib.Path,
     ubdc_path: str | pathlib.Path,
+    dst: pathlib.Path,
     *,
     on_tier1_complete: Callable[[pd.DataFrame], None] | None = None,
-) -> pd.DataFrame:
-    """Join PPD to EPC using a tiered strategy.
+) -> None:
+    """Join PPD to EPC using a tiered strategy, writing result to *dst*.
 
     Tier 1 — exact UPRN join via the UBDC lookup table.
     Tier 2 — address normalisation fallback for records without a UPRN match.
 
-    Returns a DataFrame of matched records with a `match_tier` column (1 or 2).
-    PPD records with ppd_category_type != 'A' are excluded before joining.
-    Unmatched PPD records are not included in the result.
+    Writes a Parquet file to *dst* containing matched records with a
+    `match_tier` column (1 or 2).  PPD records with ppd_category_type != 'A'
+    are excluded before joining.  Unmatched PPD records are not included.
+
+    The final combine step uses DuckDB COPY to stream directly to disk,
+    avoiding materialising the full result into Python heap memory.
 
     If *on_tier1_complete* is provided it is called with the tier-1 DataFrame
     before tier-2 begins, allowing callers to report intermediate progress.
     """
+    dst.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as _tmp:
         tmp = pathlib.Path(_tmp)
         tier1_path = tmp / "tier1.parquet"
@@ -452,11 +457,13 @@ def join_datasets(
         del tier2
         gc.collect()
 
-        return duckdb.execute(f"""
-            SELECT * FROM read_parquet('{tier1_path}')
-            UNION ALL
-            SELECT * FROM read_parquet('{tier2_path}')
-        """).df()
+        duckdb.execute(f"""
+            COPY (
+                SELECT * FROM read_parquet('{tier1_path}')
+                UNION ALL
+                SELECT * FROM read_parquet('{tier2_path}')
+            ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
+        """)
 
 
 def match_report(matched: pd.DataFrame, total_ppd: int) -> dict[str, int | float]:
@@ -666,12 +673,29 @@ def run(
     def _on_tier1(df: pd.DataFrame) -> None:
         console.print(f"      [dim]tier 1: {len(df):,} UPRN matches[/dim]")
 
-    matched = step(
-        "matched",
-        lambda: join_datasets(
-            ppd_path, epc_path, ubdc_path, on_tier1_complete=_on_tier1
-        ),
-    )
+    matched_parquet = cache_dir / "matched.parquet"
+    if matched_parquet.exists():
+        console.print(f"  [dim]⊘  {'matched':<18} skipped (cached)[/dim]")
+    else:
+        t0 = time.monotonic()
+        with console.status("  [yellow]⏳  matched…[/yellow]"):
+            join_datasets(
+                ppd_path,
+                epc_path,
+                ubdc_path,
+                dst=matched_parquet,
+                on_tier1_complete=_on_tier1,
+            )
+        elapsed = _fmt_elapsed(time.monotonic() - t0)
+        n_rows = duckdb.execute(
+            f"SELECT COUNT(*) FROM read_parquet('{matched_parquet}')"
+        ).fetchone()[0]  # type: ignore[index]
+        rss = _rss_mb()
+        console.print(
+            f"  [green]✓[/green]  {'matched':<18} {elapsed:<8} {n_rows:>14,} rows"
+            f"  [dim]RSS {rss} MB[/dim]"
+        )
+    matched = pd.read_parquet(matched_parquet)
     matched_uprns = set(matched["uprn"].dropna().astype(int))
     uprn_lsoa = step(
         "uprn_lsoa",

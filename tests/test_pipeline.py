@@ -145,14 +145,15 @@ def test_load_epc_total_row_count() -> None:
 
 
 @pytest.fixture
-def joined(epc_slim: pathlib.Path) -> "pd.DataFrame":  # type: ignore[name-defined]  # noqa: F821
-    import pandas as pd  # noqa: F401
-
-    return join_datasets(
+def joined(epc_slim: pathlib.Path, tmp_path: pathlib.Path) -> pd.DataFrame:
+    dst = tmp_path / "matched.parquet"
+    join_datasets(
         FIXTURES / "ppd_sample.csv",
         epc_slim,
         FIXTURES / "ubdc_sample.csv",
+        dst=dst,
     )
+    return pd.read_parquet(dst)
 
 
 TXN_001 = "{A0000001-0000-0000-0000-000000000000}"
@@ -613,9 +614,11 @@ def test_join_datasets_accepts_prepared_parquet(tmp_path: pathlib.Path) -> None:
     """join_datasets must produce the same result when fed Parquet-prepared inputs."""
     epc_slim = tmp_path / "epc_slim.parquet"
     ubdc_slim = tmp_path / "ubdc_slim.parquet"
+    dst = tmp_path / "matched.parquet"
     prepare_epc(FIXTURES / "epc_sample.csv", epc_slim)
     prepare_ubdc(FIXTURES / "ubdc_sample.csv", ubdc_slim)
-    result = join_datasets(FIXTURES / "ppd_sample.csv", epc_slim, ubdc_slim)
+    join_datasets(FIXTURES / "ppd_sample.csv", epc_slim, ubdc_slim, dst=dst)
+    result = pd.read_parquet(dst)
     assert len(result) == 4
     assert set(result["match_tier"]) == {1, 2}
 
@@ -700,12 +703,14 @@ def test_join_tier2_postcode_filter_excludes_nonmatching_epc(
 
 
 def test_join_datasets_result_has_no_duplicate_transactions(
-    epc_slim: pathlib.Path,
+    epc_slim: pathlib.Path, tmp_path: pathlib.Path
 ) -> None:
     """Combining tier1 and tier2 must not produce duplicate transaction IDs."""
-    result = join_datasets(
-        FIXTURES / "ppd_sample.csv", epc_slim, FIXTURES / "ubdc_sample.csv"
+    dst = tmp_path / "matched.parquet"
+    join_datasets(
+        FIXTURES / "ppd_sample.csv", epc_slim, FIXTURES / "ubdc_sample.csv", dst=dst
     )
+    result = pd.read_parquet(dst)
     assert result["transaction_unique_identifier"].nunique() == len(result)
 
 
@@ -726,7 +731,7 @@ def test_join_tier2_accepts_parquet_path_for_tier1(
 
 
 def test_join_datasets_calls_callback_with_tier1_dataframe(
-    epc_slim: pathlib.Path,
+    epc_slim: pathlib.Path, tmp_path: pathlib.Path
 ) -> None:
     """on_tier1_complete is called once with the tier 1 DataFrame before tier 2 runs."""
     calls: list[pd.DataFrame] = []
@@ -734,20 +739,26 @@ def test_join_datasets_calls_callback_with_tier1_dataframe(
         FIXTURES / "ppd_sample.csv",
         epc_slim,
         FIXTURES / "ubdc_sample.csv",
+        dst=tmp_path / "matched.parquet",
         on_tier1_complete=calls.append,
     )
     assert len(calls) == 1
     assert (calls[0]["match_tier"] == 1).all()
 
 
-def test_join_datasets_no_callback_does_not_raise(epc_slim: pathlib.Path) -> None:
-    """join_datasets without on_tier1_complete runs normally."""
-    result = join_datasets(
+def test_join_datasets_no_callback_does_not_raise(
+    epc_slim: pathlib.Path, tmp_path: pathlib.Path
+) -> None:
+    """join_datasets without on_tier1_complete writes result to dst."""
+    dst = tmp_path / "matched.parquet"
+    join_datasets(
         FIXTURES / "ppd_sample.csv",
         epc_slim,
         FIXTURES / "ubdc_sample.csv",
+        dst=dst,
     )
-    assert len(result) == 4
+    assert dst.exists()
+    assert len(pd.read_parquet(dst)) == 4
 
 
 # ---------------------------------------------------------------------------
@@ -812,12 +823,10 @@ def test_join_datasets_accepts_prepared_ppd_parquet(
 ) -> None:
     """join_datasets must produce the same result when fed a slim PPD Parquet."""
     ppd_slim = tmp_path / "ppd_slim.parquet"
+    dst = tmp_path / "matched.parquet"
     prepare_ppd(FIXTURES / "ppd_sample.csv", ppd_slim)
-    result = join_datasets(
-        ppd_slim,
-        epc_slim,
-        FIXTURES / "ubdc_sample.csv",
-    )
+    join_datasets(ppd_slim, epc_slim, FIXTURES / "ubdc_sample.csv", dst=dst)
+    result = pd.read_parquet(dst)
     assert len(result) == 4
     assert set(result["match_tier"]) == {1, 2}
 
