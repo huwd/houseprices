@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,28 +12,37 @@
       --sans-font: -apple-system, BlinkMacSystemFont, "avenir next", avenir,
         helvetica, "helvetica neue", ubuntu, roboto, noto, "segoe ui", arial, sans-serif;
     }
+
     @media (prefers-color-scheme: light) {
       :root {
-        --color-accent:  #176da5;
-        --color-bg:      #f9f9f9;
-        --color-text:    #000000;
-        --color-muted:   rgba(0,0,0,0.55);
-        --color-border:  #dddddd;
+        --color-accent: #176da5;
+        --color-bg: #f9f9f9;
+        --color-text: #000000;
+        --color-muted: rgba(0, 0, 0, 0.55);
+        --color-border: #dddddd;
         --color-card-bg: #ffffff;
       }
     }
+
     @media (prefers-color-scheme: dark) {
       :root {
-        --color-accent:  #76cbff;
-        --color-bg:      #171a23;
-        --color-text:    #ffffff;
-        --color-muted:   rgba(255,255,255,0.55);
-        --color-border:  #2e3347;
+        --color-accent: #76cbff;
+        --color-bg: #171a23;
+        --color-text: #ffffff;
+        --color-muted: rgba(255, 255, 255, 0.55);
+        --color-border: #2e3347;
         --color-card-bg: #1f2433;
       }
     }
 
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
       font-family: var(--sans-font);
       background: var(--color-bg);
@@ -40,10 +50,16 @@
       -webkit-font-smoothing: antialiased;
       line-height: 1.5;
     }
-    a { color: var(--color-accent); }
+
+    a {
+      color: var(--color-accent);
+    }
 
     /* ── Header ── */
-    header { border-bottom: 1px solid var(--color-text); }
+    header {
+      border-bottom: 1px solid var(--color-text);
+    }
+
     header ul {
       max-width: 43rem;
       margin: 0 auto;
@@ -53,9 +69,19 @@
       gap: 1rem;
       padding: 1rem 2rem;
     }
-    header li:first-child { font-weight: 600; }
-    header a { color: var(--color-text); text-decoration: none; }
-    header a:hover { text-decoration: underline; }
+
+    header li:first-child {
+      font-weight: 600;
+    }
+
+    header a {
+      color: var(--color-text);
+      text-decoration: none;
+    }
+
+    header a:hover {
+      text-decoration: underline;
+    }
 
     /* ── Page title ── */
     .page-title {
@@ -63,10 +89,23 @@
       margin: 0 auto;
       padding: 1.5rem 2rem 0;
     }
+
     .page-title h1 {
       font-size: 1.75rem;
       font-weight: 600;
       line-height: 1.2;
+      margin: 0 0 0.25rem;
+    }
+
+    .page-title h2 {
+      font-size: 1rem;
+      font-weight: 400;
+      color: var(--color-muted);
+      margin: 0 0 0.5rem;
+    }
+
+    .intro-text {
+      font-size: 0.9rem;
       margin: 0 0 1rem;
     }
 
@@ -86,21 +125,45 @@
       color: var(--color-text) !important;
       border-color: var(--color-border) !important;
     }
-    .info, .legend {
+
+    .info,
+    .legend {
       background: var(--color-card-bg);
       color: var(--color-text);
       padding: 0.6rem 0.8rem;
       border-radius: 4px;
-      box-shadow: 0 1px 5px rgba(0,0,0,0.25);
+      box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
       font-size: 0.85rem;
       line-height: 1.5;
     }
-    .info h4 { font-weight: 600; margin-bottom: 2px; font-size: 0.95rem; }
-    .info .muted { color: var(--color-muted); font-size: 0.8rem; }
-    .legend-title { font-weight: 600; margin-bottom: 4px; }
-    .legend-row { display: flex; align-items: center; gap: 6px; }
+
+    .info h4 {
+      font-weight: 600;
+      margin-bottom: 2px;
+      font-size: 0.95rem;
+    }
+
+    .info .muted {
+      color: var(--color-muted);
+      font-size: 0.8rem;
+    }
+
+    .legend-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
     .legend-swatch {
-      width: 16px; height: 10px; border-radius: 2px; flex-shrink: 0;
+      width: 16px;
+      height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
     }
 
     /* ── Stats strip ── */
@@ -112,9 +175,21 @@
       padding: 1.5rem 2rem;
       border-bottom: 1px solid var(--color-border);
     }
-    .stat { display: flex; flex-direction: column; }
-    .stat-value { font-size: 1.5rem; font-weight: 600; }
-    .stat-label { font-size: 0.78rem; color: var(--color-muted); }
+
+    .stat {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+
+    .stat-label {
+      font-size: 0.78rem;
+      color: var(--color-muted);
+    }
 
     /* ── Tables ── */
     .tables-row {
@@ -125,13 +200,26 @@
       margin: 0 auto;
       padding: 2rem 2rem 0;
     }
-    h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-    th, td {
+
+    h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    th,
+    td {
       text-align: left;
       padding: 0.4rem 0;
       border-bottom: 1px solid var(--color-border);
     }
+
     th {
       font-weight: 600;
       font-size: 0.75rem;
@@ -139,7 +227,11 @@
       letter-spacing: 0.04em;
       color: var(--color-muted);
     }
-    td:last-child, th:last-child { text-align: right; }
+
+    td:last-child,
+    th:last-child {
+      text-align: right;
+    }
 
     /* ── Methodology ── */
     .methodology {
@@ -147,240 +239,490 @@
       margin: 0 auto;
       padding: 1.5rem 2rem 3rem;
       font-size: 0.85rem;
+    }
+
+    .methodology p+p {
+      margin-top: 0.5rem;
+    }
+
+    .methodology h3 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-top: 1.5rem;
+    }
+
+    .methodology h3 + p {
+      font-size: 0.75rem;
       color: var(--color-muted);
     }
-    .methodology p + p { margin-top: 0.5rem; }
+
+    .map-link {
+      color: var(--color-accent);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .map-link:hover {
+      text-decoration: underline;
+    }
+
+    /* ── Range filter (legend) ── */
+    .range-filter {
+      margin-top: 8px;
+      border-top: 1px solid var(--color-border);
+      padding-top: 6px;
+    }
+
+    .range-wrap {
+      position: relative;
+      height: 18px;
+      margin: 4px 0 2px;
+    }
+
+    .range-track {
+      position: absolute;
+      top: 7px;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: var(--color-border);
+      border-radius: 2px;
+      pointer-events: none;
+    }
+
+    .range-fill {
+      position: absolute;
+      height: 100%;
+      background: var(--color-accent);
+      border-radius: 2px;
+    }
+
+    .range-wrap input[type=range] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 18px;
+      pointer-events: none;
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      margin: 0;
+    }
+
+    .range-wrap input[type=range]::-webkit-slider-thumb {
+      pointer-events: all;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--color-accent);
+      cursor: pointer;
+      -webkit-appearance: none;
+      border: 2px solid var(--color-card-bg);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    .range-wrap input[type=range]::-moz-range-thumb {
+      pointer-events: all;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--color-accent);
+      cursor: pointer;
+      border: 2px solid var(--color-card-bg);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    .range-wrap input[type=range]::-webkit-slider-runnable-track {
+      background: transparent;
+    }
+
+    .range-wrap input[type=range]::-moz-range-track {
+      background: transparent;
+    }
+
+    .range-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--color-muted);
+      margin-top: 2px;
+    }
 
     /* ── Responsive ── */
     @media (max-width: 560px) {
-      .tables-row { grid-template-columns: 1fr; }
-      .stats-strip { gap: 1rem; }
+      .tables-row {
+        grid-template-columns: 1fr;
+      }
+
+      .stats-strip {
+        gap: 1rem;
+      }
     }
   </style>
 </head>
+
 <body>
 
-<header>
-  <ul>
-    <li><a href="https://www.huwdiprose.co.uk/">Huw Diprose</a></li>
-  </ul>
-</header>
+  <header>
+    <ul>
+      <li><a href="https://www.huwdiprose.co.uk/">Huw Diprose</a></li>
+    </ul>
+  </header>
 
-<div class="page-title">
-  <h1>House Prices per Square Metre in England &amp; Wales</h1>
-</div>
-
-<div id="map"></div>
-
-<div class="stats-strip">
-  <div class="stat">
-    <span class="stat-value" id="stat-median">—</span>
-    <span class="stat-label">National median £/m²</span>
+  <div class="page-title">
+    <h1>House Prices per Metre² in England &amp; Wales</h1>
+    <h2>An analysis of government open data, mapped by <a href="https://www.huwdiprose.co.uk/">Huw Diprose</a></h2>
+    <p class="intro-text">This map shows the average price per m² of houses in each postcode district in
+      England &amp; Wales. It is inspired by the pioneering work of
+      <a href="https://houseprices.anna.ps/">Anna Powell-Smith</a> in 2017,
+      re-run here with data matching 22,500,878 sales from Aug 2007 - Jan 2026.
+    </p>
+    <p id="price-range-text" class="intro-text"></p>
   </div>
-  <div class="stat">
-    <span class="stat-value" id="stat-districts">—</span>
-    <span class="stat-label">Postcode districts</span>
+
+  <div id="map"></div>
+
+  <div class="stats-strip">
+    <div class="stat">
+      <span class="stat-value" id="stat-median">—</span>
+      <span class="stat-label">National median £/m²</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-districts">—</span>
+      <span class="stat-label">Postcode districts</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-sales">—</span>
+      <span class="stat-label">Sales matched</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-range">—</span>
+      <span class="stat-label">Data range</span>
+    </div>
   </div>
-  <div class="stat">
-    <span class="stat-value" id="stat-sales">—</span>
-    <span class="stat-label">Sales matched</span>
+
+  <div class="tables-row">
+    <div>
+      <h2>Most expensive</h2>
+      <table id="tbl-top">
+        <thead>
+          <tr>
+            <th>District</th>
+            <th>£/m²</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div>
+      <h2>Least expensive</h2>
+      <table id="tbl-bottom">
+        <thead>
+          <tr>
+            <th>District</th>
+            <th>£/m²</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
-  <div class="stat">
-    <span class="stat-value" id="stat-range">—</span>
-    <span class="stat-label">Data range</span>
+
+  <div class="methodology">
+    <p>Sale prices are taken from
+      <a href="https://www.gov.uk/government/collections/price-paid-data">HM Land Registry's
+        Price Paid dataset</a> (standard residential sales to individuals, Aug 2007–Jan 2026).
+      Floor area per property is taken from
+      <a href="https://epc.opendatacommunities.org/">Energy Performance Certificates</a>,
+      using the most recent certificate lodged for each property.
+    </p>
+    <p>Each sale is matched to its EPC in two stages. First, an exact match on
+      the property's Unique Property Reference Number (UPRN) using the
+      <a href="https://doi.org/10.20394/agu7hprj">UBDC Price Paid–UPRN lookup table</a>,
+      which covers transactions up to January 2022. For sales after that date — where
+      no UPRN link is available — a second stage matches on postcode plus a normalised
+      address string (combining sub-address, building name or number, and street name).
+    </p>
+    <p>The price per m² for each postcode district is the total transaction value of all
+      matched sales divided by their total floor area — not a mean of per-property ratios.
+      Districts with fewer than 10 matched sales are excluded. The occasional gap is a
+      district with no matching residential transactions, for example industrial estates
+      or parts of the City of London.
+    </p>
+    <h3>Attribution</h3>
+    <p>Price Paid data produced by HM Land Registry © Crown copyright 2026, licensed under the
+      <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence v3.0</a>.
+      EPC data © Crown copyright DLUHC, licensed under the Open Government Licence v3.0.
+      <a href="https://doi.org/10.20394/agu7hprj">UBDC PPD–UPRN lookup</a> published as open data
+      by the Urban Big Data Centre, University of Glasgow.
+      Contains Ordnance Survey data © Crown copyright and database right 2026.
+      Contains Royal Mail data © Royal Mail copyright and database right 2026.
+      Contains National Statistics data © Crown copyright and database right 2026.
+      Postcode district derived boundaries reproduced under the Open Government Licence v3.0.
+      Postal boundaries © GeoLytix copyright and database right 2012.
+      Map tiles © <a href="https://carto.com/attributions">CARTO</a>,
+      data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.
+    </p>
   </div>
-</div>
 
-<div class="tables-row">
-  <div>
-    <h2>Most expensive</h2>
-    <table id="tbl-top">
-      <thead><tr><th>District</th><th>£/m²</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-  <div>
-    <h2>Least expensive</h2>
-    <table id="tbl-bottom">
-      <thead><tr><th>District</th><th>£/m²</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-</div>
+  <script>
+    // ── Data injected by build_page.py ────────────────────────────────────────────
+    const GEOJSON = __GEOJSON__;
+    const STATS = __STATS__;
 
-<div class="methodology">
-  <p>Price per square metre by postcode district. Calculated from
-  <a href="https://www.gov.uk/government/collections/price-paid-data">HM Land Registry
-  Price Paid Data</a> (August 2007–January 2026) joined to
-  <a href="https://epc.opendatacommunities.org/">Energy Performance Certificates</a>
-  using the
-  <a href="https://doi.org/10.20394/agu7hprj">UBDC PPD→UPRN lookup</a>
-  (direct UPRN match 1995–2022; address normalisation 2022–2026).
-  Figures show total transaction value divided by total floor area —
-  not a mean of per-property ratios. Minimum 10 sales per district.
-  Inspired by <a href="https://houseprices.anna.ps/">Anna Powell-Smith's analysis</a>.</p>
-  <p>Price Paid Data © Crown Copyright HM Land Registry.
-  EPC data © Crown Copyright DLUHC.
-  Postcode district boundaries © Crown Copyright / database right 2025.
-  An Ordnance Survey / EDINA supplied service.
-  Map tiles © <a href="https://carto.com/attributions">CARTO</a>,
-  data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.</p>
-</div>
+    // ── Stats strip ───────────────────────────────────────────────────────────────
+    document.getElementById('stat-median').textContent =
+      '£' + STATS.median_price_per_sqm.toLocaleString();
+    document.getElementById('stat-districts').textContent =
+      STATS.num_districts.toLocaleString();
+    document.getElementById('stat-sales').textContent =
+      STATS.total_sales.toLocaleString();
+    document.getElementById('stat-range').textContent = STATS.date_range;
 
-<script>
-// ── Data injected by build_page.py ────────────────────────────────────────────
-const GEOJSON = __GEOJSON__;
-const STATS   = __STATS__;
+    // ── Tables ────────────────────────────────────────────────────────────────────
+    function populateTable(id, rows) {
+      const tbody = document.querySelector('#' + id + ' tbody');
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td><a href="#" class="map-link" data-district="${r.district}">${r.district}</a></td>` +
+          `<td>£${r.price_per_sqm.toLocaleString()}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+    populateTable('tbl-top', STATS.top10);
+    populateTable('tbl-bottom', STATS.bottom10);
 
-// ── Stats strip ───────────────────────────────────────────────────────────────
-document.getElementById('stat-median').textContent =
-  '£' + STATS.median_price_per_sqm.toLocaleString();
-document.getElementById('stat-districts').textContent =
-  STATS.num_districts.toLocaleString();
-document.getElementById('stat-sales').textContent =
-  STATS.total_sales.toLocaleString();
-document.getElementById('stat-range').textContent = STATS.date_range;
+    // ── Colour scale (7-class YlOrRd, quantile breaks) ───────────────────────────
+    const PALETTE = [
+      '#ffffb2', '#fed976', '#feb24c', '#fd8d3c',
+      '#fc4e2a', '#e31a1c', '#b10026',
+    ];
 
-// ── Tables ────────────────────────────────────────────────────────────────────
-function populateTable(id, rows) {
-  const tbody = document.querySelector('#' + id + ' tbody');
-  rows.forEach(r => {
-    const tr = document.createElement('tr');
-    tr.innerHTML =
-      `<td>${r.district}</td>` +
-      `<td>£${r.price_per_sqm.toLocaleString()}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-populateTable('tbl-top',    STATS.top10);
-populateTable('tbl-bottom', STATS.bottom10);
+    const allPrices = GEOJSON.features
+      .map(f => f.properties.price_per_sqm)
+      .filter(v => v != null)
+      .sort((a, b) => a - b);
 
-// ── Colour scale (7-class YlOrRd, quantile breaks) ───────────────────────────
-const PALETTE = [
-  '#ffffb2', '#fed976', '#feb24c', '#fd8d3c',
-  '#fc4e2a', '#e31a1c', '#b10026',
-];
+    // Quantile break values
+    const breaks = [0, 1 / 7, 2 / 7, 3 / 7, 4 / 7, 5 / 7, 6 / 7, 1].map(q => {
+      const i = Math.min(Math.floor(q * allPrices.length), allPrices.length - 1);
+      return allPrices[i];
+    });
 
-const allPrices = GEOJSON.features
-  .map(f => f.properties.price_per_sqm)
-  .filter(v => v != null)
-  .sort((a, b) => a - b);
+    function getColour(price) {
+      if (price == null) return '#cccccc';
+      for (let i = breaks.length - 2; i >= 0; i--) {
+        if (price >= breaks[i]) return PALETTE[i];
+      }
+      return PALETTE[0];
+    }
 
-// Quantile break values
-const breaks = [0, 1/7, 2/7, 3/7, 4/7, 5/7, 6/7, 1].map(q => {
-  const i = Math.min(Math.floor(q * allPrices.length), allPrices.length - 1);
-  return allPrices[i];
-});
+    // ── Price range filter ────────────────────────────────────────────────────────
+    let filterLo = 0, filterHi = 100; // percentile indices into allPrices
 
-function getColour(price) {
-  if (price == null) return '#cccccc';
-  for (let i = breaks.length - 2; i >= 0; i--) {
-    if (price >= breaks[i]) return PALETTE[i];
-  }
-  return PALETTE[0];
-}
+    function priceAtPct(pct) {
+      const i = Math.min(Math.floor(pct / 100 * allPrices.length), allPrices.length - 1);
+      return allPrices[i];
+    }
 
-// ── Map ───────────────────────────────────────────────────────────────────────
-const map = L.map('map').fitBounds([[49.8, -6.5], [55.9, 2.0]]);
-map.setZoom(map.getZoom() + 1);
+    function inFilter(price) {
+      if (price == null) return false;
+      return price >= priceAtPct(filterLo) && price <= priceAtPct(filterHi);
+    }
 
-L.tileLayer(
-  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  {
-    attribution:
-      '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> ' +
-      'contributors © <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 19,
-  }
-).addTo(map);
+    // ── Map ───────────────────────────────────────────────────────────────────────
+    const map = L.map('map').fitBounds([[49.8, -6.5], [55.9, 2.0]]);
+    map.setZoom(map.getZoom() + 1);
 
-// Info control (top-right)
-const infoCtrl = L.control({ position: 'topright' });
-infoCtrl.onAdd = function () {
-  this._div = L.DomUtil.create('div', 'info');
-  this._render(null);
-  return this._div;
-};
-infoCtrl._render = function (props) {
-  if (!props) {
-    this._div.innerHTML = '<h4>UK House Prices</h4>Hover over a district';
-    return;
-  }
-  const price = props.price_per_sqm != null
-    ? '£' + props.price_per_sqm.toLocaleString() + '/m²'
-    : 'No data';
-  const sales = props.num_sales != null
-    ? props.num_sales.toLocaleString() + ' sales'
-    : '';
-  this._div.innerHTML =
-    `<h4>${props.PostDist}</h4>${price}` +
-    (sales ? `<br><span class="muted">Based on ${sales} sales from ${STATS.date_range}</span>` : '');
-};
-infoCtrl.addTo(map);
+    L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      {
+        attribution:
+          '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> ' +
+          'contributors © <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 19,
+      }
+    ).addTo(map);
 
-// GeoJSON layer
-let activeLayer = null;
+    // Info control (top-right)
+    const infoCtrl = L.control({position: 'topright'});
+    infoCtrl.onAdd = function () {
+      this._div = L.DomUtil.create('div', 'info');
+      this._render(null);
+      return this._div;
+    };
+    infoCtrl._render = function (props) {
+      if (!props) {
+        this._div.innerHTML = '<h4>UK House Prices</h4>Hover over a district';
+        return;
+      }
+      const price = props.price_per_sqm != null
+        ? '£' + props.price_per_sqm.toLocaleString() + '/m²'
+        : 'No data';
+      const sales = props.num_sales != null
+        ? props.num_sales.toLocaleString() + ' sales'
+        : '';
+      this._div.innerHTML =
+        `<h4>${props.PostDist}</h4>${price}` +
+        (sales ? `<br><span class="muted">Based on ${sales}<span><br><span class="muted">${STATS.date_range}</span>` : '');
+    };
+    infoCtrl.addTo(map);
 
-function districtStyle(feature) {
-  return {
-    fillColor:   getColour(feature.properties.price_per_sqm),
-    fillOpacity: 0.75,
-    color:       'rgba(255,255,255,0.5)',
-    weight:      0.5,
-  };
-}
+    // GeoJSON layer
+    let activeLayer = null;
 
-function onMouseover(e) {
-  const layer = e.target;
-  layer.setStyle({ weight: 1.5, color: '#555', fillOpacity: 0.9 });
-  layer.bringToFront();
-  infoCtrl._render(layer.feature.properties);
-}
+    function districtStyle(feature) {
+      const price = feature.properties.price_per_sqm;
+      const active = filterLo === 0 && filterHi === 100 || inFilter(price);
+      return {
+        fillColor: active ? getColour(price) : '#bbbbbb',
+        fillOpacity: active ? 0.75 : 0.2,
+        color: 'rgba(255,255,255,0.5)',
+        weight: 0.5,
+      };
+    }
 
-function onMouseout(e) {
-  if (activeLayer !== e.target) geoLayer.resetStyle(e.target);
-  infoCtrl._render(null);
-}
+    function onMouseover(e) {
+      const layer = e.target;
+      layer.setStyle({weight: 1.5, color: '#555', fillOpacity: 0.9});
+      layer.bringToFront();
+      infoCtrl._render(layer.feature.properties);
+    }
 
-function onClick(e) {
-  if (activeLayer) geoLayer.resetStyle(activeLayer);
-  activeLayer = e.target;
-  activeLayer.setStyle({ weight: 2, color: '#333', fillOpacity: 0.9 });
-  infoCtrl._render(activeLayer.feature.properties);
-  L.DomEvent.stopPropagation(e);
-}
+    function onMouseout(e) {
+      if (activeLayer !== e.target) geoLayer.resetStyle(e.target);
+      infoCtrl._render(null);
+    }
 
-map.on('click', () => {
-  if (activeLayer) { geoLayer.resetStyle(activeLayer); activeLayer = null; }
-  infoCtrl._render(null);
-});
+    function onClick(e) {
+      if (activeLayer) geoLayer.resetStyle(activeLayer);
+      activeLayer = e.target;
+      activeLayer.setStyle({weight: 2, color: '#333', fillOpacity: 0.9});
+      infoCtrl._render(activeLayer.feature.properties);
+      L.DomEvent.stopPropagation(e);
+    }
 
-const geoLayer = L.geoJSON(GEOJSON, {
-  style: districtStyle,
-  onEachFeature(feature, layer) {
-    layer.on({ mouseover: onMouseover, mouseout: onMouseout, click: onClick });
-  },
-}).addTo(map);
+    map.on('click', () => {
+      if (activeLayer) {geoLayer.resetStyle(activeLayer); activeLayer = null;}
+      infoCtrl._render(null);
+    });
 
-// Legend (bottom-right)
-const legendCtrl = L.control({ position: 'bottomright' });
-legendCtrl.onAdd = function () {
-  const div = L.DomUtil.create('div', 'legend');
-  div.innerHTML = '<div class="legend-title">£/m²</div>';
-  PALETTE.forEach((colour, i) => {
-    const lo = '£' + Math.round(breaks[i]).toLocaleString();
-    const hi = i < PALETTE.length - 1
-      ? '–£' + Math.round(breaks[i + 1]).toLocaleString()
-      : '+';
-    div.innerHTML +=
-      `<div class="legend-row">` +
-      `<span class="legend-swatch" style="background:${colour}"></span>` +
-      `<span>${lo}${hi}</span></div>`;
-  });
-  return div;
-};
-legendCtrl.addTo(map);
-</script>
+    const districtLayers = {};
+
+    const geoLayer = L.geoJSON(GEOJSON, {
+      style: districtStyle,
+      onEachFeature(feature, layer) {
+        districtLayers[feature.properties.PostDist] = layer;
+        layer.on({mouseover: onMouseover, mouseout: onMouseout, click: onClick});
+      },
+    }).addTo(map);
+
+    // ── Clickable district / city links ───────────────────────────────────────────
+    function dLink(code) {
+      return `<a href="#" class="map-link" data-district="${code}">${code}</a>`;
+    }
+
+    function cLink(name, lat, lng, zoom) {
+      return `<a href="#" class="map-link" data-lat="${lat}" data-lng="${lng}" data-zoom="${zoom}">${name}</a>`;
+    }
+
+    const top2 = STATS.top10.slice(0, 2);
+    const bot2 = STATS.bottom10.slice(0, 2);
+    document.getElementById('price-range-text').innerHTML =
+      `Sale prices range from more than £${top2[0].price_per_sqm.toLocaleString()}/m² in ` +
+      `${dLink(top2[0].district)} and ${dLink(top2[1].district)}, ` +
+      `to under £${bot2[1].price_per_sqm.toLocaleString()}/m² in postcodes like ` +
+      `${dLink(bot2[0].district)} and ${dLink(bot2[1].district)}. ` +
+      `Zoom to ${cLink('London', 51.51, -0.13, 10)}, ` +
+      `${cLink('Birmingham', 52.48, -1.90, 11)}, ` +
+      `${cLink('Manchester', 53.48, -2.24, 11)}.`;
+
+    document.addEventListener('click', function (e) {
+      const a = e.target.closest('a.map-link');
+      if (!a) return;
+      e.preventDefault();
+      if (a.dataset.district) {
+        const layer = districtLayers[a.dataset.district];
+        if (!layer) return;
+        map.flyToBounds(layer.getBounds(), {padding: [60, 60], duration: 4.0, maxZoom: 13});
+        map.once('moveend', function () {
+          if (activeLayer) geoLayer.resetStyle(activeLayer);
+          activeLayer = layer;
+          layer.setStyle({weight: 2, color: '#333', fillOpacity: 0.9});
+          layer.bringToFront();
+          infoCtrl._render(layer.feature.properties);
+        });
+      } else if (a.dataset.lat) {
+        map.flyTo(
+          [parseFloat(a.dataset.lat), parseFloat(a.dataset.lng)],
+          parseInt(a.dataset.zoom),
+          {duration: 4.0}
+        );
+      }
+    });
+
+    // Legend (bottom-right)
+    const legendCtrl = L.control({position: 'bottomright'});
+    legendCtrl.onAdd = function () {
+      const div = L.DomUtil.create('div', 'legend');
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
+      div.innerHTML = '<div class="legend-title">£/m²</div>';
+      PALETTE.forEach((colour, i) => {
+        const lo = '£' + Math.round(breaks[i]).toLocaleString();
+        const hi = i < PALETTE.length - 1
+          ? '–£' + Math.round(breaks[i + 1]).toLocaleString()
+          : '+';
+        div.innerHTML +=
+          `<div class="legend-row">` +
+          `<span class="legend-swatch" style="background:${colour}"></span>` +
+          `<span>${lo}${hi}</span></div>`;
+      });
+      div.innerHTML += `
+        <div class="range-filter">
+          <div class="range-wrap">
+            <div class="range-track"><div class="range-fill" id="rf-fill"></div></div>
+            <input type="range" id="rf-lo" min="0" max="100" value="0" step="1">
+            <input type="range" id="rf-hi" min="0" max="100" value="100" step="1">
+          </div>
+          <div class="range-labels">
+            <span id="rf-lo-label">£${Math.round(allPrices[0]).toLocaleString()}</span>
+            <span id="rf-hi-label">£${Math.round(allPrices[allPrices.length - 1]).toLocaleString()}</span>
+          </div>
+        </div>`;
+      return div;
+    };
+    legendCtrl.addTo(map);
+
+    // Wire up range filter
+    const rfLo = document.getElementById('rf-lo');
+    const rfHi = document.getElementById('rf-hi');
+    const rfFill = document.getElementById('rf-fill');
+    const rfLoLabel = document.getElementById('rf-lo-label');
+    const rfHiLabel = document.getElementById('rf-hi-label');
+
+    function updateFilter() {
+      let lo = parseInt(rfLo.value);
+      let hi = parseInt(rfHi.value);
+      if (lo > hi) {
+        if (document.activeElement === rfLo) rfLo.value = lo = hi;
+        else rfHi.value = hi = lo;
+      }
+      filterLo = lo;
+      filterHi = hi;
+      rfFill.style.left = lo + '%';
+      rfFill.style.right = (100 - hi) + '%';
+      rfLoLabel.textContent = '£' + Math.round(priceAtPct(lo)).toLocaleString();
+      rfHiLabel.textContent = '£' + Math.round(priceAtPct(hi)).toLocaleString();
+      geoLayer.setStyle(districtStyle);
+    }
+
+    rfLo.addEventListener('input', updateFilter);
+    rfHi.addEventListener('input', updateFilter);
+  </script>
 </body>
+
 </html>
