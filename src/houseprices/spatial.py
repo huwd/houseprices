@@ -46,6 +46,13 @@ def build_uprn_lsoa(
         uprn_src = f"read_csv('{uprn}')"
     boundary = str(boundary_path)
 
+    # Detect the geometry column name — it varies by file format and source
+    # (GeoPackage from ONS uses SHAPE; GeoJSON fixtures use geom).
+    schema = con.execute(
+        f"DESCRIBE SELECT * FROM ST_Read('{boundary}') LIMIT 0"
+    ).fetchall()
+    geom_col = next(col[0] for col in schema if "GEOMETRY" in col[1].upper())
+
     if uprn_filter is not None:
         con.register("_uprn_filter", pd.DataFrame({"UPRN": list(uprn_filter)}))
         filter_clause = "WHERE u.UPRN IN (SELECT UPRN FROM _uprn_filter)"
@@ -61,7 +68,7 @@ def build_uprn_lsoa(
         JOIN ST_Read('{boundary}') AS l
           ON ST_Within(
               ST_Point(u.X_COORDINATE, u.Y_COORDINATE),
-              l.geom
+              l.{geom_col}
           )
         {filter_clause}
     """).df()
