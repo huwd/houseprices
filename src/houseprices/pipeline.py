@@ -622,7 +622,11 @@ def run(
             ppd_path, epc_path, ubdc_path, on_tier1_complete=_on_tier1
         ),
     )
-    uprn_lsoa = step("uprn_lsoa", lambda: build_uprn_lsoa(uprn_path, boundary_path))
+    matched_uprns = set(matched["uprn"].dropna().astype(int))
+    uprn_lsoa = step(
+        "uprn_lsoa",
+        lambda: build_uprn_lsoa(uprn_path, boundary_path, matched_uprns),
+    )
     console.print()
 
     # Step 3: attach LSOA codes to matched records via UPRN.

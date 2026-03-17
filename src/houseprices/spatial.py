@@ -24,11 +24,16 @@ def _configure_duckdb(con: duckdb.DuckDBPyConnection) -> None:
 def build_uprn_lsoa(
     uprn_path: str | pathlib.Path,
     boundary_path: str | pathlib.Path,
+    uprn_filter: set[int] | None = None,
 ) -> pd.DataFrame:
     """Join UPRN coordinates to LSOA boundaries via point-in-polygon.
 
     Returns a DataFrame with columns: UPRN, LSOA21CD, LSOA21NM.
     Only UPRNs that fall within a boundary polygon are included.
+
+    When *uprn_filter* is provided, only UPRNs in that set are considered.
+    Pass an empty set to get an empty result.  Pass ``None`` (default) for
+    the original behaviour — all UPRNs within the boundary.
     """
     con = duckdb.connect()
     _configure_duckdb(con)
@@ -41,6 +46,14 @@ def build_uprn_lsoa(
         uprn_src = f"read_csv('{uprn}')"
     boundary = str(boundary_path)
 
+    if uprn_filter is not None:
+        con.register(
+            "_uprn_filter", pd.DataFrame({"UPRN": list(uprn_filter)})
+        )
+        filter_clause = "WHERE u.UPRN IN (SELECT UPRN FROM _uprn_filter)"
+    else:
+        filter_clause = ""
+
     return con.execute(f"""
         SELECT
             u.UPRN,
@@ -52,4 +65,5 @@ def build_uprn_lsoa(
               ST_Point(u.X_COORDINATE, u.Y_COORDINATE),
               l.geom
           )
+        {filter_clause}
     """).df()
