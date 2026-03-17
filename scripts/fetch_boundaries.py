@@ -51,9 +51,7 @@ def fetch_tile(z: int, x: int, y: int) -> bytes | None:
     return resp.content
 
 
-def mvt_coords_to_wgs84(
-    coords: list, tile_bounds: tuple, extent: int = 4096
-) -> list:
+def mvt_coords_to_wgs84(coords: list, tile_bounds: tuple, extent: int = 4096) -> list:
     """Recursively convert MVT tile coordinates to WGS84 [lon, lat]."""
     if not coords:
         return coords
@@ -107,8 +105,10 @@ def main(force: bool = False) -> None:
         # Clip box: strip the MVT buffer zone so overlapping tile edges don't
         # create self-intersecting polygons when fragments are merged.
         tile_box = shapely_box(
-            tile_bounds.west, tile_bounds.south,
-            tile_bounds.east, tile_bounds.north,
+            tile_bounds.west,
+            tile_bounds.south,
+            tile_bounds.east,
+            tile_bounds.north,
         )
         decoded = mapbox_vector_tile.decode(
             data, default_options={"y_coord_down": True}
@@ -123,7 +123,7 @@ def main(force: bool = False) -> None:
             try:
                 raw_geom = transform_geometry(feature["geometry"], tile_bounds)
                 geom = shapely_shape(raw_geom).buffer(0)  # repair winding
-                geom = geom.intersection(tile_box)        # strip buffer zone
+                geom = geom.intersection(tile_box)  # strip buffer zone
                 if geom.is_valid and not geom.is_empty:
                     district_geoms.setdefault(dist, []).append(geom)
             except Exception:

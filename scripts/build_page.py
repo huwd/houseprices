@@ -91,9 +91,7 @@ def main() -> None:
         for p in missing:
             print(f"Missing: {p}", file=sys.stderr)
         if BOUNDARIES_PATH in missing:
-            print(
-                "  Run: uv run scripts/fetch_boundaries.py", file=sys.stderr
-            )
+            print("  Run: uv run scripts/fetch_boundaries.py", file=sys.stderr)
         if CSV_PATH in missing:
             print(
                 "  Run the pipeline first: uv run python src/houseprices/pipeline.py",
@@ -117,9 +115,7 @@ def main() -> None:
     template = TEMPLATE_PATH.read_text()
     html = template.replace(
         "__GEOJSON__", json.dumps(geojson, separators=(",", ":"))
-    ).replace(
-        "__STATS__", json.dumps(stats, separators=(",", ":"))
-    )
+    ).replace("__STATS__", json.dumps(stats, separators=(",", ":")))
 
     OUT_HTML.write_text(html)
     size_kb = OUT_HTML.stat().st_size // 1024
