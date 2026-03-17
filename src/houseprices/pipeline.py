@@ -505,13 +505,17 @@ def aggregate_by_geography(
     Geographies with fewer than *min_sales* transactions are excluded.
     Result is sorted by price_per_sqm descending.
     """
-    df = matched.copy()
     col = geography.value
 
+    # Select only the columns needed for aggregation to avoid a full copy.
     if geography is Geography.POSTCODE_DISTRICT:
+        df = matched[["postcode", "price", "TOTAL_FLOOR_AREA"]].copy()
         df[col] = df["postcode"].str[:-3].str.strip()
+        df.drop(columns=["postcode"], inplace=True)
+    else:
+        df = matched[[col, "price", "TOTAL_FLOOR_AREA"]].copy()
 
-    df = df[df[col].notna()].copy()
+    df = df[df[col].notna()]
 
     grouped = (
         df.groupby(col)
@@ -695,20 +699,34 @@ def run(
             f"  [green]✓[/green]  {'matched':<18} {elapsed:<8} {n_rows:>14,} rows"
             f"  [dim]RSS {rss} MB[/dim]"
         )
-    matched = pd.read_parquet(matched_parquet)
-    matched_uprns = set(matched["uprn"].dropna().astype(int))
+    # Extract UPRNs via a lightweight DuckDB query so the full matched
+    # DataFrame is not in Python heap while the spatial join runs.
+    # Loading both simultaneously caused the cgroup OOM kill.
+    matched_uprns_df = duckdb.execute(
+        f"SELECT CAST(uprn AS BIGINT) AS uprn"
+        f" FROM read_parquet('{matched_parquet}')"
+        f" WHERE uprn IS NOT NULL"
+    ).df()
+    matched_uprns = set(matched_uprns_df["uprn"])
+    del matched_uprns_df
+
     uprn_lsoa = step(
         "uprn_lsoa",
         lambda: build_uprn_lsoa(uprn_path, boundary_path, matched_uprns),
     )
     console.print()
 
+    # Load matched only after the spatial step so the two don't compete for RAM.
+    matched = pd.read_parquet(matched_parquet)
+
     # Step 3: attach LSOA codes to matched records via UPRN.
     # Only Tier 1 records have a UBDC-confirmed UPRN (`uprn` column);
     # Tier 2 address-matched records get LSOA21CD = NaN and are excluded
     # from the LSOA output but still appear in the postcode district output.
     uprn_to_lsoa: pd.Series = uprn_lsoa.set_index("UPRN")["LSOA21CD"]
+    del uprn_lsoa
     matched["LSOA21CD"] = matched["uprn"].map(uprn_to_lsoa)
+    del uprn_to_lsoa
 
     # Step 4: match report — count rows in the slim PPD (all category A).
     is_parquet = str(ppd_path).endswith(".parquet")
@@ -737,6 +755,7 @@ def run(
         f"  [green]✓[/green]  {len(district_df):,} postcode districts"
         f"  →  {district_path}"
     )
+    del district_df
 
     lsoa_df = aggregate_by_geography(matched, Geography.LSOA, min_sales=min_sales)
     lsoa_path = output_dir / "price_per_sqm_lsoa.csv"
