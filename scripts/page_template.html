@@ -163,8 +163,8 @@
     <span class="stat-label">Sales matched</span>
   </div>
   <div class="stat">
-    <span class="stat-value">Jan 2026</span>
-    <span class="stat-label">PPD data through</span>
+    <span class="stat-value" id="stat-range">—</span>
+    <span class="stat-label">Data range</span>
   </div>
 </div>
 
@@ -216,6 +216,7 @@ document.getElementById('stat-districts').textContent =
   STATS.num_districts.toLocaleString();
 document.getElementById('stat-sales').textContent =
   STATS.total_sales.toLocaleString();
+document.getElementById('stat-range').textContent = STATS.date_range;
 
 // ── Tables ────────────────────────────────────────────────────────────────────
 function populateTable(id, rows) {
@@ -290,7 +291,7 @@ infoCtrl._render = function (props) {
     : '';
   this._div.innerHTML =
     `<h4>${props.PostDist}</h4>${price}` +
-    (sales ? `<br><span class="muted">${sales}</span>` : '');
+    (sales ? `<br><span class="muted">Based on ${sales} sales from ${STATS.date_range}</span>` : '');
 };
 infoCtrl.addTo(map);
 
