@@ -282,6 +282,7 @@ function getColour(price) {
 
 // ── Map ───────────────────────────────────────────────────────────────────────
 const map = L.map('map').fitBounds([[49.8, -6.5], [55.9, 2.0]]);
+map.setZoom(map.getZoom() + 1);
 
 L.tileLayer(
   'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
