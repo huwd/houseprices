@@ -152,38 +152,60 @@ def prepare_epc(src: str | pathlib.Path, dst: pathlib.Path) -> None:
     keeping only the most recent certificate per UPRN (by LODGEMENT_DATETIME
     DESC).  Rows without a UPRN are kept as-is (Tier 2 candidates).
     No-ops if *dst* already exists.
+
+    Uses a two-step approach to stay within the DuckDB memory limit:
+
+    1. Stream the 60-column CSV down to a 9-column slim Parquet (no sort).
+    2. Deduplicate the slim Parquet with GROUP BY + MAX_BY, which only keeps
+       one hash-table entry per UPRN — O(unique UPRNs) memory rather than
+       O(total rows) as a window function would require.
     """
     if dst.exists():
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
+    src_str = str(src)
+    tmp = dst.with_suffix(".tmp.parquet")
     con = duckdb.connect()
     _configure_duckdb(con)
-    con.execute(f"""
-        COPY (
-            WITH
-            ranked AS (
-                SELECT *,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY UPRN
-                        ORDER BY LODGEMENT_DATETIME DESC
-                    ) AS _rn
-                FROM read_csv('{src}')
+    try:
+        # Step 1: column projection — pure streaming, no window or sort.
+        con.execute(f"""
+            COPY (
+                SELECT
+                    UPRN, LODGEMENT_DATETIME, TOTAL_FLOOR_AREA,
+                    ADDRESS1, ADDRESS2, POSTCODE,
+                    BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING
+                FROM read_csv('{src_str}')
+            ) TO '{tmp}' (FORMAT PARQUET, COMPRESSION ZSTD)
+        """)
+        # Step 2: deduplicate from the slim Parquet.
+        # MAX_BY(value, key) returns the value from the row with the maximum
+        # key — equivalent to the most-recent-certificate logic above but
+        # implemented as a GROUP BY aggregate, not a window function.
+        con.execute(f"""
+            COPY (
+                SELECT
+                    UPRN,
+                    MAX(LODGEMENT_DATETIME) AS LODGEMENT_DATETIME,
+                    MAX_BY(TOTAL_FLOOR_AREA, LODGEMENT_DATETIME)
+                        AS TOTAL_FLOOR_AREA,
+                    MAX_BY(ADDRESS1, LODGEMENT_DATETIME) AS ADDRESS1,
+                    MAX_BY(ADDRESS2, LODGEMENT_DATETIME) AS ADDRESS2,
+                    MAX_BY(POSTCODE, LODGEMENT_DATETIME) AS POSTCODE,
+                    MAX_BY(BUILT_FORM, LODGEMENT_DATETIME) AS BUILT_FORM,
+                    MAX_BY(CONSTRUCTION_AGE_BAND, LODGEMENT_DATETIME)
+                        AS CONSTRUCTION_AGE_BAND,
+                    MAX_BY(CURRENT_ENERGY_RATING, LODGEMENT_DATETIME)
+                        AS CURRENT_ENERGY_RATING
+                FROM read_parquet('{tmp}')
                 WHERE UPRN IS NOT NULL
-            )
-            SELECT
-                UPRN, LODGEMENT_DATETIME, TOTAL_FLOOR_AREA,
-                ADDRESS1, ADDRESS2, POSTCODE,
-                BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING
-            FROM ranked WHERE _rn = 1
-            UNION ALL
-            SELECT
-                UPRN, LODGEMENT_DATETIME, TOTAL_FLOOR_AREA,
-                ADDRESS1, ADDRESS2, POSTCODE,
-                BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING
-            FROM read_csv('{src}')
-            WHERE UPRN IS NULL
-        ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
-    """)
+                GROUP BY UPRN
+                UNION ALL
+                SELECT * FROM read_parquet('{tmp}') WHERE UPRN IS NULL
+            ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
+        """)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def prepare_uprn(src: str | pathlib.Path, dst: pathlib.Path) -> None:
