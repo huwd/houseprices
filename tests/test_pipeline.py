@@ -722,6 +722,16 @@ def test_join_datasets_accepts_prepared_ppd_parquet(tmp_path: pathlib.Path) -> N
 # ---------------------------------------------------------------------------
 
 
+def test_configure_duckdb_disables_insertion_order_preservation() -> None:
+    """_configure_duckdb must always disable insertion-order preservation."""
+    con = duckdb.connect()
+    _configure_duckdb(con)
+    result = con.execute(
+        "SELECT current_setting('preserve_insertion_order')"
+    ).fetchone()[0]
+    assert str(result).lower() in ("false", "off", "0")
+
+
 def test_configure_duckdb_no_env_does_not_raise(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
