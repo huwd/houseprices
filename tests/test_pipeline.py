@@ -692,6 +692,32 @@ def test_join_tier2_postcode_filter_excludes_nonmatching_epc(
     assert 999999 not in (tier2["uprn"].dropna().tolist())
 
 
+def test_join_datasets_result_has_no_duplicate_transactions(
+    epc_slim: pathlib.Path,
+) -> None:
+    """Combining tier1 and tier2 must not produce duplicate transaction IDs."""
+    result = join_datasets(
+        FIXTURES / "ppd_sample.csv", epc_slim, FIXTURES / "ubdc_sample.csv"
+    )
+    assert result["transaction_unique_identifier"].nunique() == len(result)
+
+
+def test_join_tier2_accepts_parquet_path_for_tier1(
+    tmp_path: pathlib.Path,
+) -> None:
+    """_join_tier2 must work when given a Parquet path for tier1."""
+    epc_slim = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_sample.csv", epc_slim)
+    tier1_df = _join_tier1(
+        FIXTURES / "ppd_sample.csv", epc_slim, FIXTURES / "ubdc_sample.csv"
+    )
+    tier1_path = tmp_path / "tier1.parquet"
+    tier1_df.to_parquet(tier1_path, index=False)
+    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1_path)
+    assert len(tier2) == 3
+    assert (tier2["match_tier"] == 2).all()
+
+
 def test_join_datasets_calls_callback_with_tier1_dataframe(
     epc_slim: pathlib.Path,
 ) -> None:
