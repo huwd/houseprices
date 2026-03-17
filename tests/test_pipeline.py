@@ -629,49 +629,58 @@ def test_join_datasets_accepts_prepared_parquet(tmp_path: pathlib.Path) -> None:
 
 
 @pytest.fixture
-def tier1(epc_slim: pathlib.Path) -> pd.DataFrame:
-    return _join_tier1(
+def tier1(epc_slim: pathlib.Path, tmp_path: pathlib.Path) -> pathlib.Path:
+    dst = tmp_path / "tier1.parquet"
+    _join_tier1(
         FIXTURES / "ppd_sample.csv",
         epc_slim,
         FIXTURES / "ubdc_sample.csv",
+        dst,
     )
+    return dst
 
 
-def test_join_tier1_returns_only_tier1_rows(tier1: pd.DataFrame) -> None:
-    assert (tier1["match_tier"] == 1).all()
+def test_join_tier1_returns_only_tier1_rows(tier1: pathlib.Path) -> None:
+    assert (pd.read_parquet(tier1)["match_tier"] == 1).all()
 
 
-def test_join_tier1_contains_uprn_match(tier1: pd.DataFrame) -> None:
-    assert TXN_001 in tier1["transaction_unique_identifier"].values
+def test_join_tier1_contains_uprn_match(tier1: pathlib.Path) -> None:
+    assert TXN_001 in pd.read_parquet(tier1)["transaction_unique_identifier"].values
 
 
-def test_join_tier1_deduplicates_epc(tier1: pd.DataFrame) -> None:
+def test_join_tier1_deduplicates_epc(tier1: pathlib.Path) -> None:
     """Tier 1 must use the most recent EPC (80 m²), not the older duplicate (78 m²)."""
-    row = tier1[tier1["transaction_unique_identifier"] == TXN_001]
+    df = pd.read_parquet(tier1)
+    row = df[df["transaction_unique_identifier"] == TXN_001]
     assert row.iloc[0]["TOTAL_FLOOR_AREA"] == 80.0
 
 
-def test_join_tier1_row_count(tier1: pd.DataFrame) -> None:
-    assert len(tier1) == 1
+def test_join_tier1_row_count(tier1: pathlib.Path) -> None:
+    assert len(pd.read_parquet(tier1)) == 1
 
 
 def test_join_tier2_returns_only_tier2_rows(
-    tier1: pd.DataFrame, epc_slim: pathlib.Path
+    tier1: pathlib.Path, epc_slim: pathlib.Path, tmp_path: pathlib.Path
 ) -> None:
-    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1)
-    assert (tier2["match_tier"] == 2).all()
+    dst = tmp_path / "tier2.parquet"
+    _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1, dst)
+    assert (pd.read_parquet(dst)["match_tier"] == 2).all()
 
 
 def test_join_tier2_excludes_tier1_transactions(
-    tier1: pd.DataFrame, epc_slim: pathlib.Path
+    tier1: pathlib.Path, epc_slim: pathlib.Path, tmp_path: pathlib.Path
 ) -> None:
-    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1)
-    assert TXN_001 not in tier2["transaction_unique_identifier"].values
+    dst = tmp_path / "tier2.parquet"
+    _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1, dst)
+    assert TXN_001 not in pd.read_parquet(dst)["transaction_unique_identifier"].values
 
 
-def test_join_tier2_row_count(tier1: pd.DataFrame, epc_slim: pathlib.Path) -> None:
-    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1)
-    assert len(tier2) == 3
+def test_join_tier2_row_count(
+    tier1: pathlib.Path, epc_slim: pathlib.Path, tmp_path: pathlib.Path
+) -> None:
+    dst = tmp_path / "tier2.parquet"
+    _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1, dst)
+    assert len(pd.read_parquet(dst)) == 3
 
 
 def test_join_tier2_postcode_filter_excludes_nonmatching_epc(
@@ -680,8 +689,9 @@ def test_join_tier2_postcode_filter_excludes_nonmatching_epc(
     """Tier 2 must still find address matches after postcode pre-filter."""
     epc_slim = tmp_path / "epc_slim.parquet"
     prepare_epc(FIXTURES / "epc_sample.csv", epc_slim)
-    tier1 = _join_tier1(
-        FIXTURES / "ppd_sample.csv", epc_slim, FIXTURES / "ubdc_sample.csv"
+    tier1_path = tmp_path / "tier1.parquet"
+    _join_tier1(
+        FIXTURES / "ppd_sample.csv", epc_slim, FIXTURES / "ubdc_sample.csv", tier1_path
     )
     # Write a fresh EPC with an extra row in a completely different postcode —
     # that row must never appear in tier2 results even after address normalisation
@@ -697,7 +707,9 @@ def test_join_tier2_postcode_filter_excludes_nonmatching_epc(
                    'Detached', '2007-2011', 'A'
         ) TO '{extra_epc}' (FORMAT PARQUET)
     """)
-    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", extra_epc, tier1)
+    tier2_path = tmp_path / "tier2.parquet"
+    _join_tier2(FIXTURES / "ppd_sample.csv", extra_epc, tier1_path, tier2_path)
+    tier2 = pd.read_parquet(tier2_path)
     assert len(tier2) == 3
     assert 999999 not in (tier2["uprn"].dropna().tolist())
 
@@ -714,27 +726,28 @@ def test_join_datasets_result_has_no_duplicate_transactions(
     assert result["transaction_unique_identifier"].nunique() == len(result)
 
 
-def test_join_tier2_accepts_parquet_path_for_tier1(
+def test_join_tier2_writes_to_parquet_path(
     tmp_path: pathlib.Path,
 ) -> None:
-    """_join_tier2 must work when given a Parquet path for tier1."""
+    """_join_tier2 writes results to dst and returns the row count."""
     epc_slim = tmp_path / "epc_slim.parquet"
     prepare_epc(FIXTURES / "epc_sample.csv", epc_slim)
-    tier1_df = _join_tier1(
-        FIXTURES / "ppd_sample.csv", epc_slim, FIXTURES / "ubdc_sample.csv"
-    )
     tier1_path = tmp_path / "tier1.parquet"
-    tier1_df.to_parquet(tier1_path, index=False)
-    tier2 = _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1_path)
+    _join_tier1(
+        FIXTURES / "ppd_sample.csv", epc_slim, FIXTURES / "ubdc_sample.csv", tier1_path
+    )
+    tier2_path = tmp_path / "tier2.parquet"
+    _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1_path, tier2_path)
+    tier2 = pd.read_parquet(tier2_path)
     assert len(tier2) == 3
     assert (tier2["match_tier"] == 2).all()
 
 
-def test_join_datasets_calls_callback_with_tier1_dataframe(
+def test_join_datasets_calls_callback_with_tier1_count(
     epc_slim: pathlib.Path, tmp_path: pathlib.Path
 ) -> None:
-    """on_tier1_complete is called once with the tier 1 DataFrame before tier 2 runs."""
-    calls: list[pd.DataFrame] = []
+    """on_tier1_complete is called once with the tier 1 row count before tier 2 runs."""
+    calls: list[int] = []
     join_datasets(
         FIXTURES / "ppd_sample.csv",
         epc_slim,
@@ -743,7 +756,7 @@ def test_join_datasets_calls_callback_with_tier1_dataframe(
         on_tier1_complete=calls.append,
     )
     assert len(calls) == 1
-    assert (calls[0]["match_tier"] == 1).all()
+    assert calls[0] == 1
 
 
 def test_join_datasets_no_callback_does_not_raise(
@@ -873,31 +886,28 @@ def test_configure_duckdb_applies_threads(monkeypatch: pytest.MonkeyPatch) -> No
 def test_join_tier1_respects_duckdb_memory_limit(
     monkeypatch: pytest.MonkeyPatch,
     epc_slim: pathlib.Path,
+    tmp_path: pathlib.Path,
 ) -> None:
     """_join_tier1 must complete successfully when DUCKDB_MEMORY_LIMIT is set."""
     monkeypatch.setenv("DUCKDB_MEMORY_LIMIT", "512MB")
-    result = _join_tier1(
-        FIXTURES / "ppd_sample.csv",
-        epc_slim,
-        FIXTURES / "ubdc_sample.csv",
+    dst = tmp_path / "tier1.parquet"
+    n = _join_tier1(
+        FIXTURES / "ppd_sample.csv", epc_slim, FIXTURES / "ubdc_sample.csv", dst
     )
-    assert len(result) == 1
+    assert n == 1
 
 
 def test_join_tier2_respects_duckdb_memory_limit(
     monkeypatch: pytest.MonkeyPatch,
     epc_slim: pathlib.Path,
+    tmp_path: pathlib.Path,
 ) -> None:
     """_join_tier2 must complete successfully when DUCKDB_MEMORY_LIMIT is set."""
     monkeypatch.setenv("DUCKDB_MEMORY_LIMIT", "512MB")
-    tier1 = _join_tier1(
-        FIXTURES / "ppd_sample.csv",
-        epc_slim,
-        FIXTURES / "ubdc_sample.csv",
+    tier1_path = tmp_path / "tier1.parquet"
+    _join_tier1(
+        FIXTURES / "ppd_sample.csv", epc_slim, FIXTURES / "ubdc_sample.csv", tier1_path
     )
-    result = _join_tier2(
-        FIXTURES / "ppd_sample.csv",
-        epc_slim,
-        tier1,
-    )
-    assert len(result) == 3
+    tier2_path = tmp_path / "tier2.parquet"
+    n = _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1_path, tier2_path)
+    assert n == 3

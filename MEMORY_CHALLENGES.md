@@ -140,7 +140,22 @@ offender without a separate memory profiler.
 
 ---
 
-### 9. Defer `matched` load until after spatial step — current
+### 9. Stream tier-1 and tier-2 joins to Parquet — current
+
+**Problem:** `_join_tier1` and `_join_tier2` called `.df()` to materialise
+the join result into a Python/pandas DataFrame before writing it to a temp
+Parquet file.  With a DuckDB memory limit of 3 G and the join result
+potentially spanning millions of rows, the `.df()` call pushed total RSS past
+the 4 G cgroup ceiling (Error 137 from `make run`).
+
+**Fix:** Both functions now use DuckDB `COPY … TO … (FORMAT PARQUET)` to
+stream the result directly to disk without any Python-heap materialisation.
+Return type changed from `pd.DataFrame` to `int` (row count).
+`join_datasets` callback type updated to `Callable[[int], None]`.
+
+---
+
+### 10. Defer `matched` load until after spatial step — current
 
 **Problem:** `run()` loaded `pd.read_parquet(matched_parquet)` into Python
 heap immediately before starting the spatial join.  At that point DuckDB was
