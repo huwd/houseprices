@@ -1,8 +1,10 @@
 """Main pipeline: download → join → aggregate."""
 
+import gc
 import os
 import pathlib
 import re
+import tempfile
 import time
 from collections.abc import Callable
 from enum import Enum
@@ -321,13 +323,22 @@ def _join_tier1(
 def _join_tier2(
     ppd_path: str | pathlib.Path,
     epc_path: str | pathlib.Path,
-    tier1: pd.DataFrame,
+    tier1: pd.DataFrame | pathlib.Path,
 ) -> pd.DataFrame:
-    """Address-normalisation join. Returns PPD rows not already matched in tier1."""
+    """Address-normalisation join. Returns PPD rows not already matched in tier1.
+
+    *tier1* may be a DataFrame (registered in-memory) or a Parquet path
+    (read from disk), allowing the caller to free the DataFrame before
+    running tier 2.
+    """
     con = duckdb.connect()
     _configure_duckdb(con)
     con.execute(_NORMALISE_MACRO)
-    con.register("_tier1", tier1)
+    if isinstance(tier1, pathlib.Path):
+        tier1_expr = f"read_parquet('{tier1}')"
+    else:
+        con.register("_tier1", tier1)
+        tier1_expr = "_tier1"
     ppd_src = _ppd_source(ppd_path)
     epc_src = _sql_source(epc_path)
     return con.execute(f"""
@@ -340,7 +351,7 @@ def _join_tier2(
         ppd_remaining AS (
             SELECT * FROM ppd
             WHERE transaction_unique_identifier NOT IN (
-                SELECT transaction_unique_identifier FROM _tier1
+                SELECT transaction_unique_identifier FROM {tier1_expr}
             )
         ),
         ppd_norm AS (
@@ -402,11 +413,28 @@ def join_datasets(
     If *on_tier1_complete* is provided it is called with the tier-1 DataFrame
     before tier-2 begins, allowing callers to report intermediate progress.
     """
-    tier1 = _join_tier1(ppd_path, epc_path, ubdc_path)
-    if on_tier1_complete is not None:
-        on_tier1_complete(tier1)
-    tier2 = _join_tier2(ppd_path, epc_path, tier1)
-    return pd.concat([tier1, tier2], ignore_index=True)
+    with tempfile.TemporaryDirectory() as _tmp:
+        tmp = pathlib.Path(_tmp)
+        tier1_path = tmp / "tier1.parquet"
+        tier2_path = tmp / "tier2.parquet"
+
+        tier1 = _join_tier1(ppd_path, epc_path, ubdc_path)
+        tier1.to_parquet(tier1_path, index=False)
+        if on_tier1_complete is not None:
+            on_tier1_complete(tier1)
+        del tier1
+        gc.collect()
+
+        tier2 = _join_tier2(ppd_path, epc_path, tier1_path)
+        tier2.to_parquet(tier2_path, index=False)
+        del tier2
+        gc.collect()
+
+        return duckdb.execute(f"""
+            SELECT * FROM read_parquet('{tier1_path}')
+            UNION ALL
+            SELECT * FROM read_parquet('{tier2_path}')
+        """).df()
 
 
 def match_report(matched: pd.DataFrame, total_ppd: int) -> dict[str, int | float]:
