@@ -171,7 +171,7 @@ LSOA attachment to free them before aggregation.
 
 ---
 
-### 10. Slim column copy in `aggregate_by_geography` — current
+### 10. Slim column copy in `aggregate_by_geography` — `<hash>`
 
 **Problem:** `aggregate_by_geography` did `df = matched.copy()` — a full copy
 of all 25+ columns — then grouped on just two columns (`price`,
@@ -182,6 +182,23 @@ matched-DataFrame-size of Python heap simultaneously.
 `TOTAL_FLOOR_AREA`) before the groupby.  Added `del district_df` between the
 two aggregation calls so the first result is freed before the second copy is
 made.
+
+---
+
+### 11. Push aggregation into DuckDB — current
+
+**Problem:** After the spatial step, `run()` called `pd.read_parquet(matched_parquet)`
+to load the full matched DataFrame (~1.1 GB compressed, ~4+ GB in Python heap)
+for LSOA attachment and aggregation.  `systemd-oomd` killed the pipeline at
+exactly the 4 GB cgroup ceiling, 1 minute after `uprn_lsoa.parquet` completed.
+
+**Fix:** Removed `pd.read_parquet(matched_parquet)` from `run()` entirely.
+Match report, postcode district aggregation, and LSOA aggregation are now all
+DuckDB SQL queries that read `matched.parquet` and `uprn_lsoa.parquet` by path.
+Peak RSS during aggregation is now <1 GB (only the tiny result DataFrames —
+~3 k district rows, ~35 k LSOA rows — ever enter Python heap).
+The `aggregate_by_geography` and `match_report` pandas functions are unchanged
+and still used by tests and the notebook.
 
 ---
 
@@ -205,11 +222,6 @@ desktop.
   performs the polygon intersection in-process. With the UPRN filter in
   place the working set is small, but boundary file size (ONS LSOAs) is
   ~200 MB. Watch RSS here on larger runs.
-
-- **`matched` load during aggregation:** The full matched DataFrame is still
-  loaded into Python heap for the LSOA attachment and aggregation steps.
-  If the matched result grows very large, consider pushing aggregation into
-  DuckDB SQL on the parquet file to avoid materialisation entirely.
 
 ---
 
