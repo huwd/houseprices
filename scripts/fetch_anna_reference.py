@@ -12,6 +12,7 @@ Usage:
     uv run scripts/fetch_anna_reference.py
 """
 
+import datetime
 import json
 import pathlib
 
@@ -98,6 +99,7 @@ def main() -> None:
             "copyright 2017. EPC data © Crown copyright."
         ),
         "tileset": TILESET,
+        "fetched_date": datetime.date.today().isoformat(),
         "postcode_districts": {
             dist: info["price_per_sqm"] for dist, info in sorted(districts.items())
         },
