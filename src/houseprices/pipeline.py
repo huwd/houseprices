@@ -714,45 +714,65 @@ def run(
     matched_uprns = set(matched_uprns_df["uprn"])
     del matched_uprns_df
 
-    uprn_lsoa = step(
+    step(
         "uprn_lsoa",
         lambda: build_uprn_lsoa(uprn_path, boundary_path, matched_uprns),
     )
     console.print()
 
-    # Load matched only after the spatial step so the two don't compete for RAM.
-    matched = pd.read_parquet(matched_parquet)
+    # Steps 3–5: aggregate directly from Parquet files — never load the full
+    # matched DataFrame into Python heap.  Peak RSS stays under 1 GB even with
+    # a 1+ GB matched.parquet, because DuckDB streams the scans and only
+    # materialises small aggregation states (≤35 k LSOA rows, ≤3 k district
+    # rows) rather than the full matched result.
+    uprn_lsoa_parquet = cache_dir / "uprn_lsoa.parquet"
+    con = duckdb.connect()
+    _configure_duckdb(con)
 
-    # Step 3: attach LSOA codes to matched records via UPRN.
-    # Only Tier 1 records have a UBDC-confirmed UPRN (`uprn` column);
-    # Tier 2 address-matched records get LSOA21CD = NaN and are excluded
-    # from the LSOA output but still appear in the postcode district output.
-    uprn_to_lsoa: pd.Series = uprn_lsoa.set_index("UPRN")["LSOA21CD"]
-    del uprn_lsoa
-    matched["LSOA21CD"] = matched["uprn"].map(uprn_to_lsoa)
-    del uprn_to_lsoa
-
-    # Step 4: match report — count rows in the slim PPD (all category A).
+    # Step 3: match report — tier counts via DuckDB scan.
     is_parquet = str(ppd_path).endswith(".parquet")
-    total_ppd = duckdb.execute(
+    total_ppd: int = duckdb.execute(
         f"SELECT COUNT(*) FROM {_ppd_source(ppd_path)}"
         + ("" if is_parquet else " WHERE ppd_category_type = 'A'")
     ).fetchone()[0]  # type: ignore[index]
-    report = match_report(matched, total_ppd)
+    tier_counts = con.execute(f"""
+        SELECT match_tier, COUNT(*) AS n
+        FROM read_parquet('{matched_parquet}')
+        GROUP BY match_tier
+    """).fetchall()
+    tier_map: dict[int, int] = {int(t): int(n) for t, n in tier_counts}
+    tier1 = tier_map.get(1, 0)
+    tier2 = tier_map.get(2, 0)
+    unmatched = total_ppd - tier1 - tier2
     console.print(
         f"  Match  "
-        f"tier1 [green]{report['tier1']:,}[/green] ({report['tier1_pct']}%)  "
-        f"tier2 [yellow]{report['tier2']:,}[/yellow] ({report['tier2_pct']}%)  "
-        f"unmatched [red]{report['unmatched']:,}[/red] ({report['unmatched_pct']}%)"
+        f"tier1 [green]{tier1:,}[/green] ({round(100 * tier1 / total_ppd, 1)}%)  "
+        f"tier2 [yellow]{tier2:,}[/yellow] ({round(100 * tier2 / total_ppd, 1)}%)  "
+        f"unmatched [red]{unmatched:,}[/red] ({round(100 * unmatched / total_ppd, 1)}%)"
     )
     console.print()
 
-    # Step 5: aggregate and write outputs
+    # Step 4: aggregate by postcode district.
+    # Postcode district = postcode minus the last 3 characters (the inward code),
+    # matching the Python logic: postcode.str[:-3].str.strip().
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    district_df = aggregate_by_geography(
-        matched, Geography.POSTCODE_DISTRICT, min_sales=min_sales
-    )
+    district_df = con.execute(f"""
+        SELECT
+            TRIM(LEFT(postcode, LENGTH(postcode) - 3)) AS postcode_district,
+            COUNT(*) AS num_sales,
+            SUM(price) AS total_price,
+            SUM(TOTAL_FLOOR_AREA) AS total_floor_area,
+            CAST(ROUND(SUM(price) / SUM(TOTAL_FLOOR_AREA)) AS INTEGER)
+                AS price_per_sqm
+        FROM read_parquet('{matched_parquet}')
+        WHERE TOTAL_FLOOR_AREA IS NOT NULL
+          AND TOTAL_FLOOR_AREA > 0
+          AND postcode IS NOT NULL
+        GROUP BY postcode_district
+        HAVING COUNT(*) >= {min_sales}
+        ORDER BY price_per_sqm DESC
+    """).df()
     district_path = output_dir / "price_per_sqm_postcode_district.csv"
     district_df.to_csv(district_path, index=False)
     console.print(
@@ -761,7 +781,26 @@ def run(
     )
     del district_df
 
-    lsoa_df = aggregate_by_geography(matched, Geography.LSOA, min_sales=min_sales)
+    # Step 5: aggregate by LSOA — join matched ← uprn_lsoa on disk.
+    # Only Tier 1 records have a UPRN; Tier 2 records are excluded here but
+    # still appear in the postcode district output above.
+    lsoa_df = con.execute(f"""
+        SELECT
+            l.LSOA21CD,
+            COUNT(*) AS num_sales,
+            SUM(m.price) AS total_price,
+            SUM(m.TOTAL_FLOOR_AREA) AS total_floor_area,
+            CAST(ROUND(SUM(m.price) / SUM(m.TOTAL_FLOOR_AREA)) AS INTEGER)
+                AS price_per_sqm
+        FROM read_parquet('{matched_parquet}') AS m
+        JOIN read_parquet('{uprn_lsoa_parquet}') AS l
+          ON CAST(m.uprn AS BIGINT) = CAST(l.UPRN AS BIGINT)
+        WHERE m.TOTAL_FLOOR_AREA IS NOT NULL
+          AND m.TOTAL_FLOOR_AREA > 0
+        GROUP BY l.LSOA21CD
+        HAVING COUNT(*) >= {min_sales}
+        ORDER BY price_per_sqm DESC
+    """).df()
     lsoa_path = output_dir / "price_per_sqm_lsoa.csv"
     lsoa_df.to_csv(lsoa_path, index=False)
     console.print(f"  [green]✓[/green]  {len(lsoa_df):,} LSOAs  →  {lsoa_path}")
