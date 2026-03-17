@@ -10,6 +10,7 @@ file automatically when this module is imported.
 """
 
 import base64
+import json
 import os
 import pathlib
 import shutil
@@ -76,6 +77,107 @@ LSOA_BGC_URL = (
     "/68515293204e43ca8ab56fa13ae8a547_0/downloads/data"
     "?format=fgdb&spatialRefId=4326"
 )
+
+# ---------------------------------------------------------------------------
+# Freshness-checking helpers
+# ---------------------------------------------------------------------------
+
+# HTTP response headers used to detect whether a remote file has changed.
+# Checked in priority order: ETag (content hash) → Last-Modified → Content-Length.
+_META_KEYS = ("ETag", "Last-Modified", "Content-Length")
+
+
+def _meta_path(slim_path: pathlib.Path) -> pathlib.Path:
+    """Return the sidecar .meta.json path for a slim Parquet file."""
+    return slim_path.with_suffix(".meta.json")
+
+
+def _load_meta(slim_path: pathlib.Path) -> dict[str, str]:
+    """Load stored HTTP metadata for *slim_path*, or return {} if absent."""
+    mp = _meta_path(slim_path)
+    return json.loads(mp.read_text()) if mp.exists() else {}
+
+
+def _save_meta(slim_path: pathlib.Path, meta: dict[str, str]) -> None:
+    """Persist *meta* alongside *slim_path*.  No-op when *meta* is empty."""
+    if meta:
+        _meta_path(slim_path).write_text(json.dumps(meta, indent=2))
+
+
+def _meta_matches(stored: dict[str, str], remote: dict[str, str]) -> bool:
+    """Return True if *stored* and *remote* metadata indicate the same file version.
+
+    Compares ETag first (most reliable), then Last-Modified, then Content-Length.
+    Returns False when no key common to both dicts is found.
+    """
+    for key in _META_KEYS:
+        if key in stored and key in remote:
+            return stored[key] == remote[key]
+    return False
+
+
+def _http_meta(url: str, *, headers: dict[str, str] | None = None) -> dict[str, str]:
+    """Make a HEAD request to *url* and return the freshness-relevant headers.
+
+    Returns an empty dict on any network or HTTP error so callers can treat a
+    failed check as "unknown" rather than crashing the pipeline.
+    """
+    try:
+        r = requests.head(url, headers=headers or {}, timeout=30, allow_redirects=True)
+        r.raise_for_status()
+        return {k: r.headers[k] for k in _META_KEYS if k in r.headers}
+    except Exception:
+        return {}
+
+
+def _check_freshness(
+    slim_path: pathlib.Path,
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+) -> tuple[bool, dict[str, str]]:
+    """Decide whether *slim_path* is up-to-date with the remote source at *url*.
+
+    Makes one HEAD request and returns ``(is_fresh, remote_meta)``:
+
+    - ``is_fresh=True``  — slim Parquet exists and matches the remote; skip download.
+    - ``is_fresh=False`` — download and prepare needed; pass *remote_meta* to
+      :func:`_save_meta` after a successful prepare so the next run can skip.
+
+    Edge cases:
+
+    - Slim Parquet absent → always ``(False, remote_meta)``.
+    - HEAD request fails AND slim Parquet exists → ``(True, {})`` so a transient
+      network error never discards a valid Parquet.
+    - HEAD request fails AND slim Parquet absent → ``(False, {})`` so the
+      download still proceeds.
+    - Slim Parquet present but no stored meta → ``(False, remote_meta)`` so that
+      meta is written on the next successful prepare.
+    """
+    remote_meta = _http_meta(url, headers=headers)
+
+    if not slim_path.exists():
+        return False, remote_meta
+
+    if not remote_meta:
+        # HEAD failed but we have a Parquet — keep it.
+        _console.print(
+            f"  [yellow]⚠  {slim_path.name}: remote unreachable, "
+            f"keeping existing file[/yellow]"
+        )
+        return True, {}
+
+    stored_meta = _load_meta(slim_path)
+    if not stored_meta:
+        # No metadata on record — treat as stale so meta gets written this run.
+        return False, remote_meta
+
+    if _meta_matches(stored_meta, remote_meta):
+        return True, remote_meta
+
+    _console.print(f"  [cyan]↻[/cyan]  {slim_path.name}: source has changed")
+    return False, remote_meta
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -343,23 +445,58 @@ if __name__ == "__main__":  # pragma: no cover
     data.mkdir(exist_ok=True)
     cache.mkdir(exist_ok=True)
 
-    ppd = download_ppd(data)
-    prepare_ppd(ppd, cache / "ppd_slim.parquet")
-    ppd.unlink(missing_ok=True)
+    # PPD — check ETag/Last-Modified before downloading (5 GB).
+    ppd_slim = cache / "ppd_slim.parquet"
+    ppd_fresh, ppd_meta = _check_freshness(ppd_slim, PPD_URL)
+    if ppd_fresh:
+        _console.print(f"  [dim]⊘  {ppd_slim.name} up to date[/dim]")
+    else:
+        ppd_slim.unlink(missing_ok=True)
+        ppd = download_ppd(data)
+        prepare_ppd(ppd, ppd_slim)
+        ppd.unlink(missing_ok=True)
+        _save_meta(ppd_slim, ppd_meta)
 
-    download_epc(data)
-    epc = extract_epc(data)
-    prepare_epc(epc, cache / "epc_slim.parquet")
-    epc.unlink(missing_ok=True)
+    # EPC — check ETag/Last-Modified before downloading (6 GB ZIP + extraction).
+    epc_slim = cache / "epc_slim.parquet"
+    epc_email = os.environ["EPC_EMAIL"]
+    epc_api_key = os.environ["EPC_API_KEY"]
+    epc_token = base64.b64encode(f"{epc_email}:{epc_api_key}".encode()).decode()
+    epc_auth = {"Authorization": f"Basic {epc_token}"}
+    epc_fresh, epc_meta = _check_freshness(epc_slim, EPC_BULK_URL, headers=epc_auth)
+    if epc_fresh:
+        _console.print(f"  [dim]⊘  {epc_slim.name} up to date[/dim]")
+    else:
+        epc_slim.unlink(missing_ok=True)
+        download_epc(data)
+        epc = extract_epc(data)
+        prepare_epc(epc, epc_slim)
+        epc.unlink(missing_ok=True)
+        _save_meta(epc_slim, epc_meta)
 
-    download_ubdc(data)
-    ubdc = extract_ubdc(data)
-    prepare_ubdc(ubdc, cache / "ubdc_slim.parquet")
-    ubdc.unlink(missing_ok=True)
+    # UBDC — the API URL resolves via a time-limited pre-signed redirect, so a
+    # HEAD check is not meaningful.  Skip if the slim Parquet already exists.
+    ubdc_slim = cache / "ubdc_slim.parquet"
+    if ubdc_slim.exists():
+        _console.print(f"  [dim]⊘  {ubdc_slim.name} already prepared[/dim]")
+    else:
+        download_ubdc(data)
+        ubdc = extract_ubdc(data)
+        prepare_ubdc(ubdc, ubdc_slim)
+        ubdc.unlink(missing_ok=True)
 
-    download_os_open_uprn(data)
-    uprn = extract_os_open_uprn(data)
-    prepare_uprn(uprn, cache / "uprn_slim.parquet")
-    uprn.unlink(missing_ok=True)
+    # OS Open UPRN — check ETag/Last-Modified before downloading (~600 MB ZIP).
+    uprn_slim = cache / "uprn_slim.parquet"
+    uprn_fresh, uprn_meta = _check_freshness(uprn_slim, OS_OPEN_UPRN_URL)
+    if uprn_fresh:
+        _console.print(f"  [dim]⊘  {uprn_slim.name} up to date[/dim]")
+    else:
+        uprn_slim.unlink(missing_ok=True)
+        download_os_open_uprn(data)
+        uprn = extract_os_open_uprn(data)
+        prepare_uprn(uprn, uprn_slim)
+        uprn.unlink(missing_ok=True)
+        _save_meta(uprn_slim, uprn_meta)
 
+    # LSOA boundaries — small download; existing skip logic in the function suffices.
     download_lsoa_boundaries(data)
