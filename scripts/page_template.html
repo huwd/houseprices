@@ -600,17 +600,26 @@
       infoCtrl._render(null);
     }
 
+    function setDistrictParam(code) {
+      const p = new URLSearchParams(window.location.search);
+      if (code) p.set('district', code); else p.delete('district');
+      const qs = p.toString();
+      history.replaceState(null, '', qs ? '?' + qs : window.location.pathname);
+    }
+
     function onClick(e) {
       if (activeLayer) geoLayer.resetStyle(activeLayer);
       activeLayer = e.target;
       activeLayer.setStyle({weight: 2, color: '#333', fillOpacity: 0.9});
       infoCtrl._render(activeLayer.feature.properties);
+      setDistrictParam(activeLayer.feature.properties.PostDist);
       L.DomEvent.stopPropagation(e);
     }
 
     map.on('click', () => {
       if (activeLayer) {geoLayer.resetStyle(activeLayer); activeLayer = null;}
       infoCtrl._render(null);
+      setDistrictParam(null);
     });
 
     const districtLayers = {};
@@ -623,6 +632,18 @@
         layer.on({mouseover: onMouseover, mouseout: onMouseout, click: onClick});
       },
     }).addTo(map);
+
+    // ── Deep-link: restore district from ?district= on page load ─────────────────
+    const initialDistrict = new URLSearchParams(window.location.search).get('district');
+    if (initialDistrict) {
+      const layer = districtLayers[initialDistrict];
+      if (layer) {
+        map.fitBounds(layer.getBounds(), {padding: [60, 60], maxZoom: 13});
+        activeLayer = layer;
+        layer.setStyle({weight: 2, color: '#333', fillOpacity: 0.9});
+        infoCtrl._render(layer.feature.properties);
+      }
+    }
 
     // ── Clickable district / city links ───────────────────────────────────────────
     function dLink(code) {
@@ -651,6 +672,7 @@
       if (a.dataset.district) {
         const layer = districtLayers[a.dataset.district];
         if (!layer) return;
+        setDistrictParam(a.dataset.district);
         map.flyToBounds(layer.getBounds(), {padding: [60, 60], duration: 4.0, maxZoom: 13});
         map.once('moveend', function () {
           if (activeLayer) geoLayer.resetStyle(activeLayer);
