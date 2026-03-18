@@ -638,7 +638,11 @@
     if (initialDistrict) {
       const layer = districtLayers[initialDistrict];
       if (layer) {
-        map.fitBounds(layer.getBounds(), {padding: [60, 60], maxZoom: 13});
+        // Use L.geoJSON(feature).getBounds() rather than layer.getBounds() — with
+        // the Canvas renderer, layer._bounds is set lazily on first draw and may
+        // be unprojected at this point, causing fitBounds to produce a bad zoom.
+        const bounds = L.geoJSON(layer.feature).getBounds();
+        map.fitBounds(bounds, {padding: [60, 60], maxZoom: 13});
         activeLayer = layer;
         layer.setStyle({weight: 2, color: '#333', fillOpacity: 0.9});
         infoCtrl._render(layer.feature.properties);
