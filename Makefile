@@ -41,6 +41,12 @@ run:  ## Run the full pipeline with a hard memory cap (join → spatial → aggr
 		env DUCKDB_MEMORY_LIMIT=$(DUCKDB_MEMORY_LIMIT) \
 		uv run python src/houseprices/pipeline.py
 
+.PHONY: rematch
+rematch:  ## Apply tier-3 normalisation to unmatched records (no re-download; requires prior run)
+	systemd-run --user --scope -p MemoryMax=$(MEM_MAX) -- \
+		env DUCKDB_MEMORY_LIMIT=$(DUCKDB_MEMORY_LIMIT) \
+		uv run python src/houseprices/pipeline.py --rematch
+
 # ── Output page ────────────────────────────────────────────────────────────
 
 .PHONY: boundaries
