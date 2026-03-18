@@ -5,6 +5,7 @@ import pathlib
 import duckdb
 import pandas as pd
 import pytest
+from rich.console import Console
 
 from houseprices.pipeline import (
     Geography,
@@ -13,7 +14,9 @@ from houseprices.pipeline import (
     _fmt_size,
     _join_tier1,
     _join_tier2,
+    _join_tier3,
     _rss_mb,
+    _run_aggregations,
     aggregate,
     aggregate_by_geography,
     join_datasets,
@@ -24,6 +27,7 @@ from houseprices.pipeline import (
     prepare_ppd,
     prepare_ubdc,
     prepare_uprn,
+    rematch,
 )
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -80,6 +84,16 @@ def test_normalise_address_close_abbreviation() -> None:
 
 def test_normalise_address_gardens_abbreviation() -> None:
     assert normalise_address("", "3", "ROSE GDNS") == "3 ROSE GARDENS"
+
+
+def test_normalise_address_unit_to_flat() -> None:
+    assert normalise_address("UNIT 3", "10", "HIGH STREET") == "FLAT 3 10 HIGH STREET"
+
+
+def test_normalise_address_unit_mid_string() -> None:
+    # UNIT only triggers on a whole word; should not corrupt UNITED etc.
+    result = normalise_address("UNIT 4B", "22", "MILL LANE")
+    assert result == "FLAT 4B 22 MILL LANE"
 
 
 # ---------------------------------------------------------------------------
@@ -911,3 +925,343 @@ def test_join_tier2_respects_duckdb_memory_limit(
     tier2_path = tmp_path / "tier2.parquet"
     n = _join_tier2(FIXTURES / "ppd_sample.csv", epc_slim, tier1_path, tier2_path)
     assert n == 3
+
+
+# ---------------------------------------------------------------------------
+# _join_tier3
+#
+# Fixture data (ppd_tier3.csv / epc_tier3.csv):
+#
+#   TXN-T1: saon="3"   bare numeric      → FLAT-prepend → "FLAT 3 10 CHURCH LANE"
+#   TXN-T2: saon="UNIT 5" UNIT→FLAT     → normalises to "FLAT 5 20 MARKET ROAD"
+#   TXN-T3: saon="4A"  bare alphanumeric → FLAT-prepend → "FLAT 4A 30 PARK ROAD"
+#   TXN-T4:               (no matching EPC)  → unmatched
+# ---------------------------------------------------------------------------
+
+TXN_T1 = "{T0000001-0000-0000-0000-000000000000}"
+TXN_T2 = "{T0000002-0000-0000-0000-000000000000}"
+TXN_T3 = "{T0000003-0000-0000-0000-000000000000}"
+TXN_T4 = "{T0000004-0000-0000-0000-000000000000}"
+
+
+@pytest.fixture
+def epc_tier3_slim(tmp_path: pathlib.Path) -> pathlib.Path:
+    dst = tmp_path / "epc_tier3_slim.parquet"
+    prepare_epc(FIXTURES / "epc_tier3.csv", dst)
+    return dst
+
+
+@pytest.fixture
+def existing_matched(epc_slim: pathlib.Path, tmp_path: pathlib.Path) -> pathlib.Path:
+    """Tier1+tier2 matches from the main sample fixtures (used as prior-run input)."""
+    dst = tmp_path / "matched_existing.parquet"
+    join_datasets(
+        FIXTURES / "ppd_sample.csv",
+        epc_slim,
+        FIXTURES / "ubdc_sample.csv",
+        dst=dst,
+    )
+    return dst
+
+
+@pytest.fixture
+def tier3(
+    epc_tier3_slim: pathlib.Path,
+    existing_matched: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> pathlib.Path:
+    dst = tmp_path / "tier3.parquet"
+    _join_tier3(FIXTURES / "ppd_tier3.csv", epc_tier3_slim, existing_matched, dst)
+    return dst
+
+
+def test_join_tier3_row_count(tier3: pathlib.Path) -> None:
+    """T1, T2, T3 should match; T4 has no EPC → 3 rows total."""
+    assert len(pd.read_parquet(tier3)) == 3
+
+
+def test_join_tier3_match_tier_column(tier3: pathlib.Path) -> None:
+    """All tier-3 rows must have match_tier = 3."""
+    assert (pd.read_parquet(tier3)["match_tier"] == 3).all()
+
+
+def test_join_tier3_bare_numeric_saon(tier3: pathlib.Path) -> None:
+    """TXN-T1: saon='3' (bare numeric) must be matched via FLAT-prepend."""
+    assert TXN_T1 in pd.read_parquet(tier3)["transaction_unique_identifier"].values
+
+
+def test_join_tier3_unit_to_flat(tier3: pathlib.Path) -> None:
+    """TXN-T2: saon='UNIT 5' must match after UNIT→FLAT normalisation."""
+    assert TXN_T2 in pd.read_parquet(tier3)["transaction_unique_identifier"].values
+
+
+def test_join_tier3_bare_alphanumeric_saon(tier3: pathlib.Path) -> None:
+    """TXN-T3: saon='4A' (bare alphanumeric) must be matched via FLAT-prepend."""
+    assert TXN_T3 in pd.read_parquet(tier3)["transaction_unique_identifier"].values
+
+
+def test_join_tier3_unmatched_excluded(tier3: pathlib.Path) -> None:
+    """TXN-T4 has no EPC row — must not appear in tier-3 output."""
+    assert TXN_T4 not in pd.read_parquet(tier3)["transaction_unique_identifier"].values
+
+
+def test_join_tier3_excludes_already_matched(
+    epc_tier3_slim: pathlib.Path,
+    existing_matched: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Records already in existing_matched must not appear in tier-3 output."""
+    dst = tmp_path / "tier3.parquet"
+    _join_tier3(FIXTURES / "ppd_tier3.csv", epc_tier3_slim, existing_matched, dst)
+    tier3_txns = set(pd.read_parquet(dst)["transaction_unique_identifier"])
+    existing_txns = set(
+        pd.read_parquet(existing_matched)["transaction_unique_identifier"]
+    )
+    assert tier3_txns.isdisjoint(existing_txns)
+
+
+def test_join_tier3_floor_area_populated(tier3: pathlib.Path) -> None:
+    """Matched tier-3 rows must have TOTAL_FLOOR_AREA from the EPC."""
+    df = pd.read_parquet(tier3)
+    row_t1 = df[df["transaction_unique_identifier"] == TXN_T1]
+    assert row_t1.iloc[0]["TOTAL_FLOOR_AREA"] == 55.0
+
+
+def test_join_tier3_returns_row_count(
+    epc_tier3_slim: pathlib.Path,
+    existing_matched: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> None:
+    """_join_tier3 return value must equal the number of rows written."""
+    dst = tmp_path / "tier3_count.parquet"
+    n = _join_tier3(FIXTURES / "ppd_tier3.csv", epc_tier3_slim, existing_matched, dst)
+    assert n == len(pd.read_parquet(dst))
+
+
+# ---------------------------------------------------------------------------
+# _run_aggregations
+#
+# Needs a synthetic matched.parquet and an uprn_lsoa.parquet.  The uprn_lsoa
+# file can be empty since the fixture data has no UPRNs for LSOA lookup.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def aggregation_inputs(
+    epc_slim: pathlib.Path, tmp_path: pathlib.Path
+) -> tuple[pathlib.Path, pathlib.Path, pathlib.Path]:
+    """Return (matched_parquet, uprn_lsoa_parquet, ppd_slim_parquet) paths."""
+    # Build matched from the main sample fixtures (tiers 1+2)
+    matched = tmp_path / "matched.parquet"
+    join_datasets(
+        FIXTURES / "ppd_sample.csv",
+        epc_slim,
+        FIXTURES / "ubdc_sample.csv",
+        dst=matched,
+    )
+    # Empty uprn_lsoa (no spatial join in unit tests; LSOA output will have 0 rows)
+    uprn_lsoa = tmp_path / "uprn_lsoa.parquet"
+    duckdb.execute(f"""
+        COPY (
+            SELECT NULL::BIGINT AS UPRN, NULL::VARCHAR AS LSOA21CD
+            WHERE FALSE
+        ) TO '{uprn_lsoa}' (FORMAT PARQUET)
+    """)
+    # Slim PPD for total count
+    ppd_slim = tmp_path / "ppd_slim.parquet"
+    prepare_ppd(FIXTURES / "ppd_sample.csv", ppd_slim)
+    return matched, uprn_lsoa, ppd_slim
+
+
+def test_run_aggregations_writes_district_csv(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """_run_aggregations must write price_per_sqm_postcode_district.csv."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    console = Console(quiet=True)
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=console
+    )
+    district_csv = output_dir / "price_per_sqm_postcode_district.csv"
+    assert district_csv.exists()
+    df = pd.read_csv(district_csv)
+    assert set(df.columns) >= {"postcode_district", "num_sales", "price_per_sqm"}
+    assert len(df) >= 1
+
+
+def test_run_aggregations_writes_lsoa_csv(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """_run_aggregations must write price_per_sqm_lsoa.csv (may have 0 rows)."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    console = Console(quiet=True)
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=console
+    )
+    assert (output_dir / "price_per_sqm_lsoa.csv").exists()
+
+
+def test_run_aggregations_min_sales_filter(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """_run_aggregations with high min_sales should produce an empty district CSV."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    console = Console(quiet=True)
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=9999, console=console
+    )
+    df = pd.read_csv(output_dir / "price_per_sqm_postcode_district.csv")
+    assert len(df) == 0
+
+
+# ---------------------------------------------------------------------------
+# rematch
+#
+# Uses ppd_tier3.csv + epc_tier3.csv as the data source.
+# Tier 2 (join_datasets) catches TXN-T2 (UNIT→FLAT via normalise_addr).
+# Tier 3 (rematch) then catches TXN-T1 (bare "3") and TXN-T3 (bare "4A").
+# TXN-T4 has no matching EPC and remains unmatched throughout.
+# ---------------------------------------------------------------------------
+
+
+def _build_rematch_cache(
+    epc_tier3_slim: pathlib.Path, cache_dir: pathlib.Path
+) -> pathlib.Path:
+    """Populate cache_dir with prior-run artefacts from the tier-3 fixtures.
+
+    Returns the path to matched.parquet (tier1+tier2 only, before rematch).
+    """
+    matched = cache_dir / "matched.parquet"
+    # Tier 1: no UBDC entries for T* transactions → 0 UPRN matches.
+    # Tier 2: TXN-T2 (saon="UNIT 5") caught by UNIT→FLAT in normalise_addr.
+    join_datasets(
+        FIXTURES / "ppd_tier3.csv",
+        epc_tier3_slim,
+        FIXTURES / "ubdc_sample.csv",
+        dst=matched,
+    )
+    # Empty uprn_lsoa — no spatial join in unit tests.
+    uprn_lsoa = cache_dir / "uprn_lsoa.parquet"
+    duckdb.execute(f"""
+        COPY (
+            SELECT NULL::BIGINT AS UPRN, NULL::VARCHAR AS LSOA21CD WHERE FALSE
+        ) TO '{uprn_lsoa}' (FORMAT PARQUET)
+    """)
+    # Slim PPD needed by _run_aggregations for total PPD count.
+    ppd_slim = cache_dir / "ppd_slim.parquet"
+    prepare_ppd(FIXTURES / "ppd_tier3.csv", ppd_slim)
+    return matched
+
+
+def test_rematch_appends_tier3_to_matched(
+    epc_tier3_slim: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> None:
+    """rematch must append tier-3 matches to an existing matched.parquet."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    matched = _build_rematch_cache(epc_tier3_slim, cache_dir)
+    n_before = len(pd.read_parquet(matched))  # TXN-T2 (tier2 UNIT match)
+
+    rematch(
+        ppd_path=cache_dir / "ppd_slim.parquet",
+        epc_path=epc_tier3_slim,
+        cache_dir=cache_dir,
+        output_dir=tmp_path / "output",
+        min_sales=1,
+    )
+
+    n_after = len(pd.read_parquet(matched))
+    assert n_after > n_before  # TXN-T1 and TXN-T3 now also matched
+
+
+def test_rematch_tier3_rows_have_match_tier_3(
+    epc_tier3_slim: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> None:
+    """New rows added by rematch must have match_tier = 3."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    _build_rematch_cache(epc_tier3_slim, cache_dir)
+
+    rematch(
+        ppd_path=cache_dir / "ppd_slim.parquet",
+        epc_path=epc_tier3_slim,
+        cache_dir=cache_dir,
+        output_dir=tmp_path / "output",
+        min_sales=1,
+    )
+
+    df = pd.read_parquet(cache_dir / "matched.parquet")
+    assert 3 in df["match_tier"].values
+
+
+def test_rematch_no_duplicates_after_append(
+    epc_tier3_slim: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> None:
+    """rematch must not create duplicate transaction IDs in matched.parquet."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    _build_rematch_cache(epc_tier3_slim, cache_dir)
+
+    rematch(
+        ppd_path=cache_dir / "ppd_slim.parquet",
+        epc_path=epc_tier3_slim,
+        cache_dir=cache_dir,
+        output_dir=tmp_path / "output",
+        min_sales=1,
+    )
+
+    df = pd.read_parquet(cache_dir / "matched.parquet")
+    assert df["transaction_unique_identifier"].nunique() == len(df)
+
+
+def test_rematch_missing_matched_parquet_returns_early(tmp_path: pathlib.Path) -> None:
+    """rematch must return without error when matched.parquet is absent."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    # No matched.parquet — should print an error and return cleanly
+    rematch(
+        ppd_path=FIXTURES / "ppd_sample.csv",
+        epc_path=FIXTURES / "epc_sample.csv",
+        cache_dir=cache_dir,
+        output_dir=tmp_path / "output",
+    )
+    # No output should have been created
+    assert not (tmp_path / "output").exists()
+
+
+def test_rematch_no_new_matches_leaves_matched_unchanged(
+    epc_slim: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> None:
+    """rematch with no new matches must not modify matched.parquet."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    matched = cache_dir / "matched.parquet"
+    join_datasets(
+        FIXTURES / "ppd_sample.csv",
+        epc_slim,
+        FIXTURES / "ubdc_sample.csv",
+        dst=matched,
+    )
+    mtime_before = matched.stat().st_mtime
+    ppd_slim = cache_dir / "ppd_slim.parquet"
+    prepare_ppd(FIXTURES / "ppd_sample.csv", ppd_slim)
+
+    # Use the same EPC slim that was used to build matched — tier 3 should
+    # find nothing new (tier-2 already captured all address-normalisation cases).
+    rematch(
+        ppd_path=cache_dir / "ppd_slim.parquet",
+        epc_path=epc_slim,
+        cache_dir=cache_dir,
+        output_dir=tmp_path / "output",
+    )
+    assert matched.stat().st_mtime == mtime_before

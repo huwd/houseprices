@@ -3,6 +3,7 @@
 import os
 import pathlib
 import re
+import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -41,6 +42,7 @@ class Geography(Enum):
 
 _ABBREVIATIONS: list[tuple[str, str]] = [
     (r"\bAPARTMENT\b", "FLAT"),
+    (r"\bUNIT\b", "FLAT"),
     (r"\bRD\b", "ROAD"),
     (r"\bAVE?\b", "AVENUE"),
     (r"\bDR\b", "DRIVE"),
@@ -280,12 +282,15 @@ _NORMALISE_MACRO = r"""
                                     regexp_replace(
                                         regexp_replace(
                                             regexp_replace(
-                                                upper(s),
-                                                '[^\w\s]', '', 'g'
+                                                regexp_replace(
+                                                    upper(s),
+                                                    '[^\w\s]', '', 'g'
+                                                ),
+                                                '\s+', ' ', 'g'
                                             ),
-                                            '\s+', ' ', 'g'
+                                            '\bAPARTMENT\b', 'FLAT', 'g'
                                         ),
-                                        '\bAPARTMENT\b', 'FLAT', 'g'
+                                        '\bUNIT\b', 'FLAT', 'g'
                                     ),
                                     '\bRD\b', 'ROAD', 'g'
                                 ),
@@ -415,6 +420,98 @@ def _join_tier2(
                 e.ADDRESS1, e.ADDRESS2,
                 e.BUILT_FORM, e.CONSTRUCTION_AGE_BAND, e.CURRENT_ENERGY_RATING,
                 2 AS match_tier
+            FROM ppd_norm AS p
+            JOIN epc_norm AS e
+                ON p.postcode_norm = e.postcode_norm
+               AND p.norm_addr = e.norm_addr
+        ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
+    """)
+    row = con.execute(f"SELECT COUNT(*) FROM read_parquet('{dst}')").fetchone()
+    result: int = row[0]  # type: ignore[index]
+    return result
+
+
+def _join_tier3(
+    ppd_path: str | pathlib.Path,
+    epc_path: str | pathlib.Path,
+    existing_matched_path: pathlib.Path,
+    dst: pathlib.Path,
+) -> int:
+    """Enhanced normalisation join for records unmatched in prior tiers.
+
+    Extends tier 2 with two additional normalisations:
+    - Bare numeric/alphanumeric SAONs get ``FLAT `` prepended before concatenation
+      (e.g. saon ``"3"`` → ``"FLAT 3"`` so it matches EPC ``"FLAT 3 10 HIGH ST"``).
+    - Both sides already benefit from ``UNIT → FLAT`` added to the shared
+      ``normalise_addr`` macro.
+
+    Records already present in *existing_matched_path* are excluded so this
+    function can be run incrementally on top of an existing matched.parquet.
+    Uses DuckDB COPY to stream directly to Parquet (no Python heap materialisation).
+    Returns the number of new rows written.
+    """
+    con = duckdb.connect()
+    _configure_duckdb(con)
+    con.execute(_NORMALISE_MACRO)
+    existing_expr = f"read_parquet('{existing_matched_path}')"
+    ppd_src = _ppd_source(ppd_path)
+    epc_src = _sql_source(epc_path)
+    con.execute(f"""
+        COPY (
+            WITH
+            epc AS (SELECT * FROM {epc_src}),
+            ppd AS (
+                SELECT * FROM {ppd_src}
+                WHERE ppd_category_type = 'A'
+            ),
+            ppd_remaining AS (
+                SELECT * FROM ppd
+                WHERE transaction_unique_identifier NOT IN (
+                    SELECT transaction_unique_identifier FROM {existing_expr}
+                )
+            ),
+            ppd_norm AS (
+                SELECT *,
+                    normalise_addr(concat_ws(' ',
+                        CASE
+                            WHEN regexp_matches(
+                                trim(upper(coalesce(cast(saon AS VARCHAR), ''))),
+                                '^\\d+[A-Z]?$'
+                            )
+                            THEN 'FLAT ' || trim(upper(cast(saon AS VARCHAR)))
+                            ELSE nullif(
+                                trim(coalesce(cast(saon AS VARCHAR), '')), ''
+                            )
+                        END,
+                        nullif(trim(coalesce(cast(paon AS VARCHAR), '')), ''),
+                        nullif(trim(coalesce(cast(street AS VARCHAR), '')), '')
+                    )) AS norm_addr,
+                    upper(trim(postcode)) AS postcode_norm
+                FROM ppd_remaining
+            ),
+            epc_norm AS (
+                SELECT *,
+                    normalise_addr(concat_ws(' ',
+                        NULLIF(COALESCE(ADDRESS1, ''), ''),
+                        NULLIF(COALESCE(ADDRESS2, ''), '')
+                    )) AS norm_addr,
+                    upper(trim(POSTCODE)) AS postcode_norm
+                FROM epc
+                WHERE upper(trim(POSTCODE)) IN (
+                    SELECT DISTINCT postcode_norm FROM ppd_norm
+                )
+            )
+            SELECT
+                p.transaction_unique_identifier,
+                p.price, p.date_of_transfer, p.postcode,
+                p.property_type, p.new_build_flag, p.tenure_type,
+                p.paon, p.saon, p.street, p.locality, p.town_city,
+                p.district, p.county, p.ppd_category_type, p.record_status,
+                NULL::BIGINT AS uprn,
+                e.TOTAL_FLOOR_AREA, e.LODGEMENT_DATETIME,
+                e.ADDRESS1, e.ADDRESS2,
+                e.BUILT_FORM, e.CONSTRUCTION_AGE_BAND, e.CURRENT_ENERGY_RATING,
+                3 AS match_tier
             FROM ppd_norm AS p
             JOIN epc_norm AS e
                 ON p.postcode_norm = e.postcode_norm
@@ -720,16 +817,37 @@ def run(
     )
     console.print()
 
-    # Steps 3–5: aggregate directly from Parquet files — never load the full
-    # matched DataFrame into Python heap.  Peak RSS stays under 1 GB even with
-    # a 1+ GB matched.parquet, because DuckDB streams the scans and only
-    # materialises small aggregation states (≤35 k LSOA rows, ≤3 k district
-    # rows) rather than the full matched result.
     uprn_lsoa_parquet = cache_dir / "uprn_lsoa.parquet"
+    _run_aggregations(
+        matched_parquet, uprn_lsoa_parquet, ppd_path, output_dir, min_sales, console
+    )
+
+
+def _run_aggregations(
+    matched_parquet: pathlib.Path,
+    uprn_lsoa_parquet: pathlib.Path,
+    ppd_path: pathlib.Path | str,
+    output_dir: pathlib.Path,
+    min_sales: int,
+    console: Console,
+) -> None:
+    """Emit match report, district CSV, and LSOA CSV from existing Parquet files.
+
+    Runs entirely inside DuckDB — never loads the full matched DataFrame into
+    Python heap.  Peak RSS is bounded by the small aggregation result sets
+    (~3 k district rows, ~35 k LSOA rows).
+
+    Called by both ``run()`` (after the join steps) and ``rematch()`` (after
+    appending tier-3 matches to an existing matched.parquet).
+    """
+    # Aggregate directly from Parquet files — never load the full matched
+    # DataFrame into Python heap.  Peak RSS stays under 1 GB even with a
+    # 1+ GB matched.parquet, because DuckDB streams the scans and only
+    # materialises small aggregation states.
     con = duckdb.connect()
     _configure_duckdb(con)
 
-    # Step 3: match report — tier counts via DuckDB scan.
+    # Match report — tier counts via DuckDB scan.
     is_parquet = str(ppd_path).endswith(".parquet")
     total_ppd: int = duckdb.execute(
         f"SELECT COUNT(*) FROM {_ppd_source(ppd_path)}"
@@ -739,20 +857,23 @@ def run(
         SELECT match_tier, COUNT(*) AS n
         FROM read_parquet('{matched_parquet}')
         GROUP BY match_tier
+        ORDER BY match_tier
     """).fetchall()
     tier_map: dict[int, int] = {int(t): int(n) for t, n in tier_counts}
-    tier1 = tier_map.get(1, 0)
-    tier2 = tier_map.get(2, 0)
-    unmatched = total_ppd - tier1 - tier2
+    matched_total = sum(tier_map.values())
+    unmatched = total_ppd - matched_total
+    tier_parts = "  ".join(
+        f"tier{t} [{c}]{n:,}[/{c}] ({round(100 * n / total_ppd, 1)}%)"
+        for t, n in sorted(tier_map.items())
+        for c in ["green" if t == 1 else "yellow"]
+    )
     console.print(
-        f"  Match  "
-        f"tier1 [green]{tier1:,}[/green] ({round(100 * tier1 / total_ppd, 1)}%)  "
-        f"tier2 [yellow]{tier2:,}[/yellow] ({round(100 * tier2 / total_ppd, 1)}%)  "
+        f"  Match  {tier_parts}  "
         f"unmatched [red]{unmatched:,}[/red] ({round(100 * unmatched / total_ppd, 1)}%)"
     )
     console.print()
 
-    # Step 4: aggregate by postcode district.
+    # Aggregate by postcode district.
     # Postcode district = postcode minus the last 3 characters (the inward code),
     # matching the Python logic: postcode.str[:-3].str.strip().
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -781,9 +902,9 @@ def run(
     )
     del district_df
 
-    # Step 5: aggregate by LSOA — join matched ← uprn_lsoa on disk.
-    # Only Tier 1 records have a UPRN; Tier 2 records are excluded here but
-    # still appear in the postcode district output above.
+    # Aggregate by LSOA — join matched ← uprn_lsoa on disk.
+    # Only Tier 1 records have a UPRN; address-matched records are excluded here
+    # but still appear in the postcode district output above.
     lsoa_df = con.execute(f"""
         SELECT
             l.LSOA21CD,
@@ -807,11 +928,107 @@ def run(
     console.print()
 
 
-if __name__ == "__main__":  # pragma: no cover
-    run(
-        ppd_path=CACHE / "ppd_slim.parquet",
-        epc_path=CACHE / "epc_slim.parquet",
-        ubdc_path=CACHE / "ubdc_slim.parquet",
-        uprn_path=CACHE / "uprn_slim.parquet",
-        boundary_path=DATA / "lsoa_boundaries.gpkg",
+def rematch(
+    ppd_path: pathlib.Path,
+    epc_path: pathlib.Path,
+    *,
+    cache_dir: pathlib.Path = CACHE,
+    output_dir: pathlib.Path = OUTPUT,
+    min_sales: int = 10,
+) -> None:
+    """Extend existing matches with tier-3 normalisation, then re-aggregate.
+
+    Requires ``cache/matched.parquet`` from a prior ``run()``.  Finds all
+    unmatched category-A PPD records and applies enhanced address normalisation
+    (bare numeric SAON prepend).  New matches are appended to
+    ``matched.parquet`` in place; output CSVs are regenerated.
+
+    The ``uprn_lsoa.parquet`` spatial checkpoint is not rebuilt — tier-3
+    matches carry no UPRN so the LSOA aggregation is unchanged.
+
+    Memory-safe: all heavy steps use DuckDB COPY to Parquet; the matched
+    DataFrame is never loaded into Python heap.
+
+    Args:
+        ppd_path:  Path to the slim PPD Parquet (from ``make run``).
+        epc_path:  Path to the slim EPC Parquet (from ``make run``).
+        cache_dir: Directory containing Parquet checkpoints.
+        output_dir: Directory for output CSVs.
+        min_sales:  Minimum sales per geography to include in output.
+    """
+    console = Console()
+    console.print()
+    console.print("[bold]House prices pipeline — rematch[/bold]")
+    console.print()
+
+    matched_parquet = cache_dir / "matched.parquet"
+    uprn_lsoa_parquet = cache_dir / "uprn_lsoa.parquet"
+
+    if not matched_parquet.exists():
+        console.print(
+            "[red]Error:[/red] cache/matched.parquet not found."
+            " Run [bold]make run[/bold] first."
+        )
+        return
+
+    with tempfile.TemporaryDirectory() as _tmp:
+        tmp = pathlib.Path(_tmp)
+        tier3_path = tmp / "tier3.parquet"
+
+        t0 = time.monotonic()
+        with console.status("  [yellow]⏳  tier3 normalisation…[/yellow]"):
+            n_tier3 = _join_tier3(ppd_path, epc_path, matched_parquet, tier3_path)
+        elapsed = _fmt_elapsed(time.monotonic() - t0)
+        rss = _rss_mb()
+        console.print(
+            f"  [green]✓[/green]  tier3               {elapsed:<8} {n_tier3:>14,} rows"
+            f"  [dim]RSS {rss} MB[/dim]"
+        )
+
+        if n_tier3 == 0:
+            console.print(
+                "  [dim]No new matches found — matched.parquet unchanged.[/dim]"
+            )
+            console.print()
+            return
+
+        # Append tier-3 results to matched.parquet atomically.
+        # DuckDB reads both files without loading either into Python heap.
+        tmp_merged = matched_parquet.with_suffix(".tmp.parquet")
+        try:
+            duckdb.execute(f"""
+                COPY (
+                    SELECT * FROM read_parquet('{matched_parquet}')
+                    UNION ALL
+                    SELECT * FROM read_parquet('{tier3_path}')
+                ) TO '{tmp_merged}' (FORMAT PARQUET, COMPRESSION ZSTD)
+            """)
+            tmp_merged.rename(matched_parquet)
+        finally:
+            tmp_merged.unlink(missing_ok=True)
+
+        rss = _rss_mb()
+        console.print(
+            f"  [green]✓[/green]  matched.parquet updated  [dim]RSS {rss} MB[/dim]"
+        )
+        console.print()
+
+    _run_aggregations(
+        matched_parquet, uprn_lsoa_parquet, ppd_path, output_dir, min_sales, console
     )
+
+
+if __name__ == "__main__":  # pragma: no cover
+    if "--rematch" in sys.argv:
+        rematch(
+            ppd_path=CACHE / "ppd_slim.parquet",
+            epc_path=CACHE / "epc_slim.parquet",
+        )
+    else:
+        run(
+            ppd_path=CACHE / "ppd_slim.parquet",
+            epc_path=CACHE / "epc_slim.parquet",
+            ubdc_path=CACHE / "ubdc_slim.parquet",
+            uprn_path=CACHE / "uprn_slim.parquet",
+            boundary_path=DATA / "lsoa_boundaries.gpkg",
+        )
