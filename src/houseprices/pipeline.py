@@ -453,71 +453,86 @@ def _join_tier3(
     con = duckdb.connect()
     _configure_duckdb(con)
     con.execute(_NORMALISE_MACRO)
-    existing_expr = f"read_parquet('{existing_matched_path}')"
     ppd_src = _ppd_source(ppd_path)
     epc_src = _sql_source(epc_path)
-    con.execute(f"""
-        COPY (
-            WITH
-            epc AS (SELECT * FROM {epc_src}),
-            ppd AS (
-                SELECT * FROM {ppd_src}
-                WHERE ppd_category_type = 'A'
-            ),
-            ppd_remaining AS (
-                SELECT * FROM ppd
-                WHERE transaction_unique_identifier NOT IN (
-                    SELECT transaction_unique_identifier FROM {existing_expr}
+    # Pre-extract just the transaction IDs to a narrow single-column Parquet.
+    # This separates the anti-join hash-table build from the EPC+PPD join so
+    # the two scans do not compete for the same DuckDB memory budget.  DuckDB
+    # performs column pruning on Parquet, but making it explicit here also
+    # avoids any risk of reading wide rows from matched.parquet during the join.
+    excluded_ids_path = dst.with_suffix(".excluded_ids.parquet")
+    try:
+        con.execute(f"""
+            COPY (
+                SELECT transaction_unique_identifier
+                FROM read_parquet('{existing_matched_path}')
+            ) TO '{excluded_ids_path}' (FORMAT PARQUET, COMPRESSION ZSTD)
+        """)
+        excluded_expr = f"read_parquet('{excluded_ids_path}')"
+        con.execute(f"""
+            COPY (
+                WITH
+                epc AS (SELECT * FROM {epc_src}),
+                ppd AS (
+                    SELECT * FROM {ppd_src}
+                    WHERE ppd_category_type = 'A'
+                ),
+                ppd_remaining AS (
+                    SELECT * FROM ppd
+                    WHERE transaction_unique_identifier NOT IN (
+                        SELECT transaction_unique_identifier FROM {excluded_expr}
+                    )
+                ),
+                ppd_norm AS (
+                    SELECT *,
+                        normalise_addr(concat_ws(' ',
+                            CASE
+                                WHEN regexp_matches(
+                                    trim(upper(coalesce(cast(saon AS VARCHAR), ''))),
+                                    '^\\d+[A-Z]?$'
+                                )
+                                THEN 'FLAT ' || trim(upper(cast(saon AS VARCHAR)))
+                                ELSE nullif(
+                                    trim(coalesce(cast(saon AS VARCHAR), '')), ''
+                                )
+                            END,
+                            nullif(trim(coalesce(cast(paon AS VARCHAR), '')), ''),
+                            nullif(trim(coalesce(cast(street AS VARCHAR), '')), '')
+                        )) AS norm_addr,
+                        upper(trim(postcode)) AS postcode_norm
+                    FROM ppd_remaining
+                ),
+                epc_norm AS (
+                    SELECT *,
+                        normalise_addr(concat_ws(' ',
+                            NULLIF(COALESCE(ADDRESS1, ''), ''),
+                            NULLIF(COALESCE(ADDRESS2, ''), '')
+                        )) AS norm_addr,
+                        upper(trim(POSTCODE)) AS postcode_norm
+                    FROM epc
+                    WHERE upper(trim(POSTCODE)) IN (
+                        SELECT DISTINCT postcode_norm FROM ppd_norm
+                    )
                 )
-            ),
-            ppd_norm AS (
-                SELECT *,
-                    normalise_addr(concat_ws(' ',
-                        CASE
-                            WHEN regexp_matches(
-                                trim(upper(coalesce(cast(saon AS VARCHAR), ''))),
-                                '^\\d+[A-Z]?$'
-                            )
-                            THEN 'FLAT ' || trim(upper(cast(saon AS VARCHAR)))
-                            ELSE nullif(
-                                trim(coalesce(cast(saon AS VARCHAR), '')), ''
-                            )
-                        END,
-                        nullif(trim(coalesce(cast(paon AS VARCHAR), '')), ''),
-                        nullif(trim(coalesce(cast(street AS VARCHAR), '')), '')
-                    )) AS norm_addr,
-                    upper(trim(postcode)) AS postcode_norm
-                FROM ppd_remaining
-            ),
-            epc_norm AS (
-                SELECT *,
-                    normalise_addr(concat_ws(' ',
-                        NULLIF(COALESCE(ADDRESS1, ''), ''),
-                        NULLIF(COALESCE(ADDRESS2, ''), '')
-                    )) AS norm_addr,
-                    upper(trim(POSTCODE)) AS postcode_norm
-                FROM epc
-                WHERE upper(trim(POSTCODE)) IN (
-                    SELECT DISTINCT postcode_norm FROM ppd_norm
-                )
-            )
-            SELECT
-                p.transaction_unique_identifier,
-                p.price, p.date_of_transfer, p.postcode,
-                p.property_type, p.new_build_flag, p.tenure_type,
-                p.paon, p.saon, p.street, p.locality, p.town_city,
-                p.district, p.county, p.ppd_category_type, p.record_status,
-                NULL::BIGINT AS uprn,
-                e.TOTAL_FLOOR_AREA, e.LODGEMENT_DATETIME,
-                e.ADDRESS1, e.ADDRESS2,
-                e.BUILT_FORM, e.CONSTRUCTION_AGE_BAND, e.CURRENT_ENERGY_RATING,
-                3 AS match_tier
-            FROM ppd_norm AS p
-            JOIN epc_norm AS e
-                ON p.postcode_norm = e.postcode_norm
-               AND p.norm_addr = e.norm_addr
-        ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
-    """)
+                SELECT
+                    p.transaction_unique_identifier,
+                    p.price, p.date_of_transfer, p.postcode,
+                    p.property_type, p.new_build_flag, p.tenure_type,
+                    p.paon, p.saon, p.street, p.locality, p.town_city,
+                    p.district, p.county, p.ppd_category_type, p.record_status,
+                    NULL::BIGINT AS uprn,
+                    e.TOTAL_FLOOR_AREA, e.LODGEMENT_DATETIME,
+                    e.ADDRESS1, e.ADDRESS2,
+                    e.BUILT_FORM, e.CONSTRUCTION_AGE_BAND, e.CURRENT_ENERGY_RATING,
+                    3 AS match_tier
+                FROM ppd_norm AS p
+                JOIN epc_norm AS e
+                    ON p.postcode_norm = e.postcode_norm
+                   AND p.norm_addr = e.norm_addr
+            ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
+        """)
+    finally:
+        excluded_ids_path.unlink(missing_ok=True)
     row = con.execute(f"SELECT COUNT(*) FROM read_parquet('{dst}')").fetchone()
     result: int = row[0]  # type: ignore[index]
     return result
