@@ -118,3 +118,44 @@ constructed from `saon + paon + street`. We can adopt their substitution rules i
 `normalise_addr` DuckDB macro without needing AddressBase.
 
 See hypotheses in issue #50.
+
+---
+
+## Our achieved match rates (March 2026)
+
+Pipeline version covering ~1995–2026 PPD (~29.3M category-A records):
+
+| Tier | Records | Share |
+|---|---|---|
+| Tier 1 — UPRN direct (UBDC lookup) | 20,239,307 | 69.1% |
+| Tier 2 — address normalisation | 2,267,763 | 7.7% |
+| Tier 3 — enhanced flat normalisation | 2,817 | <0.1% |
+| **Total matched** | **22,509,887** | **76.9%** |
+| Unmatched | 6,773,388 | 23.1% |
+
+**By property type:**
+
+| Type | Total | Matched | Match % | Tier 3 |
+|---|---|---|---|---|
+| Flats (F) | 5,280,990 | 4,343,332 | 82.2% | 2,707 |
+| Terraced (T) | 8,751,012 | 7,008,937 | 80.1% | 78 |
+| Semi-detached (S) | 8,237,751 | 6,176,878 | 75.0% | 16 |
+| Detached (D) | 7,037,328 | 4,980,740 | 70.8% | 16 |
+
+Notable findings:
+- Flats have the **highest** match rate (82.2%), not the lowest as naively expected. The
+  bare-numeric SAON → "FLAT N" normalisation (tier 3) disproportionately helps flats
+  (2,707 of 2,817 tier-3 matches).
+- Detached houses have the **lowest** rate (70.8%), likely because named properties
+  ("Rose Cottage", "The Old Rectory") resist address normalisation without a canonical
+  number — exactly the case where AddressBase would help.
+
+**Comparison with Bin Chi (93%+, 2011–2019 only):**
+- Bin Chi restrict to 2011–2019, where UPRN coverage and EPC existence are near-complete.
+  Our overall 76.9% is dragged down by the pre-2009 structural gap (~3.5M sales with no
+  EPC on record) and the post-2021 UBDC coverage gap (~1.2M 2022–2026 records where
+  address normalisation only partially fills in for the missing UPRN lookup).
+- For the comparable 2011–2019 window our match rate is >90%, consistent with their figures.
+- The remaining gap is the lack of OS AddressBase Plus (commercial) as an intermediate
+  reference — their 142 PPD rules and 446 EPC rules are primarily workarounds for
+  sub-building address complexity that AddressBase resolves directly.
