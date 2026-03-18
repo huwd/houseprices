@@ -251,7 +251,7 @@
       margin-top: 1.5rem;
     }
 
-    .methodology h3 + p {
+    .methodology h3+p {
       font-size: 0.75rem;
       color: var(--color-muted);
     }
@@ -376,7 +376,8 @@
     <p class="intro-text">This map shows the average price per m² of houses in each postcode district in
       England &amp; Wales. It is inspired by the pioneering work of
       <a href="https://houseprices.anna.ps/">Anna Powell-Smith</a> in 2017,
-      re-run here with data matching 22,500,878 sales from Aug 2007 - Jan 2026.
+      re-run here to data match 22,500,878 properties sold between Aug 2007 and Jan 2026 to EPC data showing their floor
+      area.
     </p>
     <p id="price-range-text" class="intro-text"></p>
   </div>
@@ -452,7 +453,8 @@
     </p>
     <h3>Attribution</h3>
     <p>Price Paid data produced by HM Land Registry © Crown copyright 2026, licensed under the
-      <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence v3.0</a>.
+      <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence
+        v3.0</a>.
       EPC data © Crown copyright DLUHC, licensed under the Open Government Licence v3.0.
       <a href="https://doi.org/10.20394/agu7hprj">UBDC PPD–UPRN lookup</a> published as open data
       by the Urban Big Data Centre, University of Glasgow.
@@ -497,228 +499,228 @@
     async function init() {
       const GEOJSON = await fetch('postcode_districts.geojson').then(r => r.json());
 
-    // ── Colour scale (7-class YlOrRd, quantile breaks) ───────────────────────────
-    const PALETTE = [
-      '#ffffb2', '#fed976', '#feb24c', '#fd8d3c',
-      '#fc4e2a', '#e31a1c', '#b10026',
-    ];
+      // ── Colour scale (7-class YlOrRd, quantile breaks) ───────────────────────────
+      const PALETTE = [
+        '#ffffb2', '#fed976', '#feb24c', '#fd8d3c',
+        '#fc4e2a', '#e31a1c', '#b10026',
+      ];
 
-    const allPrices = GEOJSON.features
-      .map(f => f.properties.price_per_sqm)
-      .filter(v => v != null)
-      .sort((a, b) => a - b);
+      const allPrices = GEOJSON.features
+        .map(f => f.properties.price_per_sqm)
+        .filter(v => v != null)
+        .sort((a, b) => a - b);
 
-    // Quantile break values
-    const breaks = [0, 1 / 7, 2 / 7, 3 / 7, 4 / 7, 5 / 7, 6 / 7, 1].map(q => {
-      const i = Math.min(Math.floor(q * allPrices.length), allPrices.length - 1);
-      return allPrices[i];
-    });
+      // Quantile break values
+      const breaks = [0, 1 / 7, 2 / 7, 3 / 7, 4 / 7, 5 / 7, 6 / 7, 1].map(q => {
+        const i = Math.min(Math.floor(q * allPrices.length), allPrices.length - 1);
+        return allPrices[i];
+      });
 
-    function getColour(price) {
-      if (price == null) return '#cccccc';
-      for (let i = breaks.length - 2; i >= 0; i--) {
-        if (price >= breaks[i]) return PALETTE[i];
+      function getColour(price) {
+        if (price == null) return '#cccccc';
+        for (let i = breaks.length - 2; i >= 0; i--) {
+          if (price >= breaks[i]) return PALETTE[i];
+        }
+        return PALETTE[0];
       }
-      return PALETTE[0];
-    }
 
-    // ── Price range filter ────────────────────────────────────────────────────────
-    let filterLo = 0, filterHi = 100; // percentile indices into allPrices
+      // ── Price range filter ────────────────────────────────────────────────────────
+      let filterLo = 0, filterHi = 100; // percentile indices into allPrices
 
-    function priceAtPct(pct) {
-      const i = Math.min(Math.floor(pct / 100 * allPrices.length), allPrices.length - 1);
-      return allPrices[i];
-    }
-
-    function inFilter(price) {
-      if (price == null) return false;
-      return price >= priceAtPct(filterLo) && price <= priceAtPct(filterHi);
-    }
-
-    // ── Map ───────────────────────────────────────────────────────────────────────
-    // Read deep-link param here so we can skip the UK default view when a
-    // district is specified — setZoom() fires a zoom animation that completes
-    // asynchronously and would override the district fitBounds set in init().
-    const initialDistrict = new URLSearchParams(window.location.search).get('postcode');
-
-    const map = L.map('map', {center: [52.5, -1.5], zoom: 6});
-    if (!initialDistrict) {
-      map.fitBounds([[49.8, -6.5], [55.9, 2.0]]);
-      map.setZoom(map.getZoom() + 1);
-    }
-
-    L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-      {
-        attribution:
-          '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> ' +
-          'contributors © <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 19,
+      function priceAtPct(pct) {
+        const i = Math.min(Math.floor(pct / 100 * allPrices.length), allPrices.length - 1);
+        return allPrices[i];
       }
-    ).addTo(map);
 
-    // Info control (top-right)
-    const infoCtrl = L.control({position: 'topright'});
-    infoCtrl.onAdd = function () {
-      this._div = L.DomUtil.create('div', 'info');
-      this._render(null);
-      return this._div;
-    };
-    infoCtrl._render = function (props) {
-      if (!props) {
-        this._div.innerHTML = '<h4>UK House Prices</h4>Hover over a district';
-        return;
+      function inFilter(price) {
+        if (price == null) return false;
+        return price >= priceAtPct(filterLo) && price <= priceAtPct(filterHi);
       }
-      const price = props.price_per_sqm != null
-        ? '£' + props.price_per_sqm.toLocaleString() + '/m²'
-        : 'No data';
-      const sales = props.num_sales != null
-        ? props.num_sales.toLocaleString() + ' sales'
-        : '';
-      this._div.innerHTML =
-        `<h4>${props.PostDist}</h4>${price}` +
-        (sales ? `<br><span class="muted">Based on ${sales}<span><br><span class="muted">${STATS.date_range}</span>` : '');
-    };
-    infoCtrl.addTo(map);
 
-    // GeoJSON layer
-    let activeLayer = null;
+      // ── Map ───────────────────────────────────────────────────────────────────────
+      // Read deep-link param here so we can skip the UK default view when a
+      // district is specified — setZoom() fires a zoom animation that completes
+      // asynchronously and would override the district fitBounds set in init().
+      const initialDistrict = new URLSearchParams(window.location.search).get('postcode');
 
-    function districtStyle(feature) {
-      const price = feature.properties.price_per_sqm;
-      const active = filterLo === 0 && filterHi === 100 || inFilter(price);
-      return {
-        fillColor: active ? getColour(price) : '#bbbbbb',
-        fillOpacity: active ? 0.75 : 0.2,
-        color: 'rgba(255,255,255,0.5)',
-        weight: 0.5,
+      const map = L.map('map', {center: [52.5, -1.5], zoom: 6});
+      if (!initialDistrict) {
+        map.fitBounds([[49.8, -6.5], [55.9, 2.0]]);
+        map.setZoom(map.getZoom() + 1);
+      }
+
+      L.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        {
+          attribution:
+            '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> ' +
+            'contributors © <a href="https://carto.com/attributions">CARTO</a>',
+          subdomains: 'abcd',
+          maxZoom: 19,
+        }
+      ).addTo(map);
+
+      // Info control (top-right)
+      const infoCtrl = L.control({position: 'topright'});
+      infoCtrl.onAdd = function () {
+        this._div = L.DomUtil.create('div', 'info');
+        this._render(null);
+        return this._div;
       };
-    }
+      infoCtrl._render = function (props) {
+        if (!props) {
+          this._div.innerHTML = '<h4>UK House Prices</h4>Hover over a district';
+          return;
+        }
+        const price = props.price_per_sqm != null
+          ? '£' + props.price_per_sqm.toLocaleString() + '/m²'
+          : 'No data';
+        const sales = props.num_sales != null
+          ? props.num_sales.toLocaleString() + ' sales'
+          : '';
+        this._div.innerHTML =
+          `<h4>${props.PostDist}</h4>${price}` +
+          (sales ? `<br><span class="muted">Based on ${sales}<span><br><span class="muted">${STATS.date_range}</span>` : '');
+      };
+      infoCtrl.addTo(map);
 
-    function onMouseover(e) {
-      const layer = e.target;
-      layer.setStyle({weight: 1.5, color: '#555', fillOpacity: 0.9});
-      layer.bringToFront();
-      infoCtrl._render(layer.feature.properties);
-    }
+      // GeoJSON layer
+      let activeLayer = null;
 
-    function onMouseout(e) {
-      if (activeLayer !== e.target) geoLayer.resetStyle(e.target);
-      infoCtrl._render(null);
-    }
+      function districtStyle(feature) {
+        const price = feature.properties.price_per_sqm;
+        const active = filterLo === 0 && filterHi === 100 || inFilter(price);
+        return {
+          fillColor: active ? getColour(price) : '#bbbbbb',
+          fillOpacity: active ? 0.75 : 0.2,
+          color: 'rgba(255,255,255,0.5)',
+          weight: 0.5,
+        };
+      }
 
-    function setDistrictParam(code) {
-      const p = new URLSearchParams(window.location.search);
-      if (code) p.set('postcode', code); else p.delete('postcode');
-      const qs = p.toString();
-      history.replaceState(null, '', qs ? '?' + qs : window.location.pathname);
-    }
-
-    function onClick(e) {
-      if (activeLayer) geoLayer.resetStyle(activeLayer);
-      activeLayer = e.target;
-      activeLayer.setStyle({weight: 2, color: '#333', fillOpacity: 0.9});
-      infoCtrl._render(activeLayer.feature.properties);
-      setDistrictParam(activeLayer.feature.properties.PostDist);
-      L.DomEvent.stopPropagation(e);
-    }
-
-    map.on('click', () => {
-      if (activeLayer) {geoLayer.resetStyle(activeLayer); activeLayer = null;}
-      infoCtrl._render(null);
-      setDistrictParam(null);
-    });
-
-    const districtLayers = {};
-
-    const geoLayer = L.geoJSON(GEOJSON, {
-      renderer: L.canvas(),
-      style: districtStyle,
-      onEachFeature(feature, layer) {
-        districtLayers[feature.properties.PostDist] = layer;
-        layer.on({mouseover: onMouseover, mouseout: onMouseout, click: onClick});
-      },
-    }).addTo(map);
-
-    // ── Deep-link: restore district from ?postcode= on page load ─────────────────
-    if (initialDistrict) {
-      const layer = districtLayers[initialDistrict];
-      if (layer) {
-        // Use L.geoJSON(feature).getBounds() rather than layer.getBounds() — with
-        // the Canvas renderer, layer._bounds is set lazily on first draw and may
-        // be unprojected at this point, causing fitBounds to produce a bad zoom.
-        const bounds = L.geoJSON(layer.feature).getBounds();
-        map.fitBounds(bounds, {padding: [60, 60], maxZoom: 13});
-        activeLayer = layer;
-        layer.setStyle({weight: 2, color: '#333', fillOpacity: 0.9});
+      function onMouseover(e) {
+        const layer = e.target;
+        layer.setStyle({weight: 1.5, color: '#555', fillOpacity: 0.9});
+        layer.bringToFront();
         infoCtrl._render(layer.feature.properties);
       }
-    }
 
-    // ── Clickable district / city links ───────────────────────────────────────────
-    function dLink(code) {
-      return `<a href="#" class="map-link" data-district="${code}">${code}</a>`;
-    }
+      function onMouseout(e) {
+        if (activeLayer !== e.target) geoLayer.resetStyle(e.target);
+        infoCtrl._render(null);
+      }
 
-    function cLink(name, lat, lng, zoom) {
-      return `<a href="#" class="map-link" data-lat="${lat}" data-lng="${lng}" data-zoom="${zoom}">${name}</a>`;
-    }
+      function setDistrictParam(code) {
+        const p = new URLSearchParams(window.location.search);
+        if (code) p.set('postcode', code); else p.delete('postcode');
+        const qs = p.toString();
+        history.replaceState(null, '', qs ? '?' + qs : window.location.pathname);
+      }
 
-    const top2 = STATS.top10.slice(0, 2);
-    const bot2 = STATS.bottom10.slice(0, 2);
-    document.getElementById('price-range-text').innerHTML =
-      `Sale prices range from more than £${top2[0].price_per_sqm.toLocaleString()}/m² in ` +
-      `${dLink(top2[0].district)} and ${dLink(top2[1].district)}, ` +
-      `to under £${bot2[1].price_per_sqm.toLocaleString()}/m² in postcodes like ` +
-      `${dLink(bot2[0].district)} and ${dLink(bot2[1].district)}. ` +
-      `Zoom to ${cLink('London', 51.51, -0.13, 10)}, ` +
-      `${cLink('Birmingham', 52.48, -1.90, 11)}, ` +
-      `${cLink('Manchester', 53.48, -2.24, 11)}.`;
+      function onClick(e) {
+        if (activeLayer) geoLayer.resetStyle(activeLayer);
+        activeLayer = e.target;
+        activeLayer.setStyle({weight: 2, color: '#333', fillOpacity: 0.9});
+        infoCtrl._render(activeLayer.feature.properties);
+        setDistrictParam(activeLayer.feature.properties.PostDist);
+        L.DomEvent.stopPropagation(e);
+      }
 
-    document.addEventListener('click', function (e) {
-      const a = e.target.closest('a.map-link');
-      if (!a) return;
-      e.preventDefault();
-      if (a.dataset.district) {
-        const layer = districtLayers[a.dataset.district];
-        if (!layer) return;
-        setDistrictParam(a.dataset.district);
-        map.flyToBounds(layer.getBounds(), {padding: [60, 60], duration: 2.5, maxZoom: 13});
-        map.once('moveend', function () {
-          if (activeLayer) geoLayer.resetStyle(activeLayer);
+      map.on('click', () => {
+        if (activeLayer) {geoLayer.resetStyle(activeLayer); activeLayer = null;}
+        infoCtrl._render(null);
+        setDistrictParam(null);
+      });
+
+      const districtLayers = {};
+
+      const geoLayer = L.geoJSON(GEOJSON, {
+        renderer: L.canvas(),
+        style: districtStyle,
+        onEachFeature(feature, layer) {
+          districtLayers[feature.properties.PostDist] = layer;
+          layer.on({mouseover: onMouseover, mouseout: onMouseout, click: onClick});
+        },
+      }).addTo(map);
+
+      // ── Deep-link: restore district from ?postcode= on page load ─────────────────
+      if (initialDistrict) {
+        const layer = districtLayers[initialDistrict];
+        if (layer) {
+          // Use L.geoJSON(feature).getBounds() rather than layer.getBounds() — with
+          // the Canvas renderer, layer._bounds is set lazily on first draw and may
+          // be unprojected at this point, causing fitBounds to produce a bad zoom.
+          const bounds = L.geoJSON(layer.feature).getBounds();
+          map.fitBounds(bounds, {padding: [60, 60], maxZoom: 13});
           activeLayer = layer;
           layer.setStyle({weight: 2, color: '#333', fillOpacity: 0.9});
-          layer.bringToFront();
           infoCtrl._render(layer.feature.properties);
-        });
-      } else if (a.dataset.lat) {
-        map.flyTo(
-          [parseFloat(a.dataset.lat), parseFloat(a.dataset.lng)],
-          parseInt(a.dataset.zoom),
-          {duration: 2.5}
-        );
+        }
       }
-    });
 
-    // Legend (bottom-right)
-    const legendCtrl = L.control({position: 'bottomright'});
-    legendCtrl.onAdd = function () {
-      const div = L.DomUtil.create('div', 'legend');
-      L.DomEvent.disableClickPropagation(div);
-      L.DomEvent.disableScrollPropagation(div);
-      div.innerHTML = '<div class="legend-title">£/m²</div>';
-      PALETTE.forEach((colour, i) => {
-        const lo = '£' + Math.round(breaks[i]).toLocaleString();
-        const hi = i < PALETTE.length - 1
-          ? '–£' + Math.round(breaks[i + 1]).toLocaleString()
-          : '+';
-        div.innerHTML +=
-          `<div class="legend-row">` +
-          `<span class="legend-swatch" style="background:${colour}"></span>` +
-          `<span>${lo}${hi}</span></div>`;
+      // ── Clickable district / city links ───────────────────────────────────────────
+      function dLink(code) {
+        return `<a href="#" class="map-link" data-district="${code}">${code}</a>`;
+      }
+
+      function cLink(name, lat, lng, zoom) {
+        return `<a href="#" class="map-link" data-lat="${lat}" data-lng="${lng}" data-zoom="${zoom}">${name}</a>`;
+      }
+
+      const top2 = STATS.top10.slice(0, 2);
+      const bot2 = STATS.bottom10.slice(0, 2);
+      document.getElementById('price-range-text').innerHTML =
+        `Sale prices range from more than £${top2[0].price_per_sqm.toLocaleString()}/m² in ` +
+        `${dLink(top2[0].district)} and ${dLink(top2[1].district)}, ` +
+        `to under £${bot2[1].price_per_sqm.toLocaleString()}/m² in postcodes like ` +
+        `${dLink(bot2[0].district)} and ${dLink(bot2[1].district)}. ` +
+        `Zoom to ${cLink('London', 51.51, -0.13, 10)}, ` +
+        `${cLink('Birmingham', 52.48, -1.90, 11)}, ` +
+        `${cLink('Manchester', 53.48, -2.24, 11)}.`;
+
+      document.addEventListener('click', function (e) {
+        const a = e.target.closest('a.map-link');
+        if (!a) return;
+        e.preventDefault();
+        if (a.dataset.district) {
+          const layer = districtLayers[a.dataset.district];
+          if (!layer) return;
+          setDistrictParam(a.dataset.district);
+          map.flyToBounds(layer.getBounds(), {padding: [60, 60], duration: 2.5, maxZoom: 13});
+          map.once('moveend', function () {
+            if (activeLayer) geoLayer.resetStyle(activeLayer);
+            activeLayer = layer;
+            layer.setStyle({weight: 2, color: '#333', fillOpacity: 0.9});
+            layer.bringToFront();
+            infoCtrl._render(layer.feature.properties);
+          });
+        } else if (a.dataset.lat) {
+          map.flyTo(
+            [parseFloat(a.dataset.lat), parseFloat(a.dataset.lng)],
+            parseInt(a.dataset.zoom),
+            {duration: 2.5}
+          );
+        }
       });
-      div.innerHTML += `
+
+      // Legend (bottom-right)
+      const legendCtrl = L.control({position: 'bottomright'});
+      legendCtrl.onAdd = function () {
+        const div = L.DomUtil.create('div', 'legend');
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.disableScrollPropagation(div);
+        div.innerHTML = '<div class="legend-title">£/m²</div>';
+        PALETTE.forEach((colour, i) => {
+          const lo = '£' + Math.round(breaks[i]).toLocaleString();
+          const hi = i < PALETTE.length - 1
+            ? '–£' + Math.round(breaks[i + 1]).toLocaleString()
+            : '+';
+          div.innerHTML +=
+            `<div class="legend-row">` +
+            `<span class="legend-swatch" style="background:${colour}"></span>` +
+            `<span>${lo}${hi}</span></div>`;
+        });
+        div.innerHTML += `
         <div class="range-filter">
           <div class="range-wrap">
             <div class="range-track"><div class="range-fill" id="rf-fill"></div></div>
@@ -730,35 +732,35 @@
             <span id="rf-hi-label">£${Math.round(allPrices[allPrices.length - 1]).toLocaleString()}</span>
           </div>
         </div>`;
-      return div;
-    };
-    legendCtrl.addTo(map);
+        return div;
+      };
+      legendCtrl.addTo(map);
 
-    // Wire up range filter
-    const rfLo = document.getElementById('rf-lo');
-    const rfHi = document.getElementById('rf-hi');
-    const rfFill = document.getElementById('rf-fill');
-    const rfLoLabel = document.getElementById('rf-lo-label');
-    const rfHiLabel = document.getElementById('rf-hi-label');
+      // Wire up range filter
+      const rfLo = document.getElementById('rf-lo');
+      const rfHi = document.getElementById('rf-hi');
+      const rfFill = document.getElementById('rf-fill');
+      const rfLoLabel = document.getElementById('rf-lo-label');
+      const rfHiLabel = document.getElementById('rf-hi-label');
 
-    function updateFilter() {
-      let lo = parseInt(rfLo.value);
-      let hi = parseInt(rfHi.value);
-      if (lo > hi) {
-        if (document.activeElement === rfLo) rfLo.value = lo = hi;
-        else rfHi.value = hi = lo;
+      function updateFilter() {
+        let lo = parseInt(rfLo.value);
+        let hi = parseInt(rfHi.value);
+        if (lo > hi) {
+          if (document.activeElement === rfLo) rfLo.value = lo = hi;
+          else rfHi.value = hi = lo;
+        }
+        filterLo = lo;
+        filterHi = hi;
+        rfFill.style.left = lo + '%';
+        rfFill.style.right = (100 - hi) + '%';
+        rfLoLabel.textContent = '£' + Math.round(priceAtPct(lo)).toLocaleString();
+        rfHiLabel.textContent = '£' + Math.round(priceAtPct(hi)).toLocaleString();
+        geoLayer.setStyle(districtStyle);
       }
-      filterLo = lo;
-      filterHi = hi;
-      rfFill.style.left = lo + '%';
-      rfFill.style.right = (100 - hi) + '%';
-      rfLoLabel.textContent = '£' + Math.round(priceAtPct(lo)).toLocaleString();
-      rfHiLabel.textContent = '£' + Math.round(priceAtPct(hi)).toLocaleString();
-      geoLayer.setStyle(districtStyle);
-    }
 
-    rfLo.addEventListener('input', updateFilter);
-    rfHi.addEventListener('input', updateFilter);
+      rfLo.addEventListener('input', updateFilter);
+      rfHi.addEventListener('input', updateFilter);
 
     } // end init()
     init();
