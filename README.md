@@ -9,12 +9,25 @@ All source data is Open Government Licence v3.0.
 ## How it works
 
 1. **Download** — fetches ~25 GB of raw data (PPD, EPC, OS Open UPRN, UBDC lookup, ONS LSOA boundaries)
-2. **Join** — links property sales to floor area via a two-tier strategy:
-   - Tier 1: direct UPRN match via the [UBDC PPD→UPRN lookup](https://data.ubdc.ac.uk/dataset/hm-land-registry-price-paid-data-with-uprns)
-   - Tier 2: normalised address fallback (postcode + street address)
+2. **Join** — links property sales to floor area via a three-tier strategy:
+   - Tier 1: direct UPRN match via the [UBDC PPD→UPRN lookup](https://data.ubdc.ac.uk/dataset/hm-land-registry-price-paid-data-with-uprns) — covers ~1995–2021
+   - Tier 2: normalised address fallback (postcode + street address) — primary path for 2022+
+   - Tier 3: enhanced normalisation for flat sub-building addresses (bare numeric SAON → "FLAT N")
 3. **Spatial** — maps each UPRN to its LSOA using a DuckDB point-in-polygon join
 4. **Aggregate** — computes `total_price / total_floor_area` per postcode district and LSOA
 5. **Output** — writes two CSVs to `output/`
+
+**Match rates (March 2026 run, ~29.3M category-A PPD records):**
+
+| Tier | Records | Share |
+|---|---|---|
+| Tier 1 — UPRN direct | 20,239,307 | 69.1% |
+| Tier 2 — address normalisation | 2,267,763 | 7.7% |
+| Tier 3 — enhanced flat normalisation | 2,817 | <0.1% |
+| **Total matched** | **22,509,887** | **76.9%** |
+| Unmatched | 6,773,388 | 23.1% |
+
+The unmatched 23.1% has two structural causes: ~3.5M pre-2009 sales for properties that have never had an EPC lodged (no certificate exists to match), and ~1.2M 2022–2026 sales where the UBDC lookup has no coverage and address normalisation fails (see [`research/uprn-coverage-in-epc-data.md`](research/uprn-coverage-in-epc-data.md)).
 
 Intermediate results are checkpointed to `cache/` as Parquet files so re-runs skip already-completed steps.
 
@@ -165,14 +178,16 @@ The pipeline manages disk space aggressively to stay viable on modest machines.
 
 ### RAM
 
-The tier-2 address-normalisation join is the most memory-intensive step. By default DuckDB uses all available RAM, which on a machine with 8 GB can exhaust RAM and swap and hard-freeze the OS.
+The tier-2 and tier-3 address-normalisation joins are the most memory-intensive steps — they scan the full EPC and PPD datasets simultaneously. By default DuckDB uses all available RAM, which on a machine with 8 GB can exhaust RAM and swap and hard-freeze the OS.
 
 **Set `DUCKDB_MEMORY_LIMIT` and `DUCKDB_THREADS` in your `.env` before running.** When the memory limit is reached, DuckDB spills temporary data to disk rather than crashing the system — the pipeline runs slower but completes safely.
 
 ```bash
 # .env — recommended for an 8 GB laptop
-DUCKDB_MEMORY_LIMIT=4GB   # leaves ~4 GB for OS, browser, etc.
+DUCKDB_MEMORY_LIMIT=2GB   # leaves ~1 GB headroom for Python on top of DuckDB
 DUCKDB_THREADS=2          # matches physical core count; reduces peak load
 ```
 
-The active values are printed at the start of each `make run` so you can confirm the config is being picked up. If neither variable is set, DuckDB defaults apply (no memory limit, all CPU threads) — safe on machines with 16 GB or more.
+`make run` and `make rematch` wrap the pipeline in a `systemd-run --scope` cgroup with a hard memory ceiling (`MEM_MAX=3G`) and a soft throttle (`MEM_HIGH=2500M`) that causes gradual kernel reclaim before the ceiling is hit, preventing the PSI spike that would otherwise cause `systemd-oomd` to kill the whole desktop session. See [`MEMORY_CHALLENGES.md`](MEMORY_CHALLENGES.md) for the full history.
+
+The active DuckDB values are printed at the start of each `make run` so you can confirm the config is being picked up. If neither variable is set, DuckDB defaults apply (no memory limit, all CPU threads) — safe on machines with 16 GB or more.

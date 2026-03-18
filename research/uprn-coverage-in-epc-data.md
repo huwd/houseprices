@@ -195,6 +195,51 @@ theoretically recoverable.
 
 ---
 
+## Anatomy of the 23.1% unmatched (March 2026 pipeline run)
+
+After running all three tiers (overall 76.9% match), the unmatched 23.1%
+decomposes into two structural groups:
+
+### Pre-2009: no EPC exists (~3.5M records, largely unrecoverable)
+
+EPC was introduced in England and Wales from August 2007, but coverage was
+sparse until 2009–2010. For a pre-EPC sale to match, the same property must
+have lodged a certificate at some later point (e.g. a 2001 sale of a house
+re-sold in 2016 and assessed then). Properties that have never been assessed
+— common for older housing stock that hasn't changed hands recently — have no
+EPC record and cannot be matched.
+
+| Period | Typical unmatched/year | Cause |
+|---|---|---|
+| 1995–2007 | 280–410k | EPC scheme didn't exist; no certificate for most properties |
+| 2008 | 193k | First year of EPC; sparse early coverage |
+| 2009–2019 | 30–100k | Residual — named properties and tier-2 failures |
+
+### Post-2021: UBDC coverage gap (~1.2M records, theoretically recoverable)
+
+The UBDC PPD→UPRN lookup covers transactions up to approximately early 2022.
+From 2023 onwards tier 1 contributes nothing. Tier 2 fills in heavily
+(536k of 538k matched for 2022 come via tier 2) but still leaves 300–370k
+per year unmatched. As the postcode cross-reference above shows, 99.5%+ of
+these are in postcodes with EPC data — the gap is purely address normalisation
+quality, not missing EPC records.
+
+### By property type
+
+| Type | Match % | Notes |
+|---|---|---|
+| Flats (F) | 82.2% | Highest — tier 3 SAON normalisation disproportionately helps |
+| Terraced (T) | 80.1% | Straightforward numbered street addresses match well |
+| Semi-detached (S) | 75.0% | — |
+| Detached (D) | 70.8% | Lowest — named properties resist normalisation |
+
+Detached houses being the hardest type is counterintuitive but explained by
+named properties ("Rose Cottage", "The Old Rectory") that have no house number.
+Without OS AddressBase as a canonical reference, named property addresses cannot
+be reliably matched by string normalisation alone.
+
+---
+
 ## References
 
 [^boswarva]: Owen Boswarva, "Allocating UPRNs to Energy Performance Certificates" (early 2022). <https://www.owenboswarva.com/blog/post-hou3.htm>
