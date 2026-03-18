@@ -536,8 +536,16 @@
     }
 
     // ── Map ───────────────────────────────────────────────────────────────────────
-    const map = L.map('map').fitBounds([[49.8, -6.5], [55.9, 2.0]]);
-    map.setZoom(map.getZoom() + 1);
+    // Read deep-link param here so we can skip the UK default view when a
+    // district is specified — setZoom() fires a zoom animation that completes
+    // asynchronously and would override the district fitBounds set in init().
+    const initialDistrict = new URLSearchParams(window.location.search).get('district');
+
+    const map = L.map('map', {center: [52.5, -1.5], zoom: 6});
+    if (!initialDistrict) {
+      map.fitBounds([[49.8, -6.5], [55.9, 2.0]]);
+      map.setZoom(map.getZoom() + 1);
+    }
 
     L.tileLayer(
       'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
@@ -634,7 +642,6 @@
     }).addTo(map);
 
     // ── Deep-link: restore district from ?district= on page load ─────────────────
-    const initialDistrict = new URLSearchParams(window.location.search).get('district');
     if (initialDistrict) {
       const layer = districtLayers[initialDistrict];
       if (layer) {
