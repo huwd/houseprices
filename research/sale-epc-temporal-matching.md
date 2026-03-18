@@ -1,283 +1,321 @@
-# Sale-EPC Temporal Matching
+# Sale-EPC Temporal Matching and PPD Methodology
 
 **Issue**: https://github.com/huwd/houseprices/issues/60
 **Researched**: 2026-03-18
 
 ---
 
-## The problem in concrete terms
+## What are we measuring and why
+
+The core output — price per square metre by geography — serves two distinct use
+cases, each with different validity:
+
+**Valuing an unsold property via comparables** ("what would my house sell for?")
+This is the strongest use case. You want to know what comparable properties that
+*actually entered the market* went for. Transaction data is the right data for
+this. The starter home that sold three times is a rich source of market signal;
+the mansion that last sold in 2003 is a poor comparable for most valuations
+precisely because its last price signal is old and its type is illiquid.
+
+**Characterising a geography** ("what is this area worth per m²?")
+Useful but inherently limited by selection bias: only sold properties appear in
+the dataset. The Georgian townhouse that hasn't changed hands since 1987 is
+absent. Acknowledge this limitation rather than try to design around it — you
+cannot observe prices for unsold properties.
+
+The metric is honestly described as: **price per m² among properties that traded
+in this area over a given period.** It is not a measure of the whole housing
+stock.
+
+---
+
+## Unit of analysis: all sales vs most-recent-only
+
+### Option A — most recent sale per property only
+
+Deduplicate PPD to the latest transaction per UPRN. One data point per property.
+
+**Data quality**: throws away historical signal. In a sparse postcode district
+with 2 sales last year, properties that sold in 2019–2021 are discarded. For the
+time-range slider (issue #61), historical buckets become empty or unreliable.
+
+**EPC matching**: simple — one sale date per property, find the preceding EPC.
+
+**Memory**: smaller intermediate data. PPD shrinks from ~29M to ~15M unique UPRNs.
+
+**Bias introduced**: recency bias. Only properties with a sale in the lookback
+window appear. For the time slider, a property that sold in 2019 and not since
+contributes nothing to a 2022 bucket even though it is a valid comparable.
+
+### Option B — all sales contribute (chosen approach)
+
+Every PPD transaction is retained. Each sale is independently matched to the
+temporally closest EPC.
+
+**Data quality**: sparse areas benefit from historical sales filling thin recent
+buckets. This is essential for issue #61 (time-range slider) — each year's
+bucket reflects actual transactions from that year, not just properties whose
+most recent sale happened to fall in that year.
+
+**EPC matching**: per-sale temporal match. The 2015 sale of a house gets the
+2014 EPC; the 2022 sale of the same house gets the 2021 EPC. If the property
+was extended in 2018, these two EPC floor areas will differ — which is correct.
+
+**Memory**: EPC table cannot be globally deduplicated before the join. ~30M rows
+vs ~15M after deduplication. Roughly 2× EPC cache size. DuckDB handles the
+per-sale temporal join efficiently via streaming window functions; the final
+matched output remains 1:1 with PPD rows (one EPC selected per sale).
+
+**Bias introduced**: turnover-frequency bias. Frequently-traded properties are
+over-represented relative to their share of the housing stock. Discussed below.
+
+### Why Option B despite the turnover bias
+
+The turnover-frequency bias is smaller than intuition suggests, and directionally
+correct for the valuation use case.
+
+Because the aggregation is `SUM(price) / SUM(floor_area)`, a property appearing
+N times contributes N× the price *and* N× the area. If its price-per-sqm is
+stable over the window, it does not move the aggregate at all regardless of how
+many times it sold. The bias only materialises when frequently-traded property
+types have *different* price-per-sqm from infrequently-traded ones — and that
+difference is then weighted by transaction volume rather than stock share.
+
+In practice, small frequently-traded properties (starter homes, flats) often
+command *higher* price per m² than large rarely-traded properties, because the
+land cost is fixed per plot regardless of house size. So Option B pulls the
+aggregate toward the liquid end of the market. This is arguably the correct
+signal for valuations: the liquid market is where you find comparables.
+
+The deeper structural issue — that illiquid property types (rarely-sold mansions,
+long-let HMOs) are under-represented in *all* transaction-based analysis — is
+irreducible. Option A and Option B share this limitation equally. Option B simply
+makes the composition of what you do measure more transparent.
+
+The metric under Option B is honestly described as: **transaction-frequency-
+weighted price per m² among properties that traded.** A downstream user can
+control for this by filtering to a specific property type (see property type
+segmentation, issue TBD).
+
+---
+
+## The selection bias is fundamental and not fixable here
+
+Every transaction-based analysis shares this property. Non-transaction sources
+that could in principle supplement it (VOA rateable values, council tax band
+implied prices, mortgage valuations) are either not open data or not at the
+resolution needed. The right response is to document the limitation clearly in
+the output, not to discard transaction data in pursuit of a representativeness
+that cannot be achieved.
+
+---
+
+## Dependency on issue #61 (time-range slider)
+
+Option B is a prerequisite for issue #61. The slider needs per-year, per-district
+aggregates:
+
+```sql
+SELECT
+    LEFT(postcode, ...) AS postcode_district,
+    YEAR(date_of_transfer) AS year,
+    SUM(price) AS total_price,
+    SUM(TOTAL_FLOOR_AREA) AS total_floor_area
+FROM matched
+GROUP BY 1, 2
+```
+
+Under Option A, each property appears once at most — a 2015 sale discarded
+because the same house sold in 2022 leaves the 2015 year-bucket without that
+data point. Under Option B, every year gets its own pool of transactions.
+
+Without temporal EPC matching (this issue), the historical year-buckets are
+also incorrect: the 2015 row uses the 2023 EPC floor area (post-extension), so
+`price / floor_area` is wrong even when the sale is present. Temporal EPC
+matching is therefore also a prerequisite for issue #61 to be meaningful.
+
+The dependency chain:
+
+```
+Option B (all sales retained)
+    └── Issue #60 (temporal EPC matching, per-sale)
+            └── Issue #61 (time-range slider, per-year aggregates)
+                    └── Issue #67 (inflation adjustment for cross-year comparison)
+```
+
+Issue #67 is not required for #61 to ship — a 5-year window slider is useful in
+nominal prices — but without it a "2008 to 2025" slider conflates nominal changes
+with real price changes.
+
+---
+
+## Temporal EPC matching: how to pick the right EPC per sale
 
 The current pipeline deduplicates EPCs before the join:
 
 ```python
-# prepare_epc(): keeps one EPC per UPRN — the most recently lodged
-MAX(LODGEMENT_DATETIME) AS LODGEMENT_DATETIME,
-MAX_BY(TOTAL_FLOOR_AREA, LODGEMENT_DATETIME) AS TOTAL_FLOOR_AREA
+# prepare_epc(): one EPC per UPRN — the most recently lodged
+GROUP BY UPRN
+MAX(LODGEMENT_DATETIME), MAX_BY(TOTAL_FLOOR_AREA, LODGEMENT_DATETIME) ...
 ```
 
-Then `_join_tier1` joins every PPD sale for that UPRN to this single
-deduplicated row. The result: a 2009 sale and a 2024 sale of the same property
-are both matched to the 2024 EPC.
+Then `_join_tier1` joins every PPD sale for that UPRN to this single row.
+A 2009 sale and a 2024 sale of the same property both use the 2024 EPC.
+If the 2024 EPC reflects a rear extension added in 2018, the 2009 floor area
+is wrong and `price_per_sqm` for that sale is systematically understated.
 
-If the 2024 EPC reflects a rear extension added in 2018, the 2009 sale's
-`price_per_sqm` is computed against a floor area that didn't exist at the time
-— it is systematically understated. Conversely, if a loft conversion was done in
-2011 and the property burned down (hypothetically) in 2023, the 2009 sale gets
-the post-conversion area anyway. The direction of bias depends on what changed,
-but the bias is real and applies asymmetrically to older sales.
-
-### Why EPCs are mostly lodged *before* a sale
+### Why EPCs are mostly lodged before a sale
 
 EPCs in England and Wales must by law be **commissioned before a property is
-put on the market** (Energy Performance of Buildings Regulations 2012). This is
-enforced at the listing stage, not completion — the EPC must be commissioned when
-marketing begins, typically 4–16 weeks before exchange. Fines of up to £500
-apply for non-compliance.
+put on the market** (Energy Performance of Buildings Regulations 2012). The
+certificate must appear in the listing; the obligation attaches at the marketing
+stage, typically 4–16 weeks before exchange. Fines of up to £500 apply for
+non-compliance.
 
-**Practical consequence**: for a property that is sold, the EPC lodgement date
-should precede the PPD `date_of_transfer` by a few days to a few months in
-most straightforward cases. This means the "prior EPC" will usually exist and
-will often be very recent relative to the sale date.
+Practical consequence: for a resale, the EPC lodgement date should precede the
+PPD `date_of_transfer` by days to a few months in most cases. A "prior EPC
+exists" fallback is not an edge case — it is the structural norm for post-2012
+resales.
 
-### When a prior EPC does *not* exist
+### When no prior EPC exists
 
-- **New builds** lodge their first EPC at construction, which appears in PPD as
-  the first sale. For new builds the EPC is contemporaneous (same day to a few
-  weeks before completion), and temporal matching is unproblematic.
-- **Pre-2009 sales**: EPC was not introduced until August 2007 and coverage was
-  sparse until ~2010. A 2006 sale cannot have a prior EPC by definition.
-- **Inherited/probate sales**: the property may not have been marketed, and the
-  EPC obligation may have been waived or ignored.
-- **Exempt properties**: listed buildings and some conservation area properties
-  are EPC-exempt; they should already fall out at the matching stage.
+- **New builds**: EPC lodged at construction completion, which is the first sale.
+  Temporally contemporaneous; no prior exists by definition. Use post-sale EPC
+  within a tight cutoff (e.g. ≤6 months).
+- **Pre-2009 sales**: EPC scheme did not exist until August 2007; sparse until
+  ~2010. A 2006 sale cannot have a prior EPC. Use earliest available EPC for
+  the property, or flag as low-quality match.
+- **Inherited/probate/exempt sales**: less predictable; treat same as above.
 
----
+### Matching algorithm (per sale)
 
-## What changes in the join architecture
+```
+For each (sale_uprn, sale_date):
+    1. Most recent EPC with lodgement_date ≤ sale_date AND gap ≤ 10 years
+       → contemporaneous match, highest quality
+    2. Earliest EPC with lodgement_date > sale_date AND gap ≤ 2 years
+       → post-sale fallback (new build; no prior commissioned)
+    3. Any EPC for the UPRN (no direction preference, gap ≤ 10 years)
+       → last resort; flag with stale_epc = true in output
+    4. No match → unmatched (excluded from price_per_sqm aggregation)
+```
 
-Currently: one EPC row per UPRN → join all sales to it.
+The 10-year ceiling matches EPC legal validity (certificates expire after 10
+years). Using an EPC older than 10 years as a floor area proxy is unreliable
+because the certificate was no longer valid for its original purpose at that age.
 
-With temporal matching: no pre-deduplication by UPRN. Instead, for each
-`(sale_uprn, sale_date)` pair, select the EPC row from that UPRN's history
-that is closest to the sale date subject to the preference rule.
-
-The join becomes:
+### DuckDB implementation: window function per-sale
 
 ```sql
--- For each sale, find the best available EPC:
---   1. Most recent EPC with LODGEMENT_DATETIME <= date_of_transfer (prior EPC)
---   2. If none: earliest EPC with LODGEMENT_DATETIME > date_of_transfer (post EPC)
---   3. Exclude matches where |gap| > N years
-
-WITH ranked AS (
+WITH candidates AS (
     SELECT
         ppd.transaction_unique_identifier,
+        ppd.date_of_transfer,
+        epc.UPRN,
         epc.LODGEMENT_DATETIME,
         epc.TOTAL_FLOOR_AREA,
-        -- negative gap means EPC was lodged BEFORE the sale (preferred)
-        DATEDIFF('day', epc.LODGEMENT_DATETIME, ppd.date_of_transfer) AS gap_days,
+        -- Gap in days, negative = EPC before sale (preferred)
+        DATEDIFF('day', ppd.date_of_transfer, epc.LODGEMENT_DATETIME)
+            AS gap_days,
         CASE
             WHEN epc.LODGEMENT_DATETIME <= ppd.date_of_transfer THEN 0
             ELSE 1
-        END AS is_post_sale,
+        END AS is_post_sale
+    FROM ppd
+    JOIN ubdc ON ppd.transaction_unique_identifier = ubdc.transactionid
+    JOIN epc_all ON CAST(ubdc.uprn AS BIGINT) = epc_all.UPRN
+    WHERE ABS(DATEDIFF('year',
+              epc_all.LODGEMENT_DATETIME, ppd.date_of_transfer)) <= 10
+),
+ranked AS (
+    SELECT *,
         ROW_NUMBER() OVER (
-            PARTITION BY ppd.transaction_unique_identifier
+            PARTITION BY transaction_unique_identifier
             ORDER BY
-                -- prefer prior EPCs over post-sale
-                CASE WHEN epc.LODGEMENT_DATETIME <= ppd.date_of_transfer THEN 0 ELSE 1 END,
-                -- within each group: prior → most recent; post → earliest
+                is_post_sale,            -- prior EPCs first
                 CASE
-                    WHEN epc.LODGEMENT_DATETIME <= ppd.date_of_transfer
-                    THEN -EPOCH(epc.LODGEMENT_DATETIME)
-                    ELSE  EPOCH(epc.LODGEMENT_DATETIME)
+                    WHEN is_post_sale = 0
+                    THEN -EPOCH(LODGEMENT_DATETIME)   -- most recent prior
+                    ELSE  EPOCH(LODGEMENT_DATETIME)   -- earliest post
                 END
         ) AS rn
-    FROM ppd
-    JOIN epc ON epc.UPRN = ppd_uprn
-    WHERE ABS(DATEDIFF('year', epc.LODGEMENT_DATETIME, ppd.date_of_transfer)) <= 10
+    FROM candidates
 )
 SELECT * FROM ranked WHERE rn = 1
 ```
 
-This is a significant pipeline change:
-
-1. `prepare_epc` must retain **all** EPC rows per UPRN (not deduplicate), or at
-   minimum keep one per `(UPRN, lodgement_year)` to bound memory.
-2. The join becomes a per-sale window function rather than a simple equijoin.
-3. Tier 2 (address normalisation) currently deduplicates EPCs for the same
-   reason — that too would need rethinking.
-4. The matched Parquet grows: currently one row per sale, still one row per sale
-   but selected from a wider candidate set.
+The matched output keeps one row per sale (1:1 with PPD) and adds `gap_days`
+and `is_post_sale` as diagnostic columns. Downstream analysis can apply quality
+filters (e.g. exclude `is_post_sale = 1 AND ABS(gap_days) > 180`).
 
 ---
 
-## Expected empirical distribution of gaps
+## Pipeline changes required
 
-Based on what we know about the dataset:
+### 1. `prepare_epc`: do not deduplicate by UPRN
 
-**EPC obligation**: EPC must precede marketing. Typical marketing-to-completion
-period is 8–16 weeks. So for a straightforward resale, the gap between EPC
-lodgement and PPD transfer date should be **0–6 months** for the vast majority.
+Remove the `GROUP BY UPRN / MAX_BY` step. The slim-column Parquet (step 1 of
+the current two-step prepare) is retained; the deduplication step (step 2) is
+dropped.
 
-**EPC validity**: 10 years. A property may have an EPC from a previous sale or
-let that is still valid; the seller may choose not to commission a new one.
-Under those circumstances the gap can be up to 10 years (prior EPC still valid
-from last transaction).
+Impact: `cache/epc.parquet` roughly doubles in size (~3GB vs ~1.5GB).
 
-**Postulated gap distribution** (to be verified empirically):
+### 2. `_join_tier1`: replace equijoin with window-function temporal join
 
-| Gap bucket | Expected share | Rationale |
-|---|---|---|
-| EPC 0–6 months before sale | ~50–65% | Freshly commissioned for sale |
-| EPC 6 months–5 years before sale | ~20–30% | Valid EPC from previous let or sale |
-| EPC 5–10 years before sale | ~5–15% | Old but still-valid certificate |
-| No prior EPC (post-sale only) | ~5–15% | New builds; pre-EPC era sales; gaps in data |
-| Gap > 10 years either direction | <5% | Structural mismatch; exclude |
-
-These are estimates only. The empirical distribution can be computed directly
-from the full EPC dataset without running the full pipeline:
+Replace the current:
 
 ```sql
--- Requires: epc_all (undeduped), matched.parquet (existing tier-1 matches)
-SELECT
-    FLOOR(DATEDIFF('month', e.LODGEMENT_DATETIME, m.date_of_transfer) / 6) * 6 AS gap_bucket_months,
-    COUNT(*) AS n,
-    COUNT_IF(e.LODGEMENT_DATETIME <= m.date_of_transfer) AS n_prior,
-    COUNT_IF(e.LODGEMENT_DATETIME >  m.date_of_transfer) AS n_post
-FROM matched m
-JOIN epc_all e ON e.UPRN = m.uprn
-GROUP BY 1
-ORDER BY 1
+JOIN epc ON CAST(ubdc.uprn AS BIGINT) = CAST(epc.UPRN AS BIGINT)
 ```
 
----
+...with the candidates + ranked CTE pattern above.
 
-## Impact on match rates
+### 3. `_join_tier2`: deferred
 
-Temporal matching should **not reduce match rates** in the UPRN-linked tier.
-The pool of candidate EPCs per UPRN is larger (undeduped), so if anything a
-match exists where the pre-deduped approach might have had only a post-sale EPC.
+Tier 2 (address normalisation) deduplicates EPCs for a different reason: to
+prevent fan-out when the normalised address matches multiple EPC rows. Changing
+this requires more care — the deduplicated EPC is used as a de-facto 1:1 join
+key. Tier 2 temporal matching is deferred; the gain is smaller (~8% of matches)
+and the risk of introducing spurious many:many joins is higher.
 
-The only way match rates drop is if we apply a strict prior-EPC-only cutoff
-with no post-sale fallback for sales where no prior EPC exists. The issue
-sensibly proposes using the earliest post-sale EPC as fallback, which preserves
-match rates.
+### 4. Add diagnostic columns to matched output
 
-For Tier 2 (address normalisation), deduplication currently serves a different
-purpose — it ensures a 1:1 join rather than a fan-out. If we retain all EPCs
-per address, Tier 2 must either:
-- Apply the same window-function logic (matching on `(postcode, norm_addr, date)`), or
-- Retain deduplication for Tier 2 and only apply temporal matching to Tier 1
-  (UPRN-matched) rows where the EPC history is unambiguous.
-
-The simpler approach for an initial implementation is **Tier 1 temporal matching
-only**, leaving Tier 2 with its existing deduplicated join. This covers ~69% of
-all matches (the UPRN tier) with no risk of introducing fan-out joins in the
-address-normalisation path.
+`gap_days INT, is_post_sale BOOLEAN` on every row. These allow:
+- Flagging stale matches in downstream analysis
+- Measuring the actual gap distribution without re-running the pipeline
+- Quality filtering at the aggregation step
 
 ---
 
-## Impact on price per square metre figures
+## Recommended sequencing
 
-The bias from the current approach disproportionately affects:
+1. **Diagnostic first (no pipeline changes)**: query the existing
+   `matched.parquet` against the full undeduped EPC to measure the actual gap
+   distribution. Establishes whether the bias is empirically significant and
+   what cutoff values are appropriate.
 
-- **Older sales** (pre-2015) where the property may have had significant
-  alterations since the sale
-- **Extended/converted properties** where the most recent EPC reflects a
-  materially larger or smaller footprint than at time of sale
-- **Postcode districts with older housing stock** where extensions are common
+2. **Implement Option B pipeline changes**: remove EPC global deduplication,
+   add window-function temporal join in Tier 1, add diagnostic columns.
 
-The effect on *national medians* is likely small, because:
-1. The most recent EPC and the sale-contemporaneous EPC often agree for most
-   sales (especially post-2015 where the market is liquid and EPCs are refreshed
-   frequently)
-2. For pre-2009 sales there is no prior EPC regardless of approach
+3. **Verify**: check that match rates do not decrease and that `gap_days`
+   distribution looks as expected from the diagnostic step.
 
-For **longitudinal analysis** (tracking the same district's price per m² over
-time) the distortion is more significant: a 2009 figure computed using 2024 EPC
-floor areas is systematically different from one computed using 2009 EPC floor
-areas.
-
----
-
-## Implementation options
-
-### Option A: Temporal matching for Tier 1 only (recommended first step)
-
-Scope: ~69% of all matched records (the UPRN tier).
-
-Changes:
-1. `prepare_epc`: add a mode that retains all rows per UPRN rather than
-   deduplicating. Probably a new function `prepare_epc_full()` or a parameter.
-2. `_join_tier1`: replace the equijoin against a deduped EPC table with a
-   window-function join against the full EPC table.
-3. Keep `_join_tier2` exactly as is (still deduped, not temporally matched).
-4. Add `gap_days` and `is_post_sale` columns to the matched output for
-   diagnostics.
-
-### Option B: Temporal matching for both Tier 1 and Tier 2
-
-Scope: all matched records.
-
-Additional changes beyond Option A:
-- Tier 2 must become a per-sale window join on `(postcode_norm, norm_addr)`;
-  a normalised address can match multiple EPC records (e.g. after a property
-  is converted), so a fan-out is possible.
-- More complex, and Tier 2 addresses are inherently noisier, so the temporal
-  signal is less reliable than for UPRN-matched records.
-- Deferred to a later iteration.
-
-### Option C: Research-only — measure the gap distribution first
-
-Before changing anything in the pipeline, run a diagnostic query against the
-existing matched.parquet and the full undeduped EPC to measure the actual
-gap distribution. This costs nothing in terms of pipeline changes and tells us
-whether the bias is empirically significant enough to warrant Option A/B.
-
----
-
-## Recommendation
-
-1. **Start with Option C** — run the diagnostic gap distribution query on the
-   existing matched output. This takes a few minutes and can be done in the
-   notebook without touching the pipeline.
-
-2. If the distribution shows a meaningful fraction of sales matched to EPCs
-   lodged >2 years *after* the sale date, proceed with **Option A**.
-
-3. A cutoff of **10 years** (matching the EPC validity period) seems like the
-   natural maximum gap — beyond 10 years the EPC was no longer valid even for
-   the purposes it was lodged for.
-
-4. **Do not remove the post-sale fallback** — for new builds and pre-2009 sales
-   there will genuinely be no prior EPC. A hard prior-only requirement would
-   drop those sales entirely, which is worse than a slightly stale EPC.
-
-5. **Output the gap diagnostics** (`gap_days`, `is_post_sale`) as columns in
-   matched.parquet so downstream analysis can filter by temporal quality.
-
----
-
-## Dependencies and sequencing
-
-- This work requires reliable UPRN coverage at scale; the UPRN join
-  improvements (issue #50) should be stable before tackling temporal matching.
-- Temporal matching only applies to Tier 1 (UPRN-matched); if UPRN coverage
-  improves further, more sales benefit from temporal matching automatically.
-- The diagnostic query (Option C) has no dependencies and can be run now
-  against the existing matched output.
+4. **Property type segmentation** (separate issue): once Option B is in place,
+   add `property_type` stratification to the aggregation output. This exposes
+   the per-type composition of each geography and allows users to control for
+   the turnover-frequency bias by filtering to a single property type.
 
 ---
 
 ## References
 
 - Energy Performance of Buildings (England and Wales) Regulations 2012 —
-  EPC mandatory before marketing
+  EPC mandatory before marketing.
 - DLUHC EPC technical notes:
   <https://www.gov.uk/government/publications/energy-performance-of-buildings-certificates-in-england-and-wales-technical-notes/energy-performance-of-buildings-certificates-in-england-and-wales-technical-notes>
 - DLUHC: "Energy performance certificates now include the UPRN":
   <https://news.opendatacommunities.org/energy-performance-certificates-now-include-uprn/>
 - Owen Boswarva, "Allocating UPRNs to Energy Performance Certificates" (2022):
   <https://www.owenboswarva.com/blog/post-hou3.htm>
-- Sirmans et al. / DECC repeat-sales study on EPC ratings and price per m²
-  (2014): <https://www.sciencedirect.com/science/article/abs/pii/S0140988314003296>
+- EPC ratings and transaction prices, England (2014):
+  <https://www.sciencedirect.com/science/article/abs/pii/S0140988314003296>
