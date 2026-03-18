@@ -684,7 +684,7 @@
         const layer = districtLayers[a.dataset.district];
         if (!layer) return;
         setDistrictParam(a.dataset.district);
-        map.flyToBounds(layer.getBounds(), {padding: [60, 60], duration: 1.2, maxZoom: 13});
+        map.flyToBounds(layer.getBounds(), {padding: [60, 60], duration: 2.5, maxZoom: 13});
         map.once('moveend', function () {
           if (activeLayer) geoLayer.resetStyle(activeLayer);
           activeLayer = layer;
@@ -696,7 +696,7 @@
         map.flyTo(
           [parseFloat(a.dataset.lat), parseFloat(a.dataset.lng)],
           parseInt(a.dataset.zoom),
-          {duration: 1.2}
+          {duration: 2.5}
         );
       }
     });
