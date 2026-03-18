@@ -34,7 +34,7 @@ TOKEN = (
 TILESET = "annapowellsmith.2kq8mrxg"
 LAYER = "postcode_sectors_englandgeojson"
 BOUNDS = (-6.418537, 49.863213, 1.763537, 55.830803)
-ZOOM = 9  # ~195 tiles; 2× finer geometry than zoom 8, reduces high-zoom gaps
+ZOOM = 10  # ~725 tiles; 2× finer geometry than zoom 9, good central-London detail
 
 OUTPUT = pathlib.Path(__file__).parent.parent / "data" / "postcode_districts.geojson"
 
@@ -134,13 +134,13 @@ def main(force: bool = False) -> None:
             except Exception:
                 errors += 1
 
-    # Simplification tolerance: 0.0005° ≈ 50 m.  Zoom 9 tiles have ~19 m per
-    # MVT unit (half of zoom 8's ~38 m), so proportionally finer tolerances
+    # Simplification tolerance: 0.00025° ≈ 25 m.  Zoom 10 tiles have ~9 m per
+    # MVT unit (half of zoom 9's ~19 m), so proportionally finer tolerances
     # preserve the additional detail without reintroducing alignment gaps.
-    SIMPLIFY = 0.0005
-    # Snap buffer closes quantisation gaps at tile seams.  0.0005° (~55 m) is
-    # safely above the zoom-9 MVT quantisation threshold (~19 m per unit).
-    SNAP = 0.0005
+    SIMPLIFY = 0.00025
+    # Snap buffer closes quantisation gaps at tile seams.  0.00025° (~28 m) is
+    # safely above the zoom-10 MVT quantisation threshold (~9 m per unit).
+    SNAP = 0.00025
     # Coordinate precision: 5 dp ≈ 1 m — correct for GeoJSON; full float64
     # (16 dp) would double the file size with no visual benefit.
     PRECISION = 5

@@ -616,6 +616,7 @@
     const districtLayers = {};
 
     const geoLayer = L.geoJSON(GEOJSON, {
+      renderer: L.canvas(),
       style: districtStyle,
       onEachFeature(feature, layer) {
         districtLayers[feature.properties.PostDist] = layer;
