@@ -10,7 +10,7 @@ All source data is Open Government Licence v3.0.
 
 1. **Download** — fetches ~25 GB of raw data (PPD, EPC, OS Open UPRN, UBDC lookup, ONS LSOA boundaries)
 2. **Join** — links property sales to floor area via a three-tier strategy:
-   - Tier 1: direct UPRN match via the [UBDC PPD→UPRN lookup](https://data.ubdc.ac.uk/dataset/hm-land-registry-price-paid-data-with-uprns) — covers ~1995–2021
+   - Tier 1: UPRN match via the [UBDC PPD→UPRN lookup](https://data.ubdc.ac.uk/dataset/hm-land-registry-price-paid-data-with-uprns) with **temporal EPC selection** — for each sale, picks the most recent EPC lodged before the sale date, or the earliest post-sale EPC if no prior certificate exists, within a ±10-year window
    - Tier 2: normalised address fallback (postcode + street address) — primary path for 2022+
    - Tier 3: enhanced normalisation for flat sub-building addresses (bare numeric SAON → "FLAT N")
 3. **Spatial** — maps each UPRN to its LSOA using a DuckDB point-in-polygon join
@@ -95,6 +95,13 @@ Output files are written to `output/`:
 | `price_per_sqm_postcode_district.csv` | Price per m² by postcode district (e.g. SW1A) |
 | `price_per_sqm_lsoa.csv` | Price per m² by LSOA |
 
+`matched.parquet` in `cache/` includes two additional columns for Tier 1 rows:
+
+| Column | Type | Description |
+|---|---|---|
+| `gap_days` | int | Days from sale date to selected EPC (negative = EPC before sale, positive = post-sale fallback); NULL for Tier 2/3 |
+| `is_post_sale` | bool | True if the selected EPC was lodged after the sale date; NULL for Tier 2/3 |
+
 To re-run the join and spatial steps without re-downloading:
 
 ```bash
@@ -161,14 +168,15 @@ The pipeline manages disk space aggressively to stay viable on modest machines.
 |---|---|---|
 | `data/pp-complete.csv` | ~400 MB | Price Paid Data — kept as CSV |
 | `data/lsoa_boundaries.gpkg` | ~45 MB | LSOA boundary polygons |
-| `cache/epc_slim.parquet` | ~0.5–1 GB | 9-column EPC subset, ZSTD compressed |
+| `cache/epc_slim.parquet` | ~0.5–1 GB | 9-column EPC subset, deduplicated, ZSTD compressed |
+| `cache/epc_full.parquet` | ~1–2 GB | 9-column EPC subset, all rows (for temporal Tier 1 matching) |
 | `cache/uprn_slim.parquet` | ~300 MB | 3-column UPRN subset |
 | `cache/ubdc_slim.parquet` | ~100 MB | 2-column UBDC lookup |
 | `cache/matched.parquet` | ~0.5 GB | Joined PPD–EPC records |
 | `cache/uprn_lsoa.parquet` | ~0.5 GB | UPRN→LSOA lookup |
 | `output/*.csv` | ~5 MB | Final results |
 
-**Total after a complete run: ~3–4 GB.**
+**Total after a complete run: ~4–5 GB** (increased by ~1–2 GB for `epc_full.parquet`).
 
 ### `make clean` vs `make clean-all`
 
@@ -178,7 +186,7 @@ The pipeline manages disk space aggressively to stay viable on modest machines.
 
 ### RAM
 
-The tier-2 and tier-3 address-normalisation joins are the most memory-intensive steps — they scan the full EPC and PPD datasets simultaneously. By default DuckDB uses all available RAM, which on a machine with 8 GB can exhaust RAM and swap and hard-freeze the OS.
+The tier-1 temporal join, tier-2, and tier-3 address-normalisation joins are the most memory-intensive steps — they scan the full EPC and PPD datasets simultaneously.  The tier-1 window function creates a temporary fan-out (~1.4–2× the matched PPD row count) before reducing to one row per sale; DuckDB spills this to disk when the memory limit is reached.  By default DuckDB uses all available RAM, which on a machine with 8 GB can exhaust RAM and swap and hard-freeze the OS.
 
 **Set `DUCKDB_MEMORY_LIMIT` and `DUCKDB_THREADS` in your `.env` before running.** When the memory limit is reached, DuckDB spills temporary data to disk rather than crashing the system — the pipeline runs slower but completes safely.
 

@@ -216,6 +216,33 @@ small CSV outputs in `output/`, not from the full matched file.
 
 ---
 
+### 13. Temporal fan-out in `_join_tier1` — issue #60
+
+**Context:** Temporal EPC selection (issue #60) replaced the simple
+UPRN equijoin in `_join_tier1` with a window-function ranking over
+*all* EPC certificates for each matched UPRN.  This requires reading
+`epc_full.parquet` (undeduped, ~1–2 GB compressed vs. ~0.5–1 GB for
+`epc_slim.parquet`) and creating a candidate set before filtering to
+one row per sale with `ROW_NUMBER() = 1`.
+
+**Fan-out:** The intermediate candidate set is `PPD_tier1_rows ×
+avg_EPCs_per_UPRN`.  Empirically ~75% of UPRNs have a single certificate
+and ~25% have 2–3, giving an average fan-out of ~1.4–2×.  For ~20M
+tier-1 PPD rows that is ~28–40M candidate rows, comfortably within
+DuckDB's spill-to-disk capability at `DUCKDB_MEMORY_LIMIT=2G`.
+
+**EPC source size:** `epc_full.parquet` adds ~1–2 GB to disk and
+requires DuckDB to scan more rows than `epc_slim.parquet`.  The scan is
+bounded to the ±10-year window filter before the window function
+evaluates, so rows further from the sale date are pruned early.
+
+**No new mitigations needed** at current cgroup limits; the fan-out is
+already within the headroom.  If OOMs recur here, the same postcode
+pre-filter pattern used in tier-2 (mitigation #4) could be applied to
+reduce the EPC scan before the window.
+
+---
+
 ## Current configuration (`MEM_MAX` / `DUCKDB_MEMORY_LIMIT`)
 
 | Setting | Value | Where |
@@ -239,6 +266,11 @@ before the pipeline is terminated.
 ---
 
 ## Remaining risk areas
+
+- **`_join_tier1` temporal window function (issue #60):** ~28–40M candidate
+  rows before `ROW_NUMBER() = 1` filter.  Currently within cgroup limits;
+  see mitigation #13 for details.  Postcode pre-filter (mitigation #4
+  pattern) available if needed.
 
 - **Spatial join (point-in-polygon):** The DuckDB spatial extension
   performs the polygon intersection in-process. With the UPRN filter in

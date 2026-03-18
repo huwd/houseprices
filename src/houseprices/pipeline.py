@@ -146,20 +146,30 @@ def prepare_ppd(src: str | pathlib.Path, dst: pathlib.Path) -> None:
     """)
 
 
-def prepare_epc(src: str | pathlib.Path, dst: pathlib.Path) -> None:
-    """Write a column-pruned, deduplicated Parquet from the EPC CSV.
+def prepare_epc(
+    src: str | pathlib.Path,
+    dst: pathlib.Path,
+    *,
+    deduplicate: bool = True,
+) -> None:
+    """Write a column-pruned Parquet from the EPC CSV.
 
-    Selects the 9 columns used by the pipeline and deduplicates by UPRN,
-    keeping only the most recent certificate per UPRN (by LODGEMENT_DATETIME
-    DESC).  Rows without a UPRN are kept as-is (Tier 2 candidates).
+    Selects the 9 columns used by the pipeline.  When *deduplicate* is
+    ``True`` (default) the output keeps only the most recent certificate per
+    UPRN (by LODGEMENT_DATETIME DESC); rows without a UPRN are kept as-is
+    (Tier 2 candidates).  When *deduplicate* is ``False`` all rows are kept,
+    which is required for Tier 1 temporal matching.
+
     No-ops if *dst* already exists.
 
     Uses a two-step approach to stay within the DuckDB memory limit:
 
     1. Stream the 60-column CSV down to a 9-column slim Parquet (no sort).
-    2. Deduplicate the slim Parquet with GROUP BY + MAX_BY, which only keeps
-       one hash-table entry per UPRN — O(unique UPRNs) memory rather than
-       O(total rows) as a window function would require.
+    2. When *deduplicate* is True: deduplicate the slim Parquet with GROUP BY
+       + MAX_BY, which only keeps one hash-table entry per UPRN —
+       O(unique UPRNs) memory rather than O(total rows).
+       When *deduplicate* is False: step 2 is skipped; the slim Parquet is
+       renamed to *dst* directly.
     """
     if dst.exists():
         return
@@ -179,32 +189,36 @@ def prepare_epc(src: str | pathlib.Path, dst: pathlib.Path) -> None:
                 FROM read_csv('{src_str}')
             ) TO '{tmp}' (FORMAT PARQUET, COMPRESSION ZSTD)
         """)
-        # Step 2: deduplicate from the slim Parquet.
-        # MAX_BY(value, key) returns the value from the row with the maximum
-        # key — equivalent to the most-recent-certificate logic above but
-        # implemented as a GROUP BY aggregate, not a window function.
-        con.execute(f"""
-            COPY (
-                SELECT
-                    UPRN,
-                    MAX(LODGEMENT_DATETIME) AS LODGEMENT_DATETIME,
-                    MAX_BY(TOTAL_FLOOR_AREA, LODGEMENT_DATETIME)
-                        AS TOTAL_FLOOR_AREA,
-                    MAX_BY(ADDRESS1, LODGEMENT_DATETIME) AS ADDRESS1,
-                    MAX_BY(ADDRESS2, LODGEMENT_DATETIME) AS ADDRESS2,
-                    MAX_BY(POSTCODE, LODGEMENT_DATETIME) AS POSTCODE,
-                    MAX_BY(BUILT_FORM, LODGEMENT_DATETIME) AS BUILT_FORM,
-                    MAX_BY(CONSTRUCTION_AGE_BAND, LODGEMENT_DATETIME)
-                        AS CONSTRUCTION_AGE_BAND,
-                    MAX_BY(CURRENT_ENERGY_RATING, LODGEMENT_DATETIME)
-                        AS CURRENT_ENERGY_RATING
-                FROM read_parquet('{tmp}')
-                WHERE UPRN IS NOT NULL
-                GROUP BY UPRN
-                UNION ALL
-                SELECT * FROM read_parquet('{tmp}') WHERE UPRN IS NULL
-            ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
-        """)
+        if deduplicate:
+            # Step 2: deduplicate from the slim Parquet.
+            # MAX_BY(value, key) returns the value from the row with the maximum
+            # key — equivalent to the most-recent-certificate logic above but
+            # implemented as a GROUP BY aggregate, not a window function.
+            con.execute(f"""
+                COPY (
+                    SELECT
+                        UPRN,
+                        MAX(LODGEMENT_DATETIME) AS LODGEMENT_DATETIME,
+                        MAX_BY(TOTAL_FLOOR_AREA, LODGEMENT_DATETIME)
+                            AS TOTAL_FLOOR_AREA,
+                        MAX_BY(ADDRESS1, LODGEMENT_DATETIME) AS ADDRESS1,
+                        MAX_BY(ADDRESS2, LODGEMENT_DATETIME) AS ADDRESS2,
+                        MAX_BY(POSTCODE, LODGEMENT_DATETIME) AS POSTCODE,
+                        MAX_BY(BUILT_FORM, LODGEMENT_DATETIME) AS BUILT_FORM,
+                        MAX_BY(CONSTRUCTION_AGE_BAND, LODGEMENT_DATETIME)
+                            AS CONSTRUCTION_AGE_BAND,
+                        MAX_BY(CURRENT_ENERGY_RATING, LODGEMENT_DATETIME)
+                            AS CURRENT_ENERGY_RATING
+                    FROM read_parquet('{tmp}')
+                    WHERE UPRN IS NOT NULL
+                    GROUP BY UPRN
+                    UNION ALL
+                    SELECT * FROM read_parquet('{tmp}') WHERE UPRN IS NULL
+                ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
+            """)
+        else:
+            # No deduplication: the column-projected slim Parquet is the output.
+            tmp.rename(dst)
     finally:
         tmp.unlink(missing_ok=True)
 
@@ -315,11 +329,41 @@ def _join_tier1(
     epc_path: str | pathlib.Path,
     ubdc_path: str | pathlib.Path,
     dst: pathlib.Path,
+    *,
+    max_gap_years: int = 10,
 ) -> int:
-    """UPRN-based join. Writes category-A PPD rows matched via the UBDC lookup to dst.
+    """UPRN-based join with temporal EPC selection.
 
-    Returns the number of rows written. Uses DuckDB COPY to stream directly to
-    Parquet, avoiding materialising the join result into Python heap memory.
+    Writes category-A PPD rows matched via the UBDC lookup to *dst*.  For each
+    sale, all EPC certificates for the matched UPRN within *max_gap_years* of
+    the sale date are considered as candidates.  The best candidate is chosen
+    by the following rule:
+
+    1. The most recent EPC lodged **before or on** the sale date (prior EPC).
+    2. If no prior EPC exists, the **earliest** EPC lodged after the sale
+       date (post-sale fallback).
+    3. If all EPCs are more than *max_gap_years* away from the sale date, the
+       sale is excluded from the output.
+
+    Two new columns are added to the output:
+
+    ``gap_days``     — Days from the sale date to the selected EPC
+                       (negative = EPC before sale, positive = EPC after sale).
+    ``is_post_sale`` — True if the selected EPC was lodged after the sale.
+
+    *epc_path* must contain all EPC rows (not deduplicated) so that multiple
+    certificates for the same UPRN are available for temporal selection.
+    Provide the ``epc_full.parquet`` checkpoint produced by
+    ``prepare_epc(…, deduplicate=False)``.
+
+    Returns the number of rows written.  Uses DuckDB COPY to stream directly
+    to Parquet, avoiding materialising the join result into Python heap memory.
+
+    Memory note: this function performs a window-function ranking over the
+    candidate set (PPD × EPC on UPRN, pre-filtered by max_gap_years).  The
+    fan-out before window reduction is bounded by the average number of EPC
+    certificates per UPRN (~1.4–2×), so peak working-set is ~1.5–2× the
+    tier-1 PPD row count.  DuckDB spills to disk when the memory limit is hit.
     """
     con = duckdb.connect()
     _configure_duckdb(con)
@@ -334,21 +378,61 @@ def _join_tier1(
                 SELECT * FROM {ppd_src}
                 WHERE ppd_category_type = 'A'
             ),
-            ubdc AS (SELECT * FROM {ubdc_src})
+            ubdc AS (SELECT * FROM {ubdc_src}),
+            -- All (PPD, EPC) candidate pairs within the temporal gap window.
+            candidates AS (
+                SELECT
+                    ppd.transaction_unique_identifier,
+                    ppd.price, ppd.date_of_transfer, ppd.postcode,
+                    ppd.property_type, ppd.new_build_flag, ppd.tenure_type,
+                    ppd.paon, ppd.saon, ppd.street, ppd.locality, ppd.town_city,
+                    ppd.district, ppd.county,
+                    ppd.ppd_category_type, ppd.record_status,
+                    CAST(ubdc.uprn AS BIGINT) AS uprn,
+                    epc.TOTAL_FLOOR_AREA, epc.LODGEMENT_DATETIME,
+                    epc.ADDRESS1, epc.ADDRESS2,
+                    epc.BUILT_FORM, epc.CONSTRUCTION_AGE_BAND,
+                    epc.CURRENT_ENERGY_RATING,
+                    DATEDIFF('day', ppd.date_of_transfer, epc.LODGEMENT_DATETIME)
+                        AS gap_days,
+                    (epc.LODGEMENT_DATETIME > ppd.date_of_transfer) AS is_post_sale
+                FROM ppd
+                JOIN ubdc ON ppd.transaction_unique_identifier = ubdc.transactionid
+                JOIN epc ON CAST(ubdc.uprn AS BIGINT) = CAST(epc.UPRN AS BIGINT)
+                WHERE ABS(DATEDIFF('year',
+                          epc.LODGEMENT_DATETIME, ppd.date_of_transfer))
+                          <= {max_gap_years}
+            ),
+            -- Rank candidates: prior EPCs (is_post_sale=False) first, then
+            -- post-sale.  Within priors: most recent first.
+            -- Within post-sales: earliest first.
+            ranked AS (
+                SELECT *,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY transaction_unique_identifier
+                        ORDER BY
+                            CASE WHEN is_post_sale THEN 1 ELSE 0 END ASC,
+                            CASE WHEN NOT is_post_sale
+                                 THEN LODGEMENT_DATETIME END DESC NULLS LAST,
+                            CASE WHEN is_post_sale
+                                 THEN LODGEMENT_DATETIME END ASC NULLS LAST
+                    ) AS _rn
+                FROM candidates
+            )
             SELECT
-                ppd.transaction_unique_identifier,
-                ppd.price, ppd.date_of_transfer, ppd.postcode,
-                ppd.property_type, ppd.new_build_flag, ppd.tenure_type,
-                ppd.paon, ppd.saon, ppd.street, ppd.locality, ppd.town_city,
-                ppd.district, ppd.county, ppd.ppd_category_type, ppd.record_status,
-                CAST(ubdc.uprn AS BIGINT) AS uprn,
-                epc.TOTAL_FLOOR_AREA, epc.LODGEMENT_DATETIME,
-                epc.ADDRESS1, epc.ADDRESS2,
-                epc.BUILT_FORM, epc.CONSTRUCTION_AGE_BAND, epc.CURRENT_ENERGY_RATING,
+                transaction_unique_identifier,
+                price, date_of_transfer, postcode,
+                property_type, new_build_flag, tenure_type,
+                paon, saon, street, locality, town_city,
+                district, county, ppd_category_type, record_status,
+                uprn,
+                TOTAL_FLOOR_AREA, LODGEMENT_DATETIME,
+                ADDRESS1, ADDRESS2,
+                BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING,
+                gap_days, is_post_sale,
                 1 AS match_tier
-            FROM ppd
-            JOIN ubdc ON ppd.transaction_unique_identifier = ubdc.transactionid
-            JOIN epc ON CAST(ubdc.uprn AS BIGINT) = CAST(epc.UPRN AS BIGINT)
+            FROM ranked
+            WHERE _rn = 1
         ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
     """)
     row = con.execute(f"SELECT COUNT(*) FROM read_parquet('{dst}')").fetchone()
@@ -419,6 +503,8 @@ def _join_tier2(
                 e.TOTAL_FLOOR_AREA, e.LODGEMENT_DATETIME,
                 e.ADDRESS1, e.ADDRESS2,
                 e.BUILT_FORM, e.CONSTRUCTION_AGE_BAND, e.CURRENT_ENERGY_RATING,
+                NULL::INT AS gap_days,
+                NULL::BOOLEAN AS is_post_sale,
                 2 AS match_tier
             FROM ppd_norm AS p
             JOIN epc_norm AS e
@@ -524,6 +610,8 @@ def _join_tier3(
                     e.TOTAL_FLOOR_AREA, e.LODGEMENT_DATETIME,
                     e.ADDRESS1, e.ADDRESS2,
                     e.BUILT_FORM, e.CONSTRUCTION_AGE_BAND, e.CURRENT_ENERGY_RATING,
+                    NULL::INT AS gap_days,
+                    NULL::BOOLEAN AS is_post_sale,
                     3 AS match_tier
                 FROM ppd_norm AS p
                 JOIN epc_norm AS e
@@ -544,16 +632,28 @@ def join_datasets(
     ubdc_path: str | pathlib.Path,
     dst: pathlib.Path,
     *,
+    epc_full_path: pathlib.Path | None = None,
     on_tier1_complete: Callable[[int], None] | None = None,
 ) -> None:
     """Join PPD to EPC using a tiered strategy, writing result to *dst*.
 
-    Tier 1 — exact UPRN join via the UBDC lookup table.
+    Tier 1 — temporal UPRN join via the UBDC lookup table.  For each sale,
+    selects the most recent EPC lodged before the sale date, or the earliest
+    EPC lodged after if no prior certificate exists, within a 10-year window.
     Tier 2 — address normalisation fallback for records without a UPRN match.
 
     Writes a Parquet file to *dst* containing matched records with a
-    `match_tier` column (1 or 2).  PPD records with ppd_category_type != 'A'
-    are excluded before joining.  Unmatched PPD records are not included.
+    ``match_tier`` column (1 or 2).  Tier 1 rows also carry ``gap_days``
+    (signed day count from sale to EPC) and ``is_post_sale`` (bool); Tier 2
+    rows carry NULL for those columns.  PPD records with
+    ``ppd_category_type != 'A'`` are excluded before joining.  Unmatched PPD
+    records are not included.
+
+    *epc_full_path* — path to the undeduped EPC Parquet
+    (``prepare_epc(…, deduplicate=False)``).  When provided, Tier 1 uses it
+    for temporal matching across multiple certificates per UPRN.  When ``None``
+    *epc_path* is used instead (legacy behaviour: single deduplicated EPC per
+    UPRN, no temporal selection).
 
     All intermediate results are streamed to temp Parquet files via DuckDB
     COPY, so no join result is materialised into Python heap memory.
@@ -562,12 +662,13 @@ def join_datasets(
     before tier-2 begins, allowing callers to report intermediate progress.
     """
     dst.parent.mkdir(parents=True, exist_ok=True)
+    epc_tier1 = epc_full_path if epc_full_path is not None else epc_path
     with tempfile.TemporaryDirectory() as _tmp:
         tmp = pathlib.Path(_tmp)
         tier1_path = tmp / "tier1.parquet"
         tier2_path = tmp / "tier2.parquet"
 
-        n_tier1 = _join_tier1(ppd_path, epc_path, ubdc_path, tier1_path)
+        n_tier1 = _join_tier1(ppd_path, epc_tier1, ubdc_path, tier1_path)
         if on_tier1_complete is not None:
             on_tier1_complete(n_tier1)
 
@@ -723,6 +824,7 @@ def run(
     uprn_path: pathlib.Path,
     boundary_path: pathlib.Path,
     *,
+    epc_full_path: pathlib.Path | None = None,
     cache_dir: pathlib.Path = CACHE,
     output_dir: pathlib.Path = OUTPUT,
     min_sales: int = 10,
@@ -734,11 +836,18 @@ def run(
     stages does not require re-processing the raw data.
 
     Args:
-        ppd_path:      Path to the Price Paid Data CSV.
-        epc_path:      Path to the EPC CSV (extracted from bulk ZIP).
-        ubdc_path:     Path to the slim UBDC PPD→UPRN Parquet (from make download).
-        uprn_path:     Path to the slim OS Open UPRN Parquet (from make download).
+        ppd_path:      Path to the slim PPD Parquet (from ``make download``).
+        epc_path:      Path to the slim deduplicated EPC Parquet
+                       (``epc_slim.parquet`` from ``make download``).
+        ubdc_path:     Path to the slim UBDC PPD→UPRN Parquet (from ``make download``).
+        uprn_path:     Path to the slim OS Open UPRN Parquet (from ``make download``).
         boundary_path: Path to the LSOA boundary file (GeoPackage or GeoJSON).
+        epc_full_path: Path to the undeduped EPC Parquet
+                       (``epc_full.parquet`` from ``make download``).
+                       When provided, Tier 1 uses temporal EPC selection
+                       (most recent prior / earliest post-sale within 10 years).
+                       When ``None``, Tier 1 falls back to the single
+                       deduplicated EPC per UPRN in *epc_path*.
         cache_dir:     Directory for Parquet checkpoints (default: cache/).
         output_dir:    Directory for output CSVs (default: output/).
         min_sales:     Minimum sales per geography unit to include in output.
@@ -804,6 +913,7 @@ def run(
                 epc_path,
                 ubdc_path,
                 dst=matched_parquet,
+                epc_full_path=epc_full_path,
                 on_tier1_complete=_on_tier1,
             )
         elapsed = _fmt_elapsed(time.monotonic() - t0)
@@ -1040,10 +1150,12 @@ if __name__ == "__main__":  # pragma: no cover
             epc_path=CACHE / "epc_slim.parquet",
         )
     else:
+        _epc_full = CACHE / "epc_full.parquet"
         run(
             ppd_path=CACHE / "ppd_slim.parquet",
             epc_path=CACHE / "epc_slim.parquet",
             ubdc_path=CACHE / "ubdc_slim.parquet",
             uprn_path=CACHE / "uprn_slim.parquet",
             boundary_path=DATA / "lsoa_boundaries.gpkg",
+            epc_full_path=_epc_full if _epc_full.exists() else None,
         )

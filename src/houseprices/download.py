@@ -458,19 +458,26 @@ if __name__ == "__main__":  # pragma: no cover
         _save_meta(ppd_slim, ppd_meta)
 
     # EPC — check ETag/Last-Modified before downloading (6 GB ZIP + extraction).
+    # Produces two Parquet files from the same raw CSV in one pass:
+    #   epc_slim.parquet — deduplicated (one row per UPRN); used by tier-2
+    #   epc_full.parquet — all rows, column-projected; used by tier-1 temporal
     epc_slim = cache / "epc_slim.parquet"
+    epc_full = cache / "epc_full.parquet"
     epc_email = os.environ["EPC_EMAIL"]
     epc_api_key = os.environ["EPC_API_KEY"]
     epc_token = base64.b64encode(f"{epc_email}:{epc_api_key}".encode()).decode()
     epc_auth = {"Authorization": f"Basic {epc_token}"}
     epc_fresh, epc_meta = _check_freshness(epc_slim, EPC_BULK_URL, headers=epc_auth)
-    if epc_fresh:
+    if epc_fresh and epc_full.exists():
         _console.print(f"  [dim]⊘  {epc_slim.name} up to date[/dim]")
+        _console.print(f"  [dim]⊘  {epc_full.name} up to date[/dim]")
     else:
         epc_slim.unlink(missing_ok=True)
+        epc_full.unlink(missing_ok=True)
         download_epc(data)
         epc = extract_epc(data)
         prepare_epc(epc, epc_slim)
+        prepare_epc(epc, epc_full, deduplicate=False)
         epc.unlink(missing_ok=True)
         _save_meta(epc_slim, epc_meta)
 
