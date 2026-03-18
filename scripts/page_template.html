@@ -539,7 +539,7 @@
     // Read deep-link param here so we can skip the UK default view when a
     // district is specified — setZoom() fires a zoom animation that completes
     // asynchronously and would override the district fitBounds set in init().
-    const initialDistrict = new URLSearchParams(window.location.search).get('district');
+    const initialDistrict = new URLSearchParams(window.location.search).get('postcode');
 
     const map = L.map('map', {center: [52.5, -1.5], zoom: 6});
     if (!initialDistrict) {
@@ -610,7 +610,7 @@
 
     function setDistrictParam(code) {
       const p = new URLSearchParams(window.location.search);
-      if (code) p.set('district', code); else p.delete('district');
+      if (code) p.set('postcode', code); else p.delete('postcode');
       const qs = p.toString();
       history.replaceState(null, '', qs ? '?' + qs : window.location.pathname);
     }
@@ -641,7 +641,7 @@
       },
     }).addTo(map);
 
-    // ── Deep-link: restore district from ?district= on page load ─────────────────
+    // ── Deep-link: restore district from ?postcode= on page load ─────────────────
     if (initialDistrict) {
       const layer = districtLayers[initialDistrict];
       if (layer) {
