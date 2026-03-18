@@ -70,3 +70,31 @@ covered by the UBDC lookup.
 |---|---|---|---|---|
 | SD1 | 1, 2, 3 | 750,000 | 230.0 | 3,261 |
 | SD2 | 4 | 150,000 | 65.0 | 2,308 |
+
+---
+
+## Temporal matching fixtures (issue #60)
+
+`epc_temporal.csv`, `ppd_temporal.csv`, `ubdc_temporal.csv` exercise the
+temporal EPC selection logic introduced in issue #60.  All data is synthetic;
+the postcode district SD3 and place name Suddery are fictional (Sodor).
+
+### EPC history for UPRN 200001 — 14 Engine Lane, SD3 1AA
+
+| Lodgement date | TOTAL_FLOOR_AREA | CURRENT_ENERGY_RATING | Notes |
+|---|---|---|---|
+| 2015-03-01 | 70.0 m² | E | Earliest certificate |
+| 2019-06-01 | 85.0 m² | D | Middle certificate |
+| 2022-09-01 | 95.0 m² | C | Most recent certificate |
+
+### PPD sales of UPRN 200001 — expected temporal match
+
+| Transaction | Sale date | Expected EPC | Floor area | Reason |
+|---|---|---|---|---|
+| TXN-T01 | 2020-06-01 | 2019-06-01 | 85.0 m² | Most recent **prior** EPC (not 2022, which is post-sale) |
+| TXN-T02 | 2013-04-01 | 2015-03-01 | 70.0 m² | No prior EPC → earliest **post-sale** fallback |
+| TXN-T03 | 2000-01-01 | — | — | All EPCs > 10 years after sale — **excluded** by max-gap cutoff |
+
+### UBDC lookup
+
+All three transactions map to UPRN 200001 (method1).

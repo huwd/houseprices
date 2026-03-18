@@ -1265,3 +1265,140 @@ def test_rematch_no_new_matches_leaves_matched_unchanged(
         output_dir=tmp_path / "output",
     )
     assert matched.stat().st_mtime == mtime_before
+
+
+# ---------------------------------------------------------------------------
+# Temporal EPC matching (issue #60)
+#
+# Fixtures: epc_temporal.csv / ppd_temporal.csv / ubdc_temporal.csv
+#
+# UPRN 200001 — 14 Engine Lane, SD3 1AA — has three EPC lodgements:
+#   2015-03-01  70.0 m²  (earliest)
+#   2019-06-01  85.0 m²  (middle)
+#   2022-09-01  95.0 m²  (most recent)
+#
+# Three sales exercise every branch of the temporal matching algorithm:
+#
+#   TXN-T01  2020-06-01  prior EPCs exist (2015, 2019) — must select 2019 (most
+#                         recent prior = 85 m²), NOT 2022 (most recent overall)
+#   TXN-T02  2013-04-01  no prior EPC — must fall back to earliest post-sale
+#                         (2015 = 70 m²), NOT most recent post-sale (2022)
+#   TXN-T03  2000-01-01  all EPCs are 15+ years ahead — beyond the 10-year
+#                         cutoff, must produce NO match
+# ---------------------------------------------------------------------------
+
+_EPC_TEMPORAL = FIXTURES / "epc_temporal.csv"
+_PPD_TEMPORAL = FIXTURES / "ppd_temporal.csv"
+_UBDC_TEMPORAL = FIXTURES / "ubdc_temporal.csv"
+
+TXN_T01 = "{A000T001-0000-0000-0000-000000000000}"
+TXN_T02 = "{A000T002-0000-0000-0000-000000000000}"
+TXN_T03 = "{A000T003-0000-0000-0000-000000000000}"
+
+
+@pytest.fixture
+def joined_temporal(tmp_path: pathlib.Path) -> pd.DataFrame:
+    """Tier-1 join result using the temporal EPC fixture (undeduped CSV)."""
+    dst = tmp_path / "matched_temporal.parquet"
+    _join_tier1(_PPD_TEMPORAL, _EPC_TEMPORAL, _UBDC_TEMPORAL, dst)
+    return pd.read_parquet(dst)
+
+
+# --- prepare_epc deduplicate=False ---
+
+
+def test_prepare_epc_deduplicate_false_retains_all_uprn_rows(
+    tmp_path: pathlib.Path,
+) -> None:
+    """With deduplicate=False both EPC rows for UPRN 100001 must be kept."""
+    dst = tmp_path / "epc_full.parquet"
+    prepare_epc(FIXTURES / "epc_sample.csv", dst, deduplicate=False)
+    df = pd.read_parquet(dst)
+    assert len(df[df["UPRN"] == 100001]) == 2
+
+
+def test_prepare_epc_deduplicate_true_keeps_default_behaviour(
+    tmp_path: pathlib.Path,
+) -> None:
+    """With deduplicate=True (explicit) behaviour is identical to the default."""
+    dst = tmp_path / "epc_deduped.parquet"
+    prepare_epc(FIXTURES / "epc_sample.csv", dst, deduplicate=True)
+    df = pd.read_parquet(dst)
+    rows = df[df["UPRN"] == 100001]
+    assert len(rows) == 1
+    assert rows.iloc[0]["TOTAL_FLOOR_AREA"] == 80.0
+
+
+# --- temporal EPC selection ---
+
+
+def test_join_tier1_selects_most_recent_prior_epc_not_overall_most_recent(
+    joined_temporal: pd.DataFrame,
+) -> None:
+    """TXN-T01 (2020 sale): must use the 2019 EPC (85 m²), not 2022 (95 m²)."""
+    row = joined_temporal[joined_temporal["transaction_unique_identifier"] == TXN_T01]
+    assert len(row) == 1, "Expected exactly one row for TXN-T01"
+    assert row.iloc[0]["TOTAL_FLOOR_AREA"] == 85.0
+
+
+def test_join_tier1_falls_back_to_earliest_post_sale_when_no_prior(
+    joined_temporal: pd.DataFrame,
+) -> None:
+    """TXN-T02 (2013 sale): no prior EPC — must use 2015 (70 m²), not 2022 (95 m²)."""
+    row = joined_temporal[joined_temporal["transaction_unique_identifier"] == TXN_T02]
+    assert len(row) == 1, "Expected exactly one row for TXN-T02"
+    assert row.iloc[0]["TOTAL_FLOOR_AREA"] == 70.0
+
+
+def test_join_tier1_excludes_sale_with_all_epcs_beyond_max_gap(
+    joined_temporal: pd.DataFrame,
+) -> None:
+    """TXN-T03 (2000 sale): nearest EPC is 2015, 15 years away — no match."""
+    assert TXN_T03 not in joined_temporal["transaction_unique_identifier"].values
+
+
+# --- gap_days and is_post_sale columns ---
+
+
+def test_join_tier1_output_has_gap_days_column(
+    joined_temporal: pd.DataFrame,
+) -> None:
+    assert "gap_days" in joined_temporal.columns
+
+
+def test_join_tier1_output_has_is_post_sale_column(
+    joined_temporal: pd.DataFrame,
+) -> None:
+    assert "is_post_sale" in joined_temporal.columns
+
+
+def test_join_tier1_gap_days_negative_for_prior_epc(
+    joined_temporal: pd.DataFrame,
+) -> None:
+    """TXN-T01: EPC lodged before sale → gap_days must be negative."""
+    row = joined_temporal[joined_temporal["transaction_unique_identifier"] == TXN_T01]
+    assert row.iloc[0]["gap_days"] < 0
+
+
+def test_join_tier1_gap_days_positive_for_post_sale_epc(
+    joined_temporal: pd.DataFrame,
+) -> None:
+    """TXN-T02: EPC lodged after sale → gap_days must be positive."""
+    row = joined_temporal[joined_temporal["transaction_unique_identifier"] == TXN_T02]
+    assert row.iloc[0]["gap_days"] > 0
+
+
+def test_join_tier1_is_post_sale_false_for_prior_epc(
+    joined_temporal: pd.DataFrame,
+) -> None:
+    """TXN-T01: matched to a prior EPC → is_post_sale must be False."""
+    row = joined_temporal[joined_temporal["transaction_unique_identifier"] == TXN_T01]
+    assert row.iloc[0]["is_post_sale"] is False or row.iloc[0]["is_post_sale"] == False  # noqa: E712
+
+
+def test_join_tier1_is_post_sale_true_for_post_sale_fallback(
+    joined_temporal: pd.DataFrame,
+) -> None:
+    """TXN-T02: matched to a post-sale EPC → is_post_sale must be True."""
+    row = joined_temporal[joined_temporal["transaction_unique_identifier"] == TXN_T02]
+    assert row.iloc[0]["is_post_sale"] is True or row.iloc[0]["is_post_sale"] == True  # noqa: E712
