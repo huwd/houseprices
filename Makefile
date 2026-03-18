@@ -27,23 +27,27 @@ dump-cache:  ## Delete all cache/ contents and slim Parquets (pair with clean-da
 # ── Pipeline ───────────────────────────────────────────────────────────────
 
 # MEM_MAX: hard cgroup ceiling for the pipeline process.
+# MEM_HIGH: soft throttle limit — cgroup is slowed before hitting MEM_MAX,
+#   reducing the PSI spike that causes systemd-oomd to cascade-kill the desktop.
+#   Set ~0.5 G below MEM_MAX so there is a gradual ramp-up rather than a hard wall.
 # DUCKDB_MEMORY_LIMIT: DuckDB's internal cap — must be set so DuckDB self-limits
-# before hitting the cgroup ceiling. Without this, DuckDB runs unconstrained and
-# the total process RSS can exceed MEM_MAX, tipping systemd-oomd into killing the
-# whole user session. Rule of thumb: DUCKDB_MEMORY_LIMIT + ~1 GB Python overhead
-# must be comfortably below MEM_MAX, and MEM_MAX must leave ~2 GB for the desktop.
-MEM_MAX ?= 4G
-DUCKDB_MEMORY_LIMIT ?= 3G
+#   before hitting MEM_HIGH. Without this, DuckDB grows unconstrained and the total
+#   process RSS can exceed MEM_MAX, tipping systemd-oomd into killing the whole
+#   user session. Rule of thumb: DUCKDB_MEMORY_LIMIT + ~1 GB Python overhead must
+#   be comfortably below MEM_HIGH, and MEM_MAX must leave ~3 GB for the desktop.
+MEM_MAX ?= 3G
+MEM_HIGH ?= 2500M
+DUCKDB_MEMORY_LIMIT ?= 2G
 
 .PHONY: run
 run:  ## Run the full pipeline with a hard memory cap (join → spatial → aggregate → output CSVs)
-	systemd-run --user --scope -p MemoryMax=$(MEM_MAX) -- \
+	systemd-run --user --scope -p MemoryHigh=$(MEM_HIGH) -p MemoryMax=$(MEM_MAX) -- \
 		env DUCKDB_MEMORY_LIMIT=$(DUCKDB_MEMORY_LIMIT) \
 		uv run python src/houseprices/pipeline.py
 
 .PHONY: rematch
 rematch:  ## Apply tier-3 normalisation to unmatched records (no re-download; requires prior run)
-	systemd-run --user --scope -p MemoryMax=$(MEM_MAX) -- \
+	systemd-run --user --scope -p MemoryHigh=$(MEM_HIGH) -p MemoryMax=$(MEM_MAX) -- \
 		env DUCKDB_MEMORY_LIMIT=$(DUCKDB_MEMORY_LIMIT) \
 		uv run python src/houseprices/pipeline.py --rematch
 

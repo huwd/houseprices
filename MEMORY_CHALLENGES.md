@@ -220,13 +220,21 @@ small CSV outputs in `output/`, not from the full matched file.
 
 | Setting | Value | Where |
 |---|---|---|
-| `MEM_MAX` (cgroup hard limit) | `4G` | Makefile default |
-| `DUCKDB_MEMORY_LIMIT` | `3G` | `.env` + Makefile default |
+| `MEM_HIGH` (cgroup soft throttle) | `2500M` | Makefile default |
+| `MEM_MAX` (cgroup hard limit) | `3G` | Makefile default |
+| `DUCKDB_MEMORY_LIMIT` | `2G` | `.env` + Makefile default |
 | `DUCKDB_THREADS` | `2` | `.env` |
 
 Rule of thumb: `DUCKDB_MEMORY_LIMIT` + ~1 GB Python overhead must be
-comfortably below `MEM_MAX`, and `MEM_MAX` must leave ~2 GB for the
-desktop.
+comfortably below `MEM_HIGH` (not `MEM_MAX`), and `MEM_MAX` must leave
+~3 GB for the desktop.
+
+`MEM_HIGH` is the soft throttle: once the pipeline's cgroup crosses this
+threshold the kernel begins reclaiming pages and throttling allocations
+gradually.  This prevents the PSI spike that causes `systemd-oomd` to
+cascade-kill the whole user session — a hard `MEM_MAX` wall alone causes
+rapid heavy paging that raises PSI far above oomd's 50% session threshold
+before the pipeline is terminated.
 
 ---
 
@@ -236,6 +244,18 @@ desktop.
   performs the polygon intersection in-process. With the UPRN filter in
   place the working set is small, but boundary file size (ONS LSOAs) is
   ~200 MB. Watch RSS here on larger runs.
+
+- **`_join_tier3` / `make rematch` (OOM 2026-03-18):** The tier-3 join
+  reads EPC slim (~15 M rows) + PPD slim (~20 M+ remaining) in a single
+  DuckDB query. With `DUCKDB_MEMORY_LIMIT=3G` this caused heavy disk
+  spilling, a PSI spike to 69%, and a session-level oomd cascade that
+  killed gnome-shell, dbus, VS Code and Firefox.  Mitigations applied:
+  (a) lowered limits to `MEM_MAX=3G` / `MEM_HIGH=2500M` / `DUCKDB_MEMORY_LIMIT=2G`,
+  (b) added `MemoryHigh` soft throttle to `systemd-run`,
+  (c) pre-extract excluded transaction IDs to a narrow single-column
+  Parquet before the main join so the anti-join hash table build is
+  separated from the EPC+PPD join scan.  If it OOMs again, batch by
+  postcode area letter.
 
 ---
 
@@ -259,3 +279,9 @@ desktop.
 4. **Temp files need cleanup on failure.** Several OOM bugs were masked
    by partial temp files being left behind. Added `try/finally` cleanup
    in `prepare_epc` after the first incident.
+
+5. **`MemoryMax` alone does not prevent PSI cascades.** A hard cgroup
+   ceiling causes rapid heavy paging when exceeded, driving PSI above
+   oomd's 50% user-session threshold and triggering cascade kills.  Add
+   `MemoryHigh` below `MemoryMax` so the kernel throttles gradually and
+   PSI stays low even while the pipeline is memory-constrained.
