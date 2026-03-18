@@ -34,7 +34,7 @@ TOKEN = (
 TILESET = "annapowellsmith.2kq8mrxg"
 LAYER = "postcode_sectors_englandgeojson"
 BOUNDS = (-6.418537, 49.863213, 1.763537, 55.830803)
-ZOOM = 8  # ~48 tiles; good balance of geometry quality vs download size
+ZOOM = 9  # ~195 tiles; 2× finer geometry than zoom 8, reduces high-zoom gaps
 
 OUTPUT = pathlib.Path(__file__).parent.parent / "data" / "postcode_districts.geojson"
 
@@ -71,10 +71,15 @@ def transform_geometry(geom: dict, tile_bounds: tuple) -> dict:
 
 
 def _round_geom(obj: object, precision: int) -> object:
-    """Recursively round all floats in a GeoJSON geometry mapping."""
+    """Recursively round all floats in a GeoJSON geometry mapping.
+
+    Shapely's ``mapping()`` returns coordinate sequences as tuples, not lists.
+    Both are handled here and always returned as lists so the output is valid
+    JSON-serialisable GeoJSON (JSON has no tuple type).
+    """
     if isinstance(obj, float):
         return round(obj, precision)
-    if isinstance(obj, list):
+    if isinstance(obj, (list, tuple)):
         return [_round_geom(v, precision) for v in obj]
     if isinstance(obj, dict):
         return {k: _round_geom(v, precision) for k, v in obj.items()}
@@ -129,13 +134,15 @@ def main(force: bool = False) -> None:
             except Exception:
                 errors += 1
 
-    # Simplification tolerance: 0.001° ≈ 100 m — matches snap buffer, removes
-    # tile-edge micro-vertices, and is imperceptible at district scale.
-    SIMPLIFY = 0.001
-    # Snap buffer closes quantisation gaps at tile seams (~38 m per MVT unit
-    # at zoom 8; 0.001° is safely above that threshold).
-    SNAP = 0.001
-    # Coordinate precision: 5 dp ≈ 1 m — half the bytes of full float64.
+    # Simplification tolerance: 0.0005° ≈ 50 m.  Zoom 9 tiles have ~19 m per
+    # MVT unit (half of zoom 8's ~38 m), so proportionally finer tolerances
+    # preserve the additional detail without reintroducing alignment gaps.
+    SIMPLIFY = 0.0005
+    # Snap buffer closes quantisation gaps at tile seams.  0.0005° (~55 m) is
+    # safely above the zoom-9 MVT quantisation threshold (~19 m per unit).
+    SNAP = 0.0005
+    # Coordinate precision: 5 dp ≈ 1 m — correct for GeoJSON; full float64
+    # (16 dp) would double the file size with no visual benefit.
     PRECISION = 5
 
     print(f"\nMerging geometries for {len(district_geoms)} districts…")

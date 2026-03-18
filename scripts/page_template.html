@@ -467,8 +467,7 @@
   </div>
 
   <script>
-    // ── Data injected by build_page.py ────────────────────────────────────────────
-    const GEOJSON = __GEOJSON__;
+    // ── Stats injected by build_page.py; GeoJSON loaded via fetch ─────────────────
     const STATS = __STATS__;
 
     // ── Stats strip ───────────────────────────────────────────────────────────────
@@ -493,6 +492,10 @@
     }
     populateTable('tbl-top', STATS.top10);
     populateTable('tbl-bottom', STATS.bottom10);
+
+    // ── Map initialisation (deferred until GeoJSON is fetched) ───────────────────
+    async function init() {
+      const GEOJSON = await fetch('postcode_districts.geojson').then(r => r.json());
 
     // ── Colour scale (7-class YlOrRd, quantile breaks) ───────────────────────────
     const PALETTE = [
@@ -722,6 +725,9 @@
 
     rfLo.addEventListener('input', updateFilter);
     rfHi.addEventListener('input', updateFilter);
+
+    } // end init()
+    init();
   </script>
 </body>
 

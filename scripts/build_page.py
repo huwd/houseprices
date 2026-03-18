@@ -26,6 +26,9 @@ BOUNDARIES_PATH = DATA / "postcode_districts.geojson"
 CSV_PATH = OUTPUT / "price_per_sqm_postcode_district.csv"
 TEMPLATE_PATH = SCRIPTS / "page_template.html"
 OUT_HTML = OUTPUT / "index.html"
+# Joined GeoJSON written alongside index.html so the page can fetch() it.
+# Serving separately enables browser caching and CDN gzip compression.
+OUT_GEOJSON = OUTPUT / "postcode_districts.geojson"
 
 MIN_SALES_FOR_RANKING = 20  # exclude very thin districts from top/bottom tables
 
@@ -111,15 +114,18 @@ def main() -> None:
     geojson = build_geojson(boundaries, price_data)
     stats = compute_stats(price_data)
 
+    print("Writing GeoJSON…")
+    OUT_GEOJSON.write_text(json.dumps(geojson, separators=(",", ":")))
+    geojson_kb = OUT_GEOJSON.stat().st_size // 1024
+    print(f"  Written → {OUT_GEOJSON} ({geojson_kb:,} KB)")
+
     print("Rendering…")
     template = TEMPLATE_PATH.read_text()
-    html = template.replace(
-        "__GEOJSON__", json.dumps(geojson, separators=(",", ":"))
-    ).replace("__STATS__", json.dumps(stats, separators=(",", ":")))
+    html = template.replace("__STATS__", json.dumps(stats, separators=(",", ":")))
 
     OUT_HTML.write_text(html)
     size_kb = OUT_HTML.stat().st_size // 1024
-    print(f"Written → {OUT_HTML} ({size_kb:,} KB)")
+    print(f"  Written → {OUT_HTML} ({size_kb:,} KB)")
     print(f"  Median: £{stats['median_price_per_sqm']:,}/m²")
     print(f"  Districts: {stats['num_districts']:,}")
     print(f"  Sales: {stats['total_sales']:,}")
