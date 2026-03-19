@@ -97,6 +97,33 @@ BNG coordinates (EPSG:27700) before running spatial join.
 
 ---
 
+## 6. ONS Consumer Price Index (CPI)
+
+| | |
+|---|---|
+| **File** | `cpi.csv` (committed — small, ~300 rows) |
+| **Licence** | Open Government Licence v3.0 |
+| **Provider** | Office for National Statistics (ONS) |
+| **Dataset** | Consumer Price Inflation |
+| **URL** | https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/consumerpriceinflation |
+| **API** | https://api.ons.gov.uk/v1/datasets/cpih01/timeseries/D7BT/data |
+| **Series** | D7BT — CPI All Items Index, not seasonally adjusted (2015=100) |
+| **Coverage** | Monthly from January 1988 |
+| **Format** | Fetched as JSON via ONS API; written to CSV with columns `date` (YYYY-MM) and `cpi` (float) |
+| **Fetched by** | `download_cpi()` in `download.py` |
+
+Used to convert nominal sale prices to real January-2026 pounds before
+aggregation.  See `research/cpi-deflator-choice.md` for the rationale.
+
+Note: `cpi.csv` is committed to the repository (unlike other `data/` files)
+because it is small and the deflation produces different output CSVs if the
+base values change.  Refresh with `make download` when ONS publish new months.
+
+Attribution: Contains National Statistics data © Crown copyright and database
+right 2026.  Licensed under the Open Government Licence v3.0.
+
+---
+
 ## Disk space
 
 Estimated storage requirements:
