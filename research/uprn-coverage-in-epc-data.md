@@ -240,6 +240,70 @@ be reliably matched by string normalisation alone.
 
 ---
 
+## Second pipeline run: v0.2.0 (March 2026, new EPC vintage)
+
+### Overall match rate dropped from 76.9% → 56.6%
+
+| | v0.1.0 | v0.2.0 | Change |
+|---|---|---|---|
+| Total PPD sales | 22,503,694 | 29,283,275 | +6,779,581 (+30%) |
+| Tier 1 (UPRN) | — | 9,255,768 (31.6%) | — |
+| Tier 2 (address) | — | 7,321,554 (25.0%) | — |
+| Matched total | ~17.3M (76.9%) | 16,577,322 (56.6%) | −0.7M abs; −20pp rate |
+| Unmatched | ~5.2M (23.1%) | 12,705,953 (43.4%) | +7.5M |
+
+The rate drop is almost entirely structural: the PPD gained ~6.8M rows (all
+post-2022 transactions in the updated Land Registry vintage), and the UBDC
+lookup covers only up to January 2022. Every one of those 6.8M new rows
+enters at best tier 2 (address normalisation) and at worst unmatched.
+The absolute number of matched records barely changed (~17.3M → 16.6M),
+so the denominator grew faster than the numerator.
+
+This is not a regression in methodology — it is the expected consequence of
+the data range expanding while the UBDC lookup remains fixed at 2022.
+Improving tier-2 address normalisation (issue #50) remains the highest-
+leverage intervention for the post-2022 gap.
+
+### Headline comparison (real Jan-2026 £/m²)
+
+| | v0.1.0 (nominal) | [Unreleased] (CPI est.) | v0.2.0 (new vintage) |
+|---|---|---|---|
+| Most expensive | W1S £24,184 | W1S £32,660 | W1S £35,462 |
+| Least expensive | TS2 £504 | TS2 ~£740 est. | TS2 £733 |
+| Median | £1,986 | ~£2,917 est. | £3,058 |
+| Districts | 2,279 | 2,279 | 2,277 |
+
+W1S increased by 8.6% vs the CPI-only estimate from the same data.
+This reflects the new EPC vintage and updated PPD rather than any
+methodology change — more recent transactions in central London at
+2024–2025 prices shift the aggregate upward. The median uplift (+4.8%)
+is more modest and consistent with general price trends.
+
+TS2 moved marginally (£740 est. → £733), within rounding noise; it
+remains the least expensive district.
+
+### Rankings are stable
+
+Top 5: W1S → WC2A → WC2R → W1B → W1K (unchanged order)
+Bottom 5: TS2 → TS1 → BD3 → CF43 → DN31 (unchanged order)
+
+Stability across both the CPI methodology change and the new data vintage
+is a positive signal for the robustness of the methodology.
+
+### New EPC data source
+
+The v0.2.0 run used the new MHCLG GOV.UK One Login API
+(`get-energy-performance-data.communities.gov.uk`) which delivers a
+single monolithic 5.7 GB CSV (~23M rows) assembled from all local
+authority feeds. The old API (`epc.opendatacommunities.org`) delivered
+per-local-authority ZIP files that were individually smaller and more
+consistently formatted. Four DuckDB CSV parsing issues were encountered
+in the new file (documented in `research/epc-csv-data-quality.md`),
+all attributable to the heterogeneous assembly of local authority
+submissions with different formatting conventions.
+
+---
+
 ## References
 
 [^boswarva]: Owen Boswarva, "Allocating UPRNs to Energy Performance Certificates" (early 2022). <https://www.owenboswarva.com/blog/post-hou3.htm>
