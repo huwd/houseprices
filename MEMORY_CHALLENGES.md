@@ -243,6 +243,33 @@ reduce the EPC scan before the window.
 
 ---
 
+### 14. Two-pass EPC deduplication — current
+
+**Problem:** The `prepare_epc` dedup query (`GROUP BY UPRN` with 8×
+`MAX_BY` aggregates) holds ~15 M groups × ~125 bytes each ≈ 2 GB in the
+hash table — exactly at `DUCKDB_MEMORY_LIMIT=2G`.  Any working-set
+overhead tips it into OOM:
+
+```
+_duckdb.OutOfMemoryException: could not allocate block of size 256.0 KiB
+(1.8 GiB/1.8 GiB used)
+```
+
+**Fix:** Split into two DuckDB `execute` calls on the same connection:
+
+1. **Pass 2a:** `GROUP BY UPRN` with only `MAX(LODGEMENT_DATETIME)` —
+   hash table ≈ 400 MB (15 M × ~28 bytes).
+2. **Pass 2b:** equijoin back on
+   `(UPRN, LODGEMENT_DATETIME IS NOT DISTINCT FROM max_dt)` to stream all
+   columns for the winning row into the output Parquet.  `IS NOT DISTINCT
+   FROM` handles the edge case where `LODGEMENT_DATETIME` is NULL
+   (malformed rows retain a winner rather than being dropped).
+
+Build side of the join ≈ 400 MB; probe side streams.  Peak RSS drops from
+>2 GB to ~400 MB + overhead.
+
+---
+
 ## Current configuration (`MEM_MAX` / `DUCKDB_MEMORY_LIMIT`)
 
 | Setting | Value | Where |
