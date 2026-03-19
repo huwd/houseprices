@@ -91,6 +91,7 @@ def run_result(tmp_path: pathlib.Path) -> pathlib.Path:
         cache_dir=tmp_path / "cache",
         output_dir=tmp_path / "output",
         min_sales=1,
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
     return tmp_path
 
@@ -126,6 +127,7 @@ def test_run_skips_join_on_second_call(tmp_path: pathlib.Path) -> None:
         "cache_dir": tmp_path / "cache",
         "output_dir": tmp_path / "output",
         "min_sales": 1,
+        "cpi_path": FIXTURES / "cpi_sample.csv",
     }
     run(**kwargs)  # type: ignore[arg-type]
     with patch("houseprices.pipeline.join_datasets") as mock_join:
