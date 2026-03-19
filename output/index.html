@@ -494,7 +494,7 @@
 
   <div class="page-title">
     <h1>House Prices per Metre² in England &amp; Wales</h1>
-    <h2>An analysis of government open data, mapped by <a href="https://www.huwdiprose.co.uk/">Huw Diprose</a><span class="analysis-version" title="Analysis version">v0.1.0</span></h2>
+    <h2>An analysis of government open data, mapped by <a href="https://www.huwdiprose.co.uk/">Huw Diprose</a><span class="analysis-version" title="Analysis version">v0.2.0</span></h2>
     <p class="intro-text">This map shows the average price per m² of houses in each postcode district in
       England &amp; Wales. It is inspired by the pioneering work of
       <a href="https://houseprices.anna.ps/">Anna Powell-Smith</a> in 2017,
@@ -567,22 +567,173 @@
       no UPRN link is available — a second stage matches on postcode plus a normalised
       address string (combining sub-address, building name or number, and street name).
     </p>
-    <p>Sale prices are adjusted for inflation before aggregation. Each nominal sale price
-      is converted to real January-2026 pounds using the
-      <a href="https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/consumerpriceinflation">ONS Consumer Prices Index</a>
-      (CPI All Items, series D7BT). A 2005 sale price is therefore expressed in the same
-      monetary units as a 2024 sale, removing the distortion that would otherwise arise
-      from mixing nominal pounds across three decades.
-    </p>
-    <p>The price per m² for each postcode district is the total real transaction value of
-      all matched sales divided by their total floor area — not a mean of per-property
-      ratios. All figures are in real January-2026 £/m². Districts with fewer than 10
-      matched sales are excluded. The occasional gap is a district with no matching
-      residential transactions, for example industrial estates or parts of the City of London.
+    <p>The price per m² for each postcode district is the total transaction value of all
+      matched sales divided by their total floor area — not a mean of per-property ratios.
+      Districts with fewer than 10 matched sales are excluded. The occasional gap is a
+      district with no matching residential transactions, for example industrial estates
+      or parts of the City of London.
     </p>
     <details class="changelog">
       <summary>Changelog</summary>
       <div class="changelog-body">
+        <h4>[Unreleased]</h4>
+        <p>---</p>
+        <h4>[0.2.0] — 2026-03-19</h4>
+        <h4>Data vintages</h4>
+        <table><thead><tr>
+        <th>Source</th>
+        <th>v0.1.0</th>
+        <th>v0.2.0</th>
+        </tr></thead><tbody>
+        <tr>
+        <td>HM Land Registry PPD</td>
+        <td>to Jan 2026 (~22.5M rows)</td>
+        <td>to March 2026 (~29.3M rows)</td>
+        </tr>
+        <tr>
+        <td>EPC bulk export</td>
+        <td>per-LA ZIPs, epc.opendatacommunities.org</td>
+        <td>single monolithic CSV, get-energy-performance-data.communities.gov.uk (March 2026)</td>
+        </tr>
+        <tr>
+        <td>UBDC PPD→UPRN lookup</td>
+        <td>unchanged — covers to Jan 2022</td>
+        <td>unchanged</td>
+        </tr>
+        <tr>
+        <td>ONS CPI</td>
+        <td>D7BT Jan 1988–Jan 2026</td>
+        <td>unchanged</td>
+        </tr>
+        </tbody></table>
+        <p>The EPC source changed to the new MHCLG GOV.UK One Login API which delivers a single 5.7 GB CSV assembled from all local authority feeds. Four CSV parsing issues were encountered and fixed; see <a href="../research/epc-csv-data-quality.md"><code>research/epc-csv-data-quality.md</code></a>.</p>
+        <h4>Methodology changes</h4>
+        <h4>CPI price deflation — real Jan-2026 £/m²</h4>
+        <p>All sale prices are now inflation-adjusted to January 2026 pounds before aggregation, using the ONS CPI All Items monthly series (series ID: D7BT, Jan 1988–Jan 2026, OGL v3.0). The adjustment converts each transaction price to real terms: <code>adjusted_price = price × CPI[Jan-2026] / CPI[sale_month]</code>.</p>
+        <p>This avoids mixing 1995 pounds with 2024 pounds in the same aggregate. Postcode districts where most sales occurred before 2010 were systematically understated in nominal terms; the real-terms figure makes districts comparable regardless of when their housing stock turned over.</p>
+        <p>The headline column in both output CSVs is now <code>adj_price_per_sqm</code> (real Jan-2026 £/m²). The nominal <code>price_per_sqm</code> is retained as a reference column.</p>
+        <ul>
+        <li>Research note: <a href="../research/cpi-deflator-choice.md"><code>research/cpi-deflator-choice.md</code></a></li>
+        <li>Issue: <a href="https://github.com/huwd/houseprices/issues/67">#67</a> | PR: <a href="https://github.com/huwd/houseprices/pull/72">#72</a></li>
+        </ul>
+        <h4>New and changed output columns</h4>
+        <table><thead><tr>
+        <th>Column</th>
+        <th>Type</th>
+        <th>Description</th>
+        </tr></thead><tbody>
+        <tr>
+        <td><code>adj_price_per_sqm</code></td>
+        <td>int</td>
+        <td><strong>Headline.</strong> Real Jan-2026 £/m² (CPI-adjusted)</td>
+        </tr>
+        <tr>
+        <td><code>price_per_sqm</code></td>
+        <td>int</td>
+        <td>Nominal £/m² at time of sale — retained for reference</td>
+        </tr>
+        </tbody></table>
+        <h4>Match statistics</h4>
+        <table><thead><tr>
+        <th>Tier</th>
+        <th>Count</th>
+        <th>Share</th>
+        </tr></thead><tbody>
+        <tr>
+        <td>Tier 1 — UPRN exact match</td>
+        <td>9,255,768</td>
+        <td>31.6%</td>
+        </tr>
+        <tr>
+        <td>Tier 2 — address normalisation</td>
+        <td>7,321,554</td>
+        <td>25.0%</td>
+        </tr>
+        <tr>
+        <td>Unmatched</td>
+        <td>12,705,953</td>
+        <td>43.4%</td>
+        </tr>
+        <tr>
+        <td><strong>Total PPD sales</strong></td>
+        <td><strong>29,283,275</strong></td>
+        <td></td>
+        </tr>
+        </tbody></table>
+        <p>The match rate dropped from 76.9% (v0.1.0) to 56.6%. This is structural: the PPD gained ~6.8M rows (all post-Jan 2022 transactions) that fall outside the UBDC UPRN lookup&#x27;s coverage window. The absolute number of matched records is broadly unchanged (~16.6M vs ~17.3M). See <a href="../research/uprn-coverage-in-epc-data.md"><code>research/uprn-coverage-in-epc-data.md</code></a> for a detailed breakdown.</p>
+        <h4>Summary statistics (postcode district, 2,277 districts)</h4>
+        <table><thead><tr>
+        <th>Metric</th>
+        <th>Value</th>
+        </tr></thead><tbody>
+        <tr>
+        <td>Districts included</td>
+        <td>2,277</td>
+        </tr>
+        <tr>
+        <td>Total matched sales</td>
+        <td>16,577,322</td>
+        </tr>
+        <tr>
+        <td>Median real adj price</td>
+        <td>£3,058/m²</td>
+        </tr>
+        <tr>
+        <td>Most expensive district</td>
+        <td>W1S — £35,462/m² (real Jan-2026)</td>
+        </tr>
+        <tr>
+        <td>Least expensive district</td>
+        <td>TS2 — £733/m² (real Jan-2026)</td>
+        </tr>
+        <tr>
+        <td>Top 5 district rankings</td>
+        <td>W1S, WC2A, WC2R, W1B, W1K — stable vs v0.1.0</td>
+        </tr>
+        <tr>
+        <td>Bottom 5 district rankings</td>
+        <td>TS2, TS1, BD3, CF43, DN31 — stable vs v0.1.0</td>
+        </tr>
+        </tbody></table>
+        <h4>Key commits and PRs</h4>
+        <table><thead><tr>
+        <th>Commit / PR</th>
+        <th>Description</th>
+        </tr></thead><tbody>
+        <tr>
+        <td>PR <a href="https://github.com/huwd/houseprices/pull/72">#72</a> <code>ebe8619</code></td>
+        <td>CPI inflation adjustment</td>
+        </tr>
+        <tr>
+        <td>PR <a href="https://github.com/huwd/houseprices/pull/78">#78</a></td>
+        <td>EPC download: migrate to new MHCLG API</td>
+        </tr>
+        <tr>
+        <td><code>4e09bf1</code></td>
+        <td>fix: atomic download — no partial file on interrupt</td>
+        </tr>
+        <tr>
+        <td><code>bc2e1a5</code></td>
+        <td>fix: strict_mode=false — handle backslash-escaped JSON in EPC CSV</td>
+        </tr>
+        <tr>
+        <td><code>943efbe</code></td>
+        <td>fix: pin quote/escape — prevent single-quote column misdetection</td>
+        </tr>
+        <tr>
+        <td><code>6630a73</code></td>
+        <td>fix: null_padding=true — handle short/stub rows</td>
+        </tr>
+        <tr>
+        <td><code>fed70dd</code></td>
+        <td>fix: parallel=false — allow null_padding with quoted newlines</td>
+        </tr>
+        <tr>
+        <td><code>f6ff4ab</code></td>
+        <td>perf: two-pass EPC dedup to stay within 2 GB memory limit</td>
+        </tr>
+        </tbody></table>
+        <p>---</p>
         <h4>[0.1.0] — 2026-03-19</h4>
         <p><strong>First versioned release of the UK house price per m² analysis.</strong></p>
         <h4>Data sources</h4>
@@ -712,7 +863,6 @@
       by the Urban Big Data Centre, University of Glasgow.
       Contains Ordnance Survey data © Crown copyright and database right 2026.
       Contains Royal Mail data © Royal Mail copyright and database right 2026.
-      ONS Consumer Prices Index (series D7BT) © Crown copyright ONS, licensed under the Open Government Licence v3.0.
       Contains National Statistics data © Crown copyright and database right 2026.
       Postcode district derived boundaries reproduced under the Open Government Licence v3.0.
       Postal boundaries © GeoLytix copyright and database right 2012.
@@ -723,7 +873,7 @@
 
   <script>
     // ── Stats injected by build_page.py; GeoJSON loaded via fetch ─────────────────
-    const STATS = {"median_price_per_sqm":1986,"num_districts":2279,"date_range":"Aug 2007\u2013Jan 2026","total_sales":22503694,"top10":[{"district":"W1S","price_per_sqm":24184},{"district":"WC2A","price_per_sqm":24113},{"district":"WC2R","price_per_sqm":19720},{"district":"W1B","price_per_sqm":16226},{"district":"EC3R","price_per_sqm":15378},{"district":"W1K","price_per_sqm":15349},{"district":"N1C","price_per_sqm":14557},{"district":"W1J","price_per_sqm":14151},{"district":"SW1W","price_per_sqm":13088},{"district":"W1F","price_per_sqm":12989}],"bottom10":[{"district":"TS2","price_per_sqm":504},{"district":"TS1","price_per_sqm":576},{"district":"CF43","price_per_sqm":603},{"district":"BD3","price_per_sqm":631},{"district":"NP24","price_per_sqm":681},{"district":"DN31","price_per_sqm":687},{"district":"HU3","price_per_sqm":732},{"district":"DN1","price_per_sqm":739},{"district":"CF42","price_per_sqm":739},{"district":"BD8","price_per_sqm":743}]};
+    const STATS = {"median_price_per_sqm":2169,"num_districts":2277,"date_range":"Aug 2007\u2013Jan 2026","total_sales":16577000,"top10":[{"district":"W1S","price_per_sqm":26515},{"district":"WC2A","price_per_sqm":24208},{"district":"WC2R","price_per_sqm":20285},{"district":"W1B","price_per_sqm":18387},{"district":"W1K","price_per_sqm":16881},{"district":"EC3R","price_per_sqm":16497},{"district":"W1J","price_per_sqm":16174},{"district":"W1T","price_per_sqm":14672},{"district":"N1C","price_per_sqm":14584},{"district":"WC2E","price_per_sqm":14569}],"bottom10":[{"district":"TS2","price_per_sqm":458},{"district":"TS1","price_per_sqm":570},{"district":"BD3","price_per_sqm":630},{"district":"DN31","price_per_sqm":699},{"district":"CF43","price_per_sqm":702},{"district":"DN1","price_per_sqm":734},{"district":"BD8","price_per_sqm":738},{"district":"BD5","price_per_sqm":750},{"district":"S4","price_per_sqm":763},{"district":"FY1","price_per_sqm":769}]};
 
     // ── Stats strip ───────────────────────────────────────────────────────────────
     document.getElementById('stat-median').textContent =
