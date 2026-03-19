@@ -572,6 +572,29 @@ def test_prepare_epc_cleans_up_tmp_on_success(tmp_path: pathlib.Path) -> None:
     assert not dst.with_suffix(".tmp.parquet").exists()
 
 
+def test_prepare_epc_handles_backslash_escaped_quotes(tmp_path: pathlib.Path) -> None:
+    """prepare_epc must not crash on rows where non-selected columns contain
+    JSON with backslash-escaped quotes — seen in real EPC API data e.g.
+    '{"value": 8.14, "quantity": "metres"}' in a measurement column.
+
+    In the full 5.7 GB EPC file DuckDB samples only the first 20 KB, which
+    contains no backslash-escaped fields, so it auto-detects escape='"'
+    (RFC 4180 doubling).  Deep in the file it then hits a row like:
+        ...,"{\"value\": 8.14, \"quantity\": \"metres\"}",...
+    and raises InvalidInputException ("unterminated quote") under strict mode.
+    The fix is strict_mode=false on the read_csv call.
+
+    Small fixtures auto-detect escape='\\' from the sample, so the failure
+    mode doesn't trigger here — this test guards against regressions and
+    documents the real-world behaviour.
+    """
+    dst = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_backslash_quotes.csv", dst)
+    df = pd.read_parquet(dst)
+    assert len(df) == 1
+    assert df.iloc[0]["TOTAL_FLOOR_AREA"] == 60.0
+
+
 # ---------------------------------------------------------------------------
 # prepare_uprn
 # ---------------------------------------------------------------------------
