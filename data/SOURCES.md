@@ -106,7 +106,7 @@ BNG coordinates (EPSG:27700) before running spatial join.
 | **Provider** | Office for National Statistics (ONS) |
 | **Dataset** | Consumer Price Inflation |
 | **URL** | https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/consumerpriceinflation |
-| **API** | https://api.ons.gov.uk/v1/datasets/cpih01/timeseries/D7BT/data |
+| **Download URL** | https://www.ons.gov.uk/generator?format=csv&uri=/economy/inflationandpriceindices/timeseries/d7bt/mm23 |
 | **Series** | D7BT — CPI All Items Index, not seasonally adjusted (2015=100) |
 | **Coverage** | Monthly from January 1988 |
 | **Format** | Fetched as JSON via ONS API; written to CSV with columns `date` (YYYY-MM) and `cpi` (float) |
