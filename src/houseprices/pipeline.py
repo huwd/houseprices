@@ -1,5 +1,6 @@
 """Main pipeline: download → join → aggregate."""
 
+import datetime
 import os
 import pathlib
 import re
@@ -706,10 +707,39 @@ def match_report(matched: pd.DataFrame, total_ppd: int) -> dict[str, int | float
     }
 
 
+def load_cpi(path: pathlib.Path) -> dict[tuple[int, int], float]:
+    """Load an ONS-format monthly CPI CSV into a (year, month) → index dict.
+
+    The CSV must have columns ``date`` (``YYYY-MM``) and ``cpi`` (numeric).
+    """
+    df = pd.read_csv(path, dtype={"date": str, "cpi": float})
+    result: dict[tuple[int, int], float] = {}
+    for _, row in df.iterrows():
+        year, month = (int(part) for part in str(row["date"]).split("-"))
+        result[(year, month)] = float(row["cpi"])
+    return result
+
+
+def deflate_price(
+    price: float,
+    sale_date: datetime.date,
+    cpi: dict[tuple[int, int], float],
+    base: tuple[int, int],
+) -> float:
+    """Convert a nominal *price* to real terms relative to *base* month.
+
+    Formula: ``price × (cpi[base] / cpi[(year, month)])``.
+    Raises ``KeyError`` if the sale month is not present in *cpi*.
+    """
+    sale_key = (sale_date.year, sale_date.month)
+    return price * (cpi[base] / cpi[sale_key])
+
+
 def aggregate_by_geography(
     matched: pd.DataFrame,
     geography: Geography,
     min_sales: int = 10,
+    price_col: str = "price",
 ) -> pd.DataFrame:
     """Aggregate matched records to price per m² by the given geography.
 
@@ -726,19 +756,19 @@ def aggregate_by_geography(
 
     # Select only the columns needed for aggregation to avoid a full copy.
     if geography is Geography.POSTCODE_DISTRICT:
-        df = matched[["postcode", "price", "TOTAL_FLOOR_AREA"]].copy()
+        df = matched[["postcode", price_col, "TOTAL_FLOOR_AREA"]].copy()
         df[col] = df["postcode"].str[:-3].str.strip()
         df.drop(columns=["postcode"], inplace=True)
     else:
-        df = matched[[col, "price", "TOTAL_FLOOR_AREA"]].copy()
+        df = matched[[col, price_col, "TOTAL_FLOOR_AREA"]].copy()
 
     df = df[df[col].notna()]
 
     grouped = (
         df.groupby(col)
         .agg(
-            num_sales=("price", "count"),
-            total_price=("price", "sum"),
+            num_sales=(price_col, "count"),
+            total_price=(price_col, "sum"),
             total_floor_area=("TOTAL_FLOOR_AREA", "sum"),
         )
         .reset_index()
