@@ -296,6 +296,7 @@ def _stream_to_file(
         return dest
 
     dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
 
     for attempt in range(max_retries):
         response = requests.get(url, headers=headers or {}, stream=True, timeout=120)
@@ -317,20 +318,25 @@ def _stream_to_file(
     except (KeyError, ValueError, TypeError):
         total = None
 
-    with Progress(
-        TextColumn("  [cyan]{task.description}"),
-        BarColumn(),
-        DownloadColumn(),
-        TransferSpeedColumn(),
-        TimeRemainingColumn(),
-        console=_console,
-    ) as progress:
-        task = progress.add_task(dest.name, total=total)
-        with dest.open("wb") as fh:
-            for chunk in response.iter_content(chunk_size=_CHUNK_SIZE):
-                fh.write(chunk)
-                progress.update(task, advance=len(chunk))
+    try:
+        with Progress(
+            TextColumn("  [cyan]{task.description}"),
+            BarColumn(),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+            console=_console,
+        ) as progress:
+            task = progress.add_task(dest.name, total=total)
+            with tmp.open("wb") as fh:
+                for chunk in response.iter_content(chunk_size=_CHUNK_SIZE):
+                    fh.write(chunk)
+                    progress.update(task, advance=len(chunk))
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
+    tmp.rename(dest)
     return dest
 
 
