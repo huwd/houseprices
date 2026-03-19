@@ -67,9 +67,9 @@ def test_load_cpi_base_month_present() -> None:
 
 
 def test_load_cpi_all_fixture_months_loaded() -> None:
-    """All 13 rows in the fixture must be parsed."""
+    """All 14 rows in the fixture must be parsed."""
     cpi = load_cpi(CPI_FIXTURE)
-    assert len(cpi) == 13
+    assert len(cpi) == 14
 
 
 # ---------------------------------------------------------------------------
