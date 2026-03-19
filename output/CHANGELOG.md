@@ -1,5 +1,58 @@
 # Analysis Changelog
 
+## [Unreleased]
+
+### Methodology changes
+
+#### CPI price deflation — real Jan-2026 £/m²
+
+All sale prices are now inflation-adjusted to January 2026 pounds before
+aggregation, using the ONS CPI All Items monthly series (series ID: D7BT,
+Jan 1988–Jan 2026, OGL v3.0). The adjustment converts each transaction price
+to real terms: `adjusted_price = price × CPI[Jan-2026] / CPI[sale_month]`.
+
+This avoids mixing 1995 pounds with 2024 pounds in the same aggregate.
+Postcode districts where most sales occurred before 2010 were systematically
+understated in nominal terms; the real-terms figure makes districts comparable
+regardless of when their housing stock turned over.
+
+The headline column in both output CSVs is now `adj_price_per_sqm`
+(real Jan-2026 £/m²). The nominal `price_per_sqm` is retained as a reference
+column.
+
+- Research note: [`research/cpi-deflator-choice.md`](../research/cpi-deflator-choice.md)
+- Issue: [#67](https://github.com/huwd/houseprices/issues/67) | PR: [#72](https://github.com/huwd/houseprices/pull/72) (merged 2026-03-19, commit `ebe8619`)
+
+### New and changed output columns
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `adj_price_per_sqm` | int | **Headline.** Real Jan-2026 £/m² (CPI-adjusted) |
+| `price_per_sqm` | int | Nominal £/m² at time of sale — retained for reference |
+
+### Summary statistics (postcode district, 2,279 districts)
+
+| Metric | Value |
+|--------|-------|
+| Median real adj uplift vs nominal | +46.8% |
+| Uplift range | +25.9% to +75.6% |
+| Most expensive district | W1S — £32,660/m² (real Jan-2026) |
+| Least expensive district | TS2 — £798/m² (real Jan-2026) |
+| Top district rankings | Stable — W1S, WC2A, WC2R unchanged |
+
+### Key commits
+
+| Commit | Description |
+|--------|-------------|
+| `0669316` | test(red): CPI deflation tests |
+| `f912272` | feat(green): CPI deflation functions |
+| `ce091db` | feat(green): wire adjusted_price into pipeline and output |
+| `87fd755` | data: add ONS CPI monthly index (D7BT, Jan 1988–Jan 2026) |
+| `06ed494` | data: regenerate output CSVs with adj_price_per_sqm |
+| `ebe8619` | Merge PR #72 — CPI inflation adjustment |
+
+---
+
 ## [0.1.0] — 2026-03-19
 
 **First versioned release of the UK house price per m² analysis.**
