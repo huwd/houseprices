@@ -266,6 +266,128 @@
       text-decoration: underline;
     }
 
+    /* ── Analysis version badge ── */
+    .analysis-version {
+      display: inline-block;
+      font-size: 0.7rem;
+      color: var(--color-muted);
+      border: 1px solid var(--color-border);
+      border-radius: 3px;
+      padding: 0 0.35rem;
+      margin-left: 0.5rem;
+      vertical-align: middle;
+      letter-spacing: 0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Changelog (collapsible) ── */
+    .changelog {
+      margin-top: 1.5rem;
+      border-top: 1px solid var(--color-border);
+      padding-top: 1rem;
+    }
+
+    .changelog summary {
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      user-select: none;
+    }
+
+    .changelog summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .changelog summary::before {
+      content: '▶';
+      font-size: 0.6rem;
+      color: var(--color-muted);
+      transition: transform 0.15s ease;
+      display: inline-block;
+    }
+
+    .changelog[open] summary::before {
+      transform: rotate(90deg);
+    }
+
+    .changelog-body {
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: var(--color-muted);
+    }
+
+    .changelog-body h4 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--color-text);
+      margin: 1rem 0 0.4rem;
+    }
+
+    .changelog-body h4:first-child {
+      margin-top: 0;
+    }
+
+    .changelog-body p {
+      margin-bottom: 0.4rem;
+      color: var(--color-muted);
+    }
+
+    .changelog-body ul {
+      padding-left: 1.2rem;
+      margin: 0.3rem 0;
+    }
+
+    .changelog-body li {
+      margin-bottom: 0.2rem;
+    }
+
+    .changelog-body table {
+      width: 100%;
+      margin: 0.5rem 0;
+      font-size: 0.78rem;
+    }
+
+    .changelog-body th,
+    .changelog-body td {
+      text-align: left;
+      padding: 0.3rem 0.4rem 0.3rem 0;
+      border-bottom: 1px solid var(--color-border);
+      color: var(--color-muted);
+    }
+
+    .changelog-body th {
+      font-weight: 600;
+      color: var(--color-text);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .changelog-body code {
+      font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+      font-size: 0.9em;
+      background: var(--color-border);
+      border-radius: 2px;
+      padding: 0 0.25em;
+    }
+
+    .changelog-body pre {
+      background: var(--color-border);
+      border-radius: 4px;
+      padding: 0.5rem 0.75rem;
+      margin: 0.4rem 0;
+      overflow-x: auto;
+    }
+
+    .changelog-body pre code {
+      background: none;
+      padding: 0;
+    }
+
     /* ── Range filter (legend) ── */
     .range-filter {
       margin-top: 8px;
@@ -372,7 +494,7 @@
 
   <div class="page-title">
     <h1>House Prices per Metre² in England &amp; Wales</h1>
-    <h2>An analysis of government open data, mapped by <a href="https://www.huwdiprose.co.uk/">Huw Diprose</a></h2>
+    <h2>An analysis of government open data, mapped by <a href="https://www.huwdiprose.co.uk/">Huw Diprose</a><span class="analysis-version" title="Analysis version">__VERSION__</span></h2>
     <p class="intro-text">This map shows the average price per m² of houses in each postcode district in
       England &amp; Wales. It is inspired by the pioneering work of
       <a href="https://houseprices.anna.ps/">Anna Powell-Smith</a> in 2017,
@@ -451,6 +573,13 @@
       district with no matching residential transactions, for example industrial estates
       or parts of the City of London.
     </p>
+    <details class="changelog">
+      <summary>Changelog</summary>
+      <div class="changelog-body">
+        __CHANGELOG_HTML__
+      </div>
+    </details>
+
     <h3>Attribution</h3>
     <p>Price Paid data produced by HM Land Registry © Crown copyright 2026, licensed under the
       <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence
