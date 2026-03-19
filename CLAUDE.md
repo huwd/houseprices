@@ -149,8 +149,43 @@ The EPC bulk download requires free registration at epc.opendatacommunities.org.
 
 ---
 
-## Key pending decisions (see TODO.md)
+## Versioning and release strategy
 
-- HMLR UPRN-linked PPD: availability and OGL status unconfirmed
-- EPC UPRN coverage in 2022–2026 data: measure empirically on download
-- ONS boundary CRS: BNG vs WGS84 for DuckDB spatial join
+Analysis outputs are **semantically versioned**. Any change to the methodology,
+data sources, or aggregation logic that produces different output CSVs is a
+versioned release.
+
+- Version is stored in `output/VERSION.txt`
+- Changelog is `output/CHANGELOG.md` (Keep a Changelog format)
+- Unreleased changes accumulate under `## [Unreleased]`; bump the version when
+  shipping a release
+
+**Versioning rules:**
+
+| Change | Version bump |
+|--------|-------------|
+| New data vintage (same methodology) | patch (`0.1.x`) |
+| Methodology change affecting rankings or figures | minor (`0.x.0`) |
+| Breaking change to output schema or geography | major (`x.0.0`) |
+
+**Release checklist** (see issue [#73](https://github.com/huwd/houseprices/issues/73)):
+
+1. `make download && make run` from a clean state produces correct output
+2. Bump version in `output/VERSION.txt`
+3. Move `[Unreleased]` to `[x.y.z] — YYYY-MM-DD` in `output/CHANGELOG.md`;
+   link to PRs, commits, and research notes
+4. Rebuild `make page` and push
+
+---
+
+## Key decisions (resolved)
+
+- **ONS boundary CRS**: BNG EPSG:27700 — matches OS Open UPRN; no reprojection
+  needed in `spatial.py`
+- **EPC UPRN coverage**: ~92% overall (Boswarva 2022); UBDC lookup ends Jan 2022;
+  2022–2026 coverage falls to 0% for UPRN tier, addressed by Tier 2 address
+  normalisation
+- **Deflator choice**: CPI (D7BT) chosen over CPIH (shorter history) and RPI
+  (legacy measure); base month January 2026; see `research/cpi-deflator-choice.md`
+- **HMLR UPRN-linked PPD**: not pursued — UBDC lookup covers same need with
+  clearer OGL licensing
