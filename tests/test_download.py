@@ -205,6 +205,52 @@ def test_download_epc_raises_if_bearer_token_missing(
 
 
 # ---------------------------------------------------------------------------
+# download_geolytix
+# ---------------------------------------------------------------------------
+
+
+def test_download_geolytix_uses_geolytix_url(tmp_path: pathlib.Path) -> None:
+    """download_geolytix must GET GEOLYTIX_URL with no auth headers."""
+    dl.GEOLYTIX_URL = "http://example.com/geolytix.zip"
+    with patch(
+        "houseprices.download.requests.get",
+        return_value=_mock_response(),
+    ) as mock_get:
+        dl.download_geolytix(tmp_path)
+    assert mock_get.call_args.args[0] == dl.GEOLYTIX_URL
+
+
+def test_download_geolytix_saves_as_zip(tmp_path: pathlib.Path) -> None:
+    dl.GEOLYTIX_URL = "http://example.com/geolytix.zip"
+    with patch(
+        "houseprices.download.requests.get",
+        return_value=_mock_response(),
+    ):
+        result = dl.download_geolytix(tmp_path)
+    assert result.name == "geolytix_postal_boundaries.zip"
+
+
+def test_download_geolytix_skips_if_exists(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "geolytix_postal_boundaries.zip").write_bytes(b"existing")
+    with patch("houseprices.download.requests.get") as mock_get:
+        result = dl.download_geolytix(tmp_path)
+    mock_get.assert_not_called()
+    assert result.name == "geolytix_postal_boundaries.zip"
+
+
+def test_download_geolytix_requires_no_auth(tmp_path: pathlib.Path) -> None:
+    """No Authorization header should be sent — Google Drive is public."""
+    dl.GEOLYTIX_URL = "http://example.com/geolytix.zip"
+    with patch(
+        "houseprices.download.requests.get",
+        return_value=_mock_response(),
+    ) as mock_get:
+        dl.download_geolytix(tmp_path)
+    headers = mock_get.call_args.kwargs.get("headers", {})
+    assert "Authorization" not in headers
+
+
+# ---------------------------------------------------------------------------
 # download_ubdc
 # ---------------------------------------------------------------------------
 
