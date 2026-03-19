@@ -444,11 +444,18 @@
       no UPRN link is available — a second stage matches on postcode plus a normalised
       address string (combining sub-address, building name or number, and street name).
     </p>
-    <p>The price per m² for each postcode district is the total transaction value of all
-      matched sales divided by their total floor area — not a mean of per-property ratios.
-      Districts with fewer than 10 matched sales are excluded. The occasional gap is a
-      district with no matching residential transactions, for example industrial estates
-      or parts of the City of London.
+    <p>Sale prices are adjusted for inflation before aggregation. Each nominal sale price
+      is converted to real January-2026 pounds using the
+      <a href="https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/consumerpriceinflation">ONS Consumer Prices Index</a>
+      (CPI All Items, series D7BT). A 2005 sale price is therefore expressed in the same
+      monetary units as a 2024 sale, removing the distortion that would otherwise arise
+      from mixing nominal pounds across three decades.
+    </p>
+    <p>The price per m² for each postcode district is the total real transaction value of
+      all matched sales divided by their total floor area — not a mean of per-property
+      ratios. All figures are in real January-2026 £/m². Districts with fewer than 10
+      matched sales are excluded. The occasional gap is a district with no matching
+      residential transactions, for example industrial estates or parts of the City of London.
     </p>
     <h3>Attribution</h3>
     <p>Price Paid data produced by HM Land Registry © Crown copyright 2026, licensed under the
@@ -458,6 +465,7 @@
       by the Urban Big Data Centre, University of Glasgow.
       Contains Ordnance Survey data © Crown copyright and database right 2026.
       Contains Royal Mail data © Royal Mail copyright and database right 2026.
+      ONS Consumer Prices Index (series D7BT) © Crown copyright ONS, licensed under the Open Government Licence v3.0.
       Contains National Statistics data © Crown copyright and database right 2026.
       Postcode district derived boundaries reproduced under the Open Government Licence v3.0.
       Postal boundaries © GeoLytix copyright and database right 2012.
