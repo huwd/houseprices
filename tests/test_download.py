@@ -2,14 +2,57 @@
 
 from __future__ import annotations
 
-import base64
 import pathlib
 import zipfile
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
+import jsonschema
 import pytest
 
 import houseprices.download as dl
+
+# ---------------------------------------------------------------------------
+# OAS 3.0 schemas (from communitiesuk/epb-data-warehouse api.yml)
+# Used to validate that mock responses match the documented API contract.
+# ---------------------------------------------------------------------------
+
+_FILE_INFO_SCHEMA = {
+    "type": "object",
+    "required": ["data"],
+    "properties": {
+        "data": {
+            "type": "object",
+            "required": ["fileSize", "lastUpdated"],
+            "properties": {
+                "fileSize": {"type": "integer"},
+                "lastUpdated": {"type": "string"},
+            },
+        }
+    },
+}
+
+_ERROR_SCHEMA = {
+    "oneOf": [
+        {
+            "type": "object",
+            "required": ["error"],
+            "properties": {"error": {"type": "string"}},
+        },
+        {
+            "type": "object",
+            "required": ["errors"],
+            "properties": {
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"code": {"type": "string"}},
+                    },
+                }
+            },
+        },
+    ]
+}
 
 
 def _mock_response(
@@ -118,15 +161,15 @@ def test_download_ppd_saves_as_csv(tmp_path: pathlib.Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# download_epc
+# download_epc — GOV.UK One Login bearer token auth
 # ---------------------------------------------------------------------------
 
 
-def test_download_epc_uses_basic_auth(
+def test_download_epc_uses_bearer_token(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("EPC_EMAIL", "user@example.com")
-    monkeypatch.setenv("EPC_API_KEY", "s3cr3t")
+    """Authorization header must use Bearer token, not Basic auth."""
+    monkeypatch.setenv("EPC_BEARER_TOKEN", "my-token-abc")
     dl.EPC_BULK_URL = "http://example.com/epc.zip"
     with patch(
         "houseprices.download.requests.get",
@@ -134,15 +177,14 @@ def test_download_epc_uses_basic_auth(
     ) as mock_get:
         dl.download_epc(tmp_path)
     headers = mock_get.call_args.kwargs["headers"]
-    expected = base64.b64encode(b"user@example.com:s3cr3t").decode()
-    assert headers["Authorization"] == f"Basic {expected}"
+    assert headers["Authorization"] == "Bearer my-token-abc"
+    assert "Basic" not in headers["Authorization"]
 
 
 def test_download_epc_saves_as_zip(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("EPC_EMAIL", "u@e.com")
-    monkeypatch.setenv("EPC_API_KEY", "k")
+    monkeypatch.setenv("EPC_BEARER_TOKEN", "tok")
     dl.EPC_BULK_URL = "http://example.com/epc.zip"
     with patch(
         "houseprices.download.requests.get",
@@ -152,12 +194,11 @@ def test_download_epc_saves_as_zip(
     assert result.name == "epc-domestic-all.zip"
 
 
-def test_download_epc_raises_if_env_missing(
+def test_download_epc_raises_if_bearer_token_missing(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """KeyError if EPC credentials are not set in the environment."""
-    monkeypatch.delenv("EPC_EMAIL", raising=False)
-    monkeypatch.delenv("EPC_API_KEY", raising=False)
+    """KeyError if EPC_BEARER_TOKEN is not set in the environment."""
+    monkeypatch.delenv("EPC_BEARER_TOKEN", raising=False)
     dl.EPC_BULK_URL = "http://example.com/epc.zip"
     with pytest.raises(KeyError):
         dl.download_epc(tmp_path)
@@ -299,8 +340,8 @@ def test_download_lsoa_cleans_up_fgdb_zip(tmp_path: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_epc_zip(path: pathlib.Path, las: dict[str, list[str]]) -> None:
-    """Write a minimal EPC-style ZIP.
+def _make_epc_zip_by_la(path: pathlib.Path, las: dict[str, list[str]]) -> None:
+    """Write a minimal EPC-style ZIP in the OLD per-LA format.
 
     *las* maps LA name to a list of data rows (without header).
     A recommendations.csv is also written for each LA to confirm it is ignored.
@@ -314,6 +355,23 @@ def _make_epc_zip(path: pathlib.Path, las: dict[str, list[str]]) -> None:
                 f"domestic-{la}/recommendations.csv", "LMK_KEY,IMPROVEMENT_ITEM\n"
             )
         zf.writestr("LICENCE.txt", "OGL")
+
+
+def _make_epc_zip_by_year(path: pathlib.Path, years: dict[str, list[str]]) -> None:
+    """Write a minimal EPC-style ZIP in the NEW year-split format.
+
+    *years* maps year string (e.g. '2023') to a list of data rows (without header).
+    """
+    header = "LMK_KEY,ADDRESS1,POSTCODE,TOTAL_FLOOR_AREA,UPRN,LODGEMENT_DATETIME\n"
+    with zipfile.ZipFile(path, "w") as zf:
+        for year, rows in years.items():
+            certs = header + "".join(rows)
+            zf.writestr(f"domestic-{year}.csv", certs)
+        zf.writestr("LICENCE.txt", "OGL")
+
+
+# Keep old name as alias for existing tests
+_make_epc_zip = _make_epc_zip_by_la
 
 
 def test_extract_epc_skips_if_csv_exists(tmp_path: pathlib.Path) -> None:
@@ -790,3 +848,272 @@ def test_download_cpi_raises_on_http_error(tmp_path: pathlib.Path) -> None:
         pytest.raises(Exception, match="503"),
     ):
         dl.download_cpi(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# EPC info endpoint and freshness — OAS-validated
+# ---------------------------------------------------------------------------
+
+_VALID_FILE_INFO_RESPONSE = {
+    "data": {
+        "fileSize": 2923946932,
+        "lastUpdated": "2026-03-01T00:31:19.000+00:00",
+    }
+}
+
+
+def _mock_json_response(
+    payload: dict,  # type: ignore[type-arg]
+    status_code: int = 200,
+) -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = payload
+    return resp
+
+
+def test_file_info_response_matches_oas_schema() -> None:
+    """Verify our test fixture itself conforms to the OAS FileInfoResponse schema."""
+    jsonschema.validate(_VALID_FILE_INFO_RESPONSE, _FILE_INFO_SCHEMA)
+
+
+def test_error_response_matches_oas_schema_single_error() -> None:
+    payload = {"error": "File not found"}
+    jsonschema.validate(payload, _ERROR_SCHEMA)
+
+
+def test_error_response_matches_oas_schema_errors_array() -> None:
+    payload = {"errors": [{"code": "Unexpected error message here"}]}
+    jsonschema.validate(payload, _ERROR_SCHEMA)
+
+
+def test_epc_last_updated_returns_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_epc_last_updated makes a GET to the info endpoint and returns lastUpdated."""
+    monkeypatch.setenv("EPC_BEARER_TOKEN", "tok")
+    dl.EPC_INFO_URL = "http://example.com/epc/info"
+    with patch(
+        "houseprices.download.requests.get",
+        return_value=_mock_json_response(_VALID_FILE_INFO_RESPONSE),
+    ) as mock_get:
+        result = dl._epc_last_updated("tok")
+    assert result == "2026-03-01T00:31:19.000+00:00"
+    assert mock_get.call_args.kwargs["headers"]["Authorization"] == "Bearer tok"
+
+
+def test_epc_last_updated_returns_empty_on_network_error() -> None:
+    """Network failure must return '' so callers treat it as unknown."""
+    import requests as _req
+
+    dl.EPC_INFO_URL = "http://example.com/epc/info"
+    with patch(
+        "houseprices.download.requests.get",
+        side_effect=_req.RequestException("timeout"),
+    ):
+        assert dl._epc_last_updated("tok") == ""
+
+
+def test_epc_last_updated_returns_empty_on_401() -> None:
+    """401 Unauthorized must return '' (bad token — don't crash)."""
+    resp = MagicMock()
+    resp.status_code = 401
+    import requests as _req
+
+    resp.raise_for_status.side_effect = _req.HTTPError("401")
+    dl.EPC_INFO_URL = "http://example.com/epc/info"
+    with patch("houseprices.download.requests.get", return_value=resp):
+        assert dl._epc_last_updated("bad-token") == ""
+
+
+def test_check_epc_freshness_slim_absent_returns_not_fresh(
+    tmp_path: pathlib.Path,
+) -> None:
+    slim = tmp_path / "epc_slim.parquet"
+    dl.EPC_INFO_URL = "http://example.com/epc/info"
+    with patch(
+        "houseprices.download._epc_last_updated",
+        return_value="2026-03-01T00:00:00.000+00:00",
+    ):
+        is_fresh, meta = dl._check_epc_freshness(slim, "tok")
+    assert is_fresh is False
+    assert meta["lastUpdated"] == "2026-03-01T00:00:00.000+00:00"
+
+
+def test_check_epc_freshness_matching_timestamp_is_fresh(
+    tmp_path: pathlib.Path,
+) -> None:
+    slim = tmp_path / "epc_slim.parquet"
+    slim.write_bytes(b"data")
+    ts = "2026-03-01T00:00:00.000+00:00"
+    dl._save_meta(slim, {"lastUpdated": ts})
+    with patch("houseprices.download._epc_last_updated", return_value=ts):
+        is_fresh, _ = dl._check_epc_freshness(slim, "tok")
+    assert is_fresh is True
+
+
+def test_check_epc_freshness_changed_timestamp_is_stale(
+    tmp_path: pathlib.Path,
+) -> None:
+    slim = tmp_path / "epc_slim.parquet"
+    slim.write_bytes(b"data")
+    dl._save_meta(slim, {"lastUpdated": "2026-02-01T00:00:00.000+00:00"})
+    with patch(
+        "houseprices.download._epc_last_updated",
+        return_value="2026-03-01T00:00:00.000+00:00",
+    ):
+        is_fresh, meta = dl._check_epc_freshness(slim, "tok")
+    assert is_fresh is False
+    assert meta["lastUpdated"] == "2026-03-01T00:00:00.000+00:00"
+
+
+def test_check_epc_freshness_network_failure_trusts_existing(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Info endpoint unreachable + slim present → keep existing, return fresh."""
+    slim = tmp_path / "epc_slim.parquet"
+    slim.write_bytes(b"data")
+    dl._save_meta(slim, {"lastUpdated": "2026-02-01T00:00:00.000+00:00"})
+    with patch("houseprices.download._epc_last_updated", return_value=""):
+        is_fresh, meta = dl._check_epc_freshness(slim, "tok")
+    assert is_fresh is True
+    assert meta == {}
+
+
+def test_check_epc_freshness_no_stored_meta_treated_as_stale(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Slim present, no meta.json → stale so lastUpdated gets written this run."""
+    slim = tmp_path / "epc_slim.parquet"
+    slim.write_bytes(b"data")
+    with patch(
+        "houseprices.download._epc_last_updated",
+        return_value="2026-03-01T00:00:00.000+00:00",
+    ):
+        is_fresh, meta = dl._check_epc_freshness(slim, "tok")
+    assert is_fresh is False
+    assert "lastUpdated" in meta
+
+
+# ---------------------------------------------------------------------------
+# 429 retry logic
+# ---------------------------------------------------------------------------
+
+
+def test_stream_to_file_retries_on_429(tmp_path: pathlib.Path) -> None:
+    """A 429 response triggers a retry; the second attempt succeeds."""
+    dest = tmp_path / "file.zip"
+    rate_limited = MagicMock()
+    rate_limited.status_code = 429
+    rate_limited.raise_for_status.side_effect = None
+
+    ok = _mock_response([b"data"])
+    ok.status_code = 200
+
+    with (
+        patch(
+            "houseprices.download.requests.get",
+            side_effect=[rate_limited, ok],
+        ),
+        patch("houseprices.download.time.sleep") as mock_sleep,
+    ):
+        dl._stream_to_file("http://example.com/f", dest)
+
+    mock_sleep.assert_called_once()
+    assert dest.read_bytes() == b"data"
+
+
+def test_stream_to_file_raises_after_max_retries(tmp_path: pathlib.Path) -> None:
+    """Persistent 429 beyond max_retries raises an exception."""
+    import requests as _req
+
+    dest = tmp_path / "file.zip"
+    rate_limited = MagicMock()
+    rate_limited.status_code = 429
+    rate_limited.raise_for_status.side_effect = _req.HTTPError("429")
+
+    with (
+        patch(
+            "houseprices.download.requests.get",
+            return_value=rate_limited,
+        ),
+        patch("houseprices.download.time.sleep"),
+        pytest.raises(_req.HTTPError, match="429"),
+    ):
+        dl._stream_to_file("http://example.com/f", dest, max_retries=2)
+
+
+def test_stream_to_file_does_not_retry_on_other_errors(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Non-429 HTTP errors are not retried."""
+    import requests as _req
+
+    dest = tmp_path / "file.zip"
+    resp = MagicMock()
+    resp.status_code = 500
+    resp.raise_for_status.side_effect = _req.HTTPError("500")
+
+    with (
+        patch("houseprices.download.requests.get", return_value=resp),
+        patch("houseprices.download.time.sleep") as mock_sleep,
+        pytest.raises(_req.HTTPError, match="500"),
+    ):
+        dl._stream_to_file("http://example.com/f", dest, max_retries=3)
+
+    mock_sleep.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# extract_epc — year-split ZIP format (new MHCLG service)
+# ---------------------------------------------------------------------------
+
+
+def test_extract_epc_handles_year_split_zip(tmp_path: pathlib.Path) -> None:
+    """New year-split ZIP format: domestic-YYYY.csv files are concatenated."""
+    _make_epc_zip_by_year(
+        tmp_path / "epc-domestic-all.zip",
+        {
+            "2022": ["k1,a,SW1A1AA,80,100,2022-01-01\n"],
+            "2023": ["k2,b,SW1A2AA,90,200,2023-06-01\n"],
+        },
+    )
+    result = dl.extract_epc(tmp_path)
+    lines = result.read_text().splitlines()
+    header = "LMK_KEY,ADDRESS1,POSTCODE,TOTAL_FLOOR_AREA,UPRN,LODGEMENT_DATETIME"
+    assert lines[0] == header
+    assert lines.count(header) == 1
+    assert len(lines) == 3  # 1 header + 2 data rows
+
+
+def test_extract_epc_year_split_excludes_licence_file(tmp_path: pathlib.Path) -> None:
+    """LICENCE.txt (non-CSV) in the new ZIP must not be processed."""
+    _make_epc_zip_by_year(
+        tmp_path / "epc-domestic-all.zip",
+        {"2023": ["k1,a,SW1A1AA,80,100,2023-01-01\n"]},
+    )
+    result = dl.extract_epc(tmp_path)
+    assert "OGL" not in result.read_text()
+
+
+def test_extract_epc_both_formats_produce_same_schema(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Old per-LA and new year-split ZIPs produce the same output schema."""
+    row = "k1,a,SW1A1AA,80,100,2022-01-01\n"
+
+    la_zip = tmp_path / "la.zip"
+    _make_epc_zip_by_la(la_zip, {"LA1": [row]})
+    la_zip.rename(tmp_path / "epc-domestic-all.zip")
+    la_result = dl.extract_epc(tmp_path)
+    la_header = la_result.read_text().splitlines()[0]
+    la_result.unlink()
+
+    yr_zip = tmp_path / "yr.zip"
+    _make_epc_zip_by_year(yr_zip, {"2022": [row]})
+    yr_zip.rename(tmp_path / "epc-domestic-all.zip")
+    yr_result = dl.extract_epc(tmp_path)
+    yr_header = yr_result.read_text().splitlines()[0]
+
+    assert la_header == yr_header
