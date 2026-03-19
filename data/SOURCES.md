@@ -167,10 +167,44 @@ If space becomes an issue, point `data/` at the NAS instead.
 
 ---
 
+## 7. Geolytix PostalBoundariesOpen
+
+| | |
+|---|---|
+| **File** | `postcode_districts.geojson` (generated from `geolytix_postal_boundaries.zip`) |
+| **Licence** | OGL + Geolytix attribution — see below |
+| **Provider** | Geolytix Ltd |
+| **URL** | https://geolytix.com/blog/postal-boundaries/ |
+| **Direct download** | Google Drive (see `download.py` `GEOLYTIX_URL`) |
+| **Coverage** | Great Britain, 2736 postcode districts (2012 vintage) |
+| **Format** | ZIP of ZIPs — contains `PostalBoundariesSHP.zip` with `PostalDistrict.shp` (BNG Airy 1830) |
+| **Key field** | `PostDist` (4-char string, e.g. `SW1A`) |
+| **Prepared by** | `scripts/prepare_boundaries.py` reprojects BNG→WGS84 and writes `data/postcode_districts.geojson` |
+
+**Licence:**
+Open Government Licence v3.0 for the Ordnance Survey boundary data.
+Additional attribution required: "Postal Boundaries © GeoLytix copyright and
+database right 2012; Contains Ordnance Survey data © Crown copyright and
+database right 2012."
+
+**Note on E20 (Olympic Park):** E20 was created in late 2012, after this
+dataset was compiled. It is absent from `PostalDistrict.shp` (0 features).
+See `research/postcode-boundary-sources.md` and GitHub issues #80/#81 for the
+known workaround (map E20 sales to E15) and the outstanding task to add a
+proper E20 polygon.
+
+This replaces the previous boundary source (`scripts/fetch_boundaries.py`)
+which scraped Anna Powell-Smith's Mapbox tileset and is no longer maintained.
+
+---
+
 ## Licence summary
 
-All datasets are published under the Open Government Licence v3.0 (OGL):
+Most datasets are published under the Open Government Licence v3.0 (OGL):
 https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/
 
 The OGL permits use, adaptation, and redistribution with attribution. It is
 compatible with Creative Commons Attribution Licence 4.0.
+
+Exception: the Geolytix PostalBoundariesOpen data (§7) requires additional
+attribution beyond the OGL — see §7 for the required attribution statement.
