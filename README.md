@@ -95,6 +95,21 @@ Output files are written to `output/`:
 | `price_per_sqm_postcode_district.csv` | Price per m² by postcode district (e.g. SW1A) |
 | `price_per_sqm_lsoa.csv` | Price per m² by LSOA |
 
+Both CSVs share this schema:
+
+| Column | Type | Description |
+|---|---|---|
+| `postcode_district` / `LSOA21CD` | string | Geography identifier |
+| `num_sales` | int | Matched sales contributing to the aggregate |
+| `total_floor_area` | float | Sum of EPC floor areas (m²) |
+| `total_price` | float | Sum of sale prices (£ nominal) |
+| `adj_price_per_sqm` | int | **Headline.** Real Jan-2026 £/m² (CPI-adjusted) |
+| `price_per_sqm` | int | Nominal £/m² — retained for reference |
+
+All prices are CPI-adjusted to January 2026 pounds using the ONS CPI All Items
+monthly series (D7BT). See [`research/cpi-deflator-choice.md`](research/cpi-deflator-choice.md)
+for the deflator choice rationale.
+
 `matched.parquet` in `cache/` includes two additional columns for Tier 1 rows:
 
 | Column | Type | Description |
