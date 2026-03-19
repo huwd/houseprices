@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] — 2026-03-19
+
+### Data vintages
+
+| Source | v0.1.0 | v0.2.0 |
+|--------|--------|--------|
+| HM Land Registry PPD | to Jan 2026 (~22.5M rows) | to March 2026 (~29.3M rows) |
+| EPC bulk export | per-LA ZIPs, epc.opendatacommunities.org | single monolithic CSV, get-energy-performance-data.communities.gov.uk (March 2026) |
+| UBDC PPD→UPRN lookup | unchanged — covers to Jan 2022 | unchanged |
+| ONS CPI | D7BT Jan 1988–Jan 2026 | unchanged |
+
+The EPC source changed to the new MHCLG GOV.UK One Login API which delivers
+a single 5.7 GB CSV assembled from all local authority feeds. Four CSV
+parsing issues were encountered and fixed; see
+[`research/epc-csv-data-quality.md`](../research/epc-csv-data-quality.md).
+
 ### Methodology changes
 
 #### CPI price deflation — real Jan-2026 £/m²
@@ -21,7 +39,7 @@ The headline column in both output CSVs is now `adj_price_per_sqm`
 column.
 
 - Research note: [`research/cpi-deflator-choice.md`](../research/cpi-deflator-choice.md)
-- Issue: [#67](https://github.com/huwd/houseprices/issues/67) | PR: [#72](https://github.com/huwd/houseprices/pull/72) (merged 2026-03-19, commit `ebe8619`)
+- Issue: [#67](https://github.com/huwd/houseprices/issues/67) | PR: [#72](https://github.com/huwd/houseprices/pull/72)
 
 ### New and changed output columns
 
@@ -30,26 +48,46 @@ column.
 | `adj_price_per_sqm` | int | **Headline.** Real Jan-2026 £/m² (CPI-adjusted) |
 | `price_per_sqm` | int | Nominal £/m² at time of sale — retained for reference |
 
-### Summary statistics (postcode district, 2,279 districts)
+### Match statistics
+
+| Tier | Count | Share |
+|------|-------|-------|
+| Tier 1 — UPRN exact match | 9,255,768 | 31.6% |
+| Tier 2 — address normalisation | 7,321,554 | 25.0% |
+| Unmatched | 12,705,953 | 43.4% |
+| **Total PPD sales** | **29,283,275** | |
+
+The match rate dropped from 76.9% (v0.1.0) to 56.6%. This is structural:
+the PPD gained ~6.8M rows (all post-Jan 2022 transactions) that fall outside
+the UBDC UPRN lookup's coverage window. The absolute number of matched
+records is broadly unchanged (~16.6M vs ~17.3M). See
+[`research/uprn-coverage-in-epc-data.md`](../research/uprn-coverage-in-epc-data.md)
+for a detailed breakdown.
+
+### Summary statistics (postcode district, 2,277 districts)
 
 | Metric | Value |
 |--------|-------|
-| Median real adj uplift vs nominal | +46.8% |
-| Uplift range | +25.9% to +75.6% |
-| Most expensive district | W1S — £32,660/m² (real Jan-2026) |
-| Least expensive district | TS2 — £798/m² (real Jan-2026) |
-| Top district rankings | Stable — W1S, WC2A, WC2R unchanged |
+| Districts included | 2,277 |
+| Total matched sales | 16,577,322 |
+| Median real adj price | £3,058/m² |
+| Most expensive district | W1S — £35,462/m² (real Jan-2026) |
+| Least expensive district | TS2 — £733/m² (real Jan-2026) |
+| Top 5 district rankings | W1S, WC2A, WC2R, W1B, W1K — stable vs v0.1.0 |
+| Bottom 5 district rankings | TS2, TS1, BD3, CF43, DN31 — stable vs v0.1.0 |
 
-### Key commits
+### Key commits and PRs
 
-| Commit | Description |
-|--------|-------------|
-| `0669316` | test(red): CPI deflation tests |
-| `f912272` | feat(green): CPI deflation functions |
-| `ce091db` | feat(green): wire adjusted_price into pipeline and output |
-| `87fd755` | data: add ONS CPI monthly index (D7BT, Jan 1988–Jan 2026) |
-| `06ed494` | data: regenerate output CSVs with adj_price_per_sqm |
-| `ebe8619` | Merge PR #72 — CPI inflation adjustment |
+| Commit / PR | Description |
+|-------------|-------------|
+| PR [#72](https://github.com/huwd/houseprices/pull/72) `ebe8619` | CPI inflation adjustment |
+| PR [#78](https://github.com/huwd/houseprices/pull/78) | EPC download: migrate to new MHCLG API |
+| `4e09bf1` | fix: atomic download — no partial file on interrupt |
+| `bc2e1a5` | fix: strict_mode=false — handle backslash-escaped JSON in EPC CSV |
+| `943efbe` | fix: pin quote/escape — prevent single-quote column misdetection |
+| `6630a73` | fix: null_padding=true — handle short/stub rows |
+| `fed70dd` | fix: parallel=false — allow null_padding with quoted newlines |
+| `f6ff4ab` | perf: two-pass EPC dedup to stay within 2 GB memory limit |
 
 ---
 
