@@ -133,6 +133,15 @@ def main() -> None:
                 "GeoJSON",
                 "-t_srs",
                 "EPSG:4326",
+                # Simplify in BNG (source CRS, metres) before reprojection.
+                # 100 m tolerance gives smooth district polygons at web-map
+                # zoom levels while keeping the output under ~10 MB.
+                "-simplify",
+                "100",
+                # 5 decimal places ≈ 1 m precision in WGS84 — more than
+                # sufficient; reduces GeoJSON byte count significantly.
+                "-lco",
+                "COORDINATE_PRECISION=5",
                 str(tmp_path),
                 vsi_path,
             ],
