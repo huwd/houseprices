@@ -9,12 +9,12 @@ Credentials are read from environment variables at call time.  Copy
 file automatically when this module is imported.
 """
 
-import base64
 import json
 import os
 import pathlib
 import shutil
 import subprocess
+import time
 import zipfile
 
 import requests
@@ -45,11 +45,19 @@ PPD_URL = (
 )
 
 # EPC bulk download — ZIP of all domestic certificates (OGL).
-# Requires free registration at https://epc.opendatacommunities.org/
-# Authenticates via HTTP Basic Auth (EPC_EMAIL + EPC_API_KEY).
-# List available files: GET https://epc.opendatacommunities.org/api/v1/files
+# Requires a GOV.UK One Login account at https://get-energy-performance-data.communities.gov.uk/
+# Authenticates via Bearer token (EPC_BEARER_TOKEN env var).
+# Returns HTTP 302 → pre-signed S3 URL; requests follows the redirect automatically.
+# Regenerated on the 1st of every month.
 EPC_BULK_URL = (
-    "https://epc.opendatacommunities.org/api/v1/files/all-domestic-certificates.zip"
+    "https://api.get-energy-performance-data.communities.gov.uk/api/files/domestic/csv"
+)
+
+# EPC info endpoint — returns fileSize and lastUpdated (OAS: FileInfoResponse).
+# Used for staleness detection instead of ETag (HEAD on a 302 URL is unreliable).
+EPC_INFO_URL = (
+    "https://api.get-energy-performance-data.communities.gov.uk"
+    "/api/files/domestic/csv/info"
 )
 
 # UBDC PPD → UPRN lookup — ZIP containing CSV (OGL).
@@ -138,6 +146,67 @@ def _http_meta(url: str, *, headers: dict[str, str] | None = None) -> dict[str, 
         return {}
 
 
+def _epc_last_updated(bearer_token: str) -> str:
+    """Return the lastUpdated timestamp from the EPC info endpoint, or '' on failure.
+
+    Calls EPC_INFO_URL (OAS: GET /api/files/domestic/csv/info) which returns a
+    FileInfoResponse: {"data": {"fileSize": int, "lastUpdated": "<ISO 8601>"}}
+
+    Returns an empty string on any network or HTTP error so callers can treat a
+    failed check as "unknown" rather than crashing the pipeline.
+    """
+    try:
+        r = requests.get(
+            EPC_INFO_URL,
+            headers={
+                "Authorization": f"Bearer {bearer_token}",
+                "Accept": "application/json",
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        return str(r.json()["data"]["lastUpdated"])
+    except Exception:
+        return ""
+
+
+def _check_epc_freshness(
+    slim_path: pathlib.Path,
+    bearer_token: str,
+) -> tuple[bool, dict[str, str]]:
+    """Decide whether the EPC slim Parquet is up-to-date using the info endpoint.
+
+    Uses the lastUpdated timestamp from /api/files/domestic/csv/info rather than
+    an ETag HEAD check — more reliable because the bulk download URL returns a
+    302 redirect to a signed S3 URL whose headers are not stable.
+
+    Returns ``(is_fresh, meta)`` with the same contract as :func:`_check_freshness`.
+    """
+    remote_ts = _epc_last_updated(bearer_token)
+
+    if not slim_path.exists():
+        return False, ({"lastUpdated": remote_ts} if remote_ts else {})
+
+    if not remote_ts:
+        _console.print(
+            f"  [yellow]⚠  {slim_path.name}: EPC info endpoint unreachable, "
+            f"keeping existing file[/yellow]"
+        )
+        return True, {}
+
+    stored = _load_meta(slim_path)
+    stored_ts = stored.get("lastUpdated", "")
+
+    if not stored_ts:
+        return False, {"lastUpdated": remote_ts}
+
+    if stored_ts == remote_ts:
+        return True, {"lastUpdated": remote_ts}
+
+    _console.print(f"  [cyan]↻[/cyan]  {slim_path.name}: source has changed")
+    return False, {"lastUpdated": remote_ts}
+
+
 def _check_freshness(
     slim_path: pathlib.Path,
     url: str,
@@ -199,11 +268,16 @@ def _stream_to_file(
     dest: pathlib.Path,
     *,
     headers: dict[str, str] | None = None,
+    max_retries: int = 3,
 ) -> pathlib.Path:
     """Stream *url* to *dest*, skipping if the file already exists.
 
     Shows a rich progress bar with bytes transferred, speed, and ETA.
     Falls back to an indeterminate bar when Content-Length is absent.
+
+    Retries up to *max_retries* times on HTTP 429 Too Many Requests, using
+    exponential backoff (1 s, 2 s, 4 s, …).  Any other HTTP error is raised
+    immediately without retrying.
     """
     if dest.exists():
         _console.print(f"  [dim]⊘  {dest.name} already downloaded[/dim]")
@@ -211,8 +285,20 @@ def _stream_to_file(
 
     dest.parent.mkdir(parents=True, exist_ok=True)
 
-    response = requests.get(url, headers=headers or {}, stream=True, timeout=120)
-    response.raise_for_status()
+    for attempt in range(max_retries):
+        response = requests.get(url, headers=headers or {}, stream=True, timeout=120)
+        if response.status_code == 429:
+            wait = 2**attempt
+            _console.print(
+                f"  [yellow]⏳  {dest.name}: rate limited (429), "
+                f"retrying in {wait}s…[/yellow]"
+            )
+            time.sleep(wait)
+            continue
+        response.raise_for_status()
+        break
+    else:
+        response.raise_for_status()
 
     try:
         total: int | None = int(response.headers["Content-Length"])
@@ -249,17 +335,21 @@ def download_ppd(data_dir: pathlib.Path) -> pathlib.Path:
 def download_epc(data_dir: pathlib.Path) -> pathlib.Path:
     """Download the EPC bulk ZIP.
 
-    Reads EPC_EMAIL and EPC_API_KEY from the environment (.env or shell).
-    Authenticates via HTTP Basic Auth per the EPC open data API documentation:
-    https://epc.opendatacommunities.org/docs/api/domestic#downloads
+    Reads EPC_BEARER_TOKEN from the environment (.env or shell).
+    Authenticates via GOV.UK One Login bearer token per the new EPC data API:
+    https://get-energy-performance-data.communities.gov.uk/api-technical-documentation
+
+    The endpoint returns HTTP 302 → pre-signed AWS S3 URL; requests follows the
+    redirect automatically with allow_redirects=True (the default).
     """
-    email = os.environ["EPC_EMAIL"]
-    api_key = os.environ["EPC_API_KEY"]
-    token = base64.b64encode(f"{email}:{api_key}".encode()).decode()
+    bearer_token = os.environ["EPC_BEARER_TOKEN"]
     return _stream_to_file(
         EPC_BULK_URL,
         data_dir / "epc-domestic-all.zip",
-        headers={"Authorization": f"Basic {token}"},
+        headers={
+            "Authorization": f"Bearer {bearer_token}",
+            "Accept": "application/json",
+        },
     )
 
 
@@ -410,12 +500,19 @@ def download_cpi(data_dir: pathlib.Path) -> pathlib.Path:
 
 
 def extract_epc(data_dir: pathlib.Path) -> pathlib.Path:
-    """Concatenate all per-LA certificates.csv files from the EPC ZIP.
+    """Concatenate all certificate CSV files from the EPC bulk ZIP.
 
-    The EPC bulk ZIP contains one folder per local authority, each with a
-    certificates.csv and a recommendations.csv.  This function streams all
-    347 certificates.csv files into a single epc-domestic-all.csv, writing
-    the header once and skipping recommendations files entirely.
+    Handles two ZIP formats:
+
+    - **Old (epc.opendatacommunities.org)**: per-LA folders containing
+      ``certificates.csv`` and ``recommendations.csv``.
+    - **New (get-energy-performance-data.communities.gov.uk)**: year-split
+      CSV files at the top level (e.g. ``domestic-2023.csv``).
+
+    In both cases, all ``.csv`` files whose name ends in ``certificates.csv``
+    or contains a year pattern are included; ``recommendations.csv`` and any
+    non-CSV entries (``LICENCE.txt``, etc.) are excluded.  The header is
+    written once; subsequent files have their header skipped.
 
     The source ZIP is deleted after successful extraction.
     Skips if epc-domestic-all.csv already exists.
@@ -429,7 +526,11 @@ def extract_epc(data_dir: pathlib.Path) -> pathlib.Path:
     _console.print(f"  [cyan]→[/cyan]  extracting {src.name} → {dest.name}")
 
     with zipfile.ZipFile(src, "r") as zf:
-        cert_files = [n for n in zf.namelist() if n.endswith("certificates.csv")]
+        cert_files = sorted(
+            n
+            for n in zf.namelist()
+            if n.endswith(".csv") and not n.endswith("recommendations.csv")
+        )
         with dest.open("wb") as out:
             header_written = False
             for name in cert_files:
@@ -563,18 +664,15 @@ if __name__ == "__main__":  # pragma: no cover
             ppd.unlink(missing_ok=True)
             _save_meta(ppd_slim, ppd_meta)
 
-    # EPC — check ETag/Last-Modified before downloading (6 GB ZIP + extraction).
+    # EPC — check lastUpdated via info endpoint before downloading (2–7 GB ZIP).
     # Produces two Parquet files from the same raw CSV in one pass:
     #   epc_slim.parquet — deduplicated (one row per UPRN); used by tier-2
     #   epc_full.parquet — all rows, column-projected; used by tier-1 temporal
     epc_slim = cache / "epc_slim.parquet"
     epc_full = cache / "epc_full.parquet"
     if not _maybe_skip("epc", [epc_slim, epc_full]):
-        epc_email = os.environ["EPC_EMAIL"]
-        epc_api_key = os.environ["EPC_API_KEY"]
-        epc_token = base64.b64encode(f"{epc_email}:{epc_api_key}".encode()).decode()
-        epc_auth = {"Authorization": f"Basic {epc_token}"}
-        epc_fresh, epc_meta = _check_freshness(epc_slim, EPC_BULK_URL, headers=epc_auth)
+        epc_bearer = os.environ["EPC_BEARER_TOKEN"]
+        epc_fresh, epc_meta = _check_epc_freshness(epc_slim, epc_bearer)
         if epc_fresh and epc_full.exists():
             _console.print(f"  [dim]⊘  {epc_slim.name} up to date[/dim]")
             _console.print(f"  [dim]⊘  {epc_full.name} up to date[/dim]")
