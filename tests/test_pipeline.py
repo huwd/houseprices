@@ -595,6 +595,26 @@ def test_prepare_epc_handles_backslash_escaped_quotes(tmp_path: pathlib.Path) ->
     assert df.iloc[0]["TOTAL_FLOOR_AREA"] == 60.0
 
 
+def test_prepare_epc_handles_short_rows(tmp_path: pathlib.Path) -> None:
+    """prepare_epc must not crash on rows with fewer columns than the header.
+
+    The full 5.7 GB EPC CSV contains rows like:
+        0000-2800-7833-9572-2531,1,47,"£800 - £1,200",,
+    which have only 6 of 93 expected fields.  Without null_padding=true
+    DuckDB raises: Expected Number of Columns: 93 Found: 6.
+
+    The fixture places the short row beyond DuckDB's 20 KB sample window so
+    schema detection succeeds, then triggers the error at parse time.
+    With null_padding=true the short row is padded with NULLs and kept.
+    """
+    dst = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_short_row.csv", dst)
+    df = pd.read_parquet(dst)
+    # 499 full rows survive deduplication; the short row has NULL floor area
+    assert len(df) == 500
+    assert df["TOTAL_FLOOR_AREA"].notna().sum() == 499
+
+
 def test_prepare_epc_handles_single_quoted_addresses(tmp_path: pathlib.Path) -> None:
     """prepare_epc must not misparse rows where address fields contain single
     quotes, e.g. 'OLD TRINITY HALL'.

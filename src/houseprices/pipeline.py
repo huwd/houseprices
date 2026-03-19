@@ -196,7 +196,8 @@ def prepare_epc(
                     '{src_str}',
                     quote='"',
                     escape='"',
-                    strict_mode=false
+                    strict_mode=false,
+                    null_padding=true
                 )
             ) TO '{tmp}' (FORMAT PARQUET, COMPRESSION ZSTD)
         """)
