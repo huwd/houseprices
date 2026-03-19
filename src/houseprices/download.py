@@ -645,7 +645,7 @@ if __name__ == "__main__":  # pragma: no cover
         prepare_uprn,
     )
 
-    _STEP_NAMES = ("ppd", "epc", "ubdc", "uprn", "lsoa", "cpi")
+    _STEP_NAMES = ("ppd", "epc", "ubdc", "uprn", "lsoa", "cpi", "geolytix")
 
     parser = argparse.ArgumentParser(description="Download raw data files.")
     parser.add_argument(
@@ -750,3 +750,7 @@ if __name__ == "__main__":  # pragma: no cover
     # ONS CPI deflators — small JSON fetch; skip logic is in the function.
     if not _maybe_skip("cpi", [data / "cpi.csv"]):
         download_cpi(data)
+
+    # Geolytix PostalBoundariesOpen — small download; skip if already present.
+    if not _maybe_skip("geolytix", [data / "geolytix_postal_boundaries.zip"]):
+        download_geolytix(data)
