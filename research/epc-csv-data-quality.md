@@ -118,9 +118,38 @@ lose it entirely.
 
 ---
 
+## Issue 4 — Quoted newlines incompatible with parallel scanner + null_padding
+
+**Line:** 106 397 288
+
+**Error:**
+```
+_duckdb.Error: CSV Error on Line: 106397288
+ The parallel scanner does not support null_padding in conjunction with
+ quoted new lines. Please disable the parallel csv reader with parallel=false
+```
+
+**Cause:**
+Some address fields in the EPC CSV contain embedded newline characters
+inside a double-quoted field — a valid RFC 4180 construct but one that
+DuckDB's parallel CSV scanner cannot handle when `null_padding=true` is
+also active. The parallel scanner splits the file across worker threads;
+a quoted newline that straddles a split boundary causes the scanner to
+lose track of field boundaries and abort. Note that line 106 397 288 is
+a raw newline count, not a record count — embedded newlines in quoted
+fields inflate the line counter well beyond the ~23 million record count.
+
+**Mitigation:** `parallel=false` on the `read_csv` call. This forces
+single-threaded sequential scanning, which handles quoted newlines
+correctly at the cost of some throughput. Given that the bottleneck for
+this file is I/O (5.7 GB read from disk), the single-threaded mode has
+negligible impact on wall-clock time.
+
+---
+
 ## Summary of mitigations
 
-All three issues are addressed by four parameters on the single
+All four issues are addressed by five parameters on the single
 `read_csv(…)` call in `prepare_epc`:
 
 ```sql
@@ -129,7 +158,8 @@ FROM read_csv(
     quote='"',          -- prevent single-quote misdetection (issue 2)
     escape='"',         -- prevent single-quote misdetection (issue 2)
     strict_mode=false,  -- tolerate non-RFC-4180 quoting (issue 1)
-    null_padding=true   -- pad short rows rather than erroring (issue 3)
+    null_padding=true,  -- pad short rows rather than erroring (issue 3)
+    parallel=false      -- allow null_padding with quoted newlines (issue 4)
 )
 ```
 
@@ -140,7 +170,7 @@ relative to previous vintages would surface as an anomaly there.
 
 ## Notes on the new API
 
-All three issues appeared for the first time in the March 2026 vintage,
+All four issues appeared for the first time in the March 2026 vintage,
 which is the first bulk download from the new MHCLG API
 (`get-energy-performance-data.communities.gov.uk`). The old
 `epc.opendatacommunities.org` endpoint produced per-local-authority ZIPs
@@ -150,6 +180,6 @@ local-authority feeds, and the inconsistencies may reflect differences in
 how individual local authorities or assessment software vendors format
 their submissions before they reach the central register.
 
-The three failure lines (3 111 654, 13 441 320, 22 981 804) are spread
-across the file, suggesting these are not isolated to one local authority
-or assessment period.
+The four failure lines (3 111 654, 13 441 320, 22 981 804, 106 397 288)
+are spread across the file, suggesting these are not isolated to one local
+authority or assessment period.

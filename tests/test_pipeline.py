@@ -638,6 +638,28 @@ def test_prepare_epc_handles_single_quoted_addresses(tmp_path: pathlib.Path) -> 
     assert df.iloc[0]["TOTAL_FLOOR_AREA"] == 83.0
 
 
+def test_prepare_epc_handles_quoted_newlines(tmp_path: pathlib.Path) -> None:
+    """prepare_epc must not crash on rows where a quoted field contains a
+    newline character — seen in address fields in the real EPC bulk CSV.
+
+    DuckDB's parallel CSV scanner does not support null_padding=true when
+    quoted newlines are present and raises:
+        "The parallel scanner does not support null_padding in conjunction
+        with quoted new lines. Please disable the parallel csv reader with
+        parallel=false"
+
+    The fix is to add parallel=false to the read_csv call.
+
+    Small fixtures don't reliably trigger the parallel scanner — this test
+    guards against regressions and documents the real-world failure.
+    """
+    dst = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_quoted_newline.csv", dst)
+    df = pd.read_parquet(dst)
+    assert len(df) == 1
+    assert df.iloc[0]["TOTAL_FLOOR_AREA"] == 75.0
+
+
 # ---------------------------------------------------------------------------
 # prepare_uprn
 # ---------------------------------------------------------------------------
