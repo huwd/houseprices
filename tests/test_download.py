@@ -106,6 +106,29 @@ def test_skips_download_if_file_exists(tmp_path: pathlib.Path) -> None:
     assert result == dest
 
 
+def test_partial_file_not_left_on_interrupted_download(tmp_path: pathlib.Path) -> None:
+    """An interrupted download must not leave a file at dest.
+
+    If dest exists after a KeyboardInterrupt, the next run will silently skip
+    the download and hand a corrupt file to the extraction step.
+    """
+    dest = tmp_path / "file.zip"
+
+    def _chunks_then_interrupt() -> object:
+        yield b"partial data"
+        raise KeyboardInterrupt
+
+    resp = _mock_response()
+    resp.iter_content.return_value = _chunks_then_interrupt()
+
+    with (
+        patch("houseprices.download.requests.get", return_value=resp),
+        pytest.raises(KeyboardInterrupt),
+    ):
+        dl._stream_to_file("http://example.com/f", dest)
+    assert not dest.exists(), "partial file must not exist after interrupted download"
+
+
 def test_writes_response_chunks(tmp_path: pathlib.Path) -> None:
     dest = tmp_path / "file.csv"
     with patch(
