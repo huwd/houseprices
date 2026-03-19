@@ -76,10 +76,30 @@ def compute_stats(price_data: dict[str, dict]) -> dict:
     }
 
 
+def _strip_points(geometry: dict) -> dict:
+    """Remove Point/MultiPoint sub-geometries from a GeometryCollection.
+
+    The Geolytix source data includes stray Point geometries inside some
+    GeometryCollections.  Leaflet renders these as default pin markers.
+    This keeps only Polygon/MultiPolygon parts and promotes to Polygon or
+    MultiPolygon when a single sub-geometry remains.
+    """
+    if geometry["type"] != "GeometryCollection":
+        return geometry
+    keep = ("Polygon", "MultiPolygon")
+    polys = [g for g in geometry["geometries"] if g["type"] in keep]
+    if len(polys) == 1:
+        return polys[0]
+    if polys:
+        return {"type": "GeometryCollection", "geometries": polys}
+    return geometry  # no polygons found — leave unchanged
+
+
 def build_geojson(boundaries: dict, price_data: dict[str, dict]) -> dict:
     """Join price data into the boundary GeoJSON features."""
     matched = 0
     for feature in boundaries["features"]:
+        feature["geometry"] = _strip_points(feature["geometry"])
         dist = feature["properties"].get("PostDist")
         if dist and dist in price_data:
             feature["properties"].update(price_data[dist])
