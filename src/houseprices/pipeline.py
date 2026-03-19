@@ -27,6 +27,11 @@ DATA = pathlib.Path("data")
 CACHE = pathlib.Path("cache")
 OUTPUT = pathlib.Path("output")
 
+# Base month for CPI deflation — all sale prices are converted to real terms
+# relative to this month.  January 2026 chosen to match the pipeline's
+# first production run.
+CPI_BASE: tuple[int, int] = (2026, 1)
+
 
 class Geography(Enum):
     """Contiguous geographies supported for price-per-sqm aggregation.
@@ -627,6 +632,31 @@ def _join_tier3(
     return result
 
 
+def _cpi_ctes(cpi_path: pathlib.Path) -> str:
+    """Return SQL CTE block for CPI deflation.
+
+    Produces two CTEs for use inside a WITH clause:
+
+    ``cpi``      — monthly index values keyed by (yr, mo).
+    ``base_cpi`` — scalar subquery alias for the base-month index value.
+
+    Usage in a SELECT: ``price * ((SELECT idx FROM base_cpi) / cpi.idx)``
+    with a JOIN on ``cpi.yr = YEAR(date_col) AND cpi.mo = MONTH(date_col)``.
+    """
+    return f"""
+    cpi AS (
+        SELECT
+            CAST(split_part(date, '-', 1) AS INTEGER) AS yr,
+            CAST(split_part(date, '-', 2) AS INTEGER) AS mo,
+            cpi AS idx
+        FROM read_csv('{cpi_path}',
+                      columns={{'date': 'VARCHAR', 'cpi': 'DOUBLE'}})
+    ),
+    base_cpi AS (
+        SELECT idx FROM cpi WHERE yr = {CPI_BASE[0]} AND mo = {CPI_BASE[1]}
+    )"""
+
+
 def join_datasets(
     ppd_path: str | pathlib.Path,
     epc_path: str | pathlib.Path,
@@ -635,6 +665,7 @@ def join_datasets(
     *,
     epc_full_path: pathlib.Path | None = None,
     on_tier1_complete: Callable[[int], None] | None = None,
+    cpi_path: pathlib.Path,
 ) -> None:
     """Join PPD to EPC using a tiered strategy, writing result to *dst*.
 
@@ -649,6 +680,10 @@ def join_datasets(
     rows carry NULL for those columns.  PPD records with
     ``ppd_category_type != 'A'`` are excluded before joining.  Unmatched PPD
     records are not included.
+
+    Each row also carries an ``adjusted_price`` column: the nominal sale price
+    deflated to real ``CPI_BASE`` pounds using the ONS CPI monthly index
+    loaded from *cpi_path*.
 
     *epc_full_path* — path to the undeduped EPC Parquet
     (``prepare_epc(…, deduplicate=False)``).  When provided, Tier 1 uses it
@@ -677,9 +712,22 @@ def join_datasets(
 
         duckdb.execute(f"""
             COPY (
-                SELECT * FROM read_parquet('{tier1_path}')
-                UNION ALL
-                SELECT * FROM read_parquet('{tier2_path}')
+                WITH
+                {_cpi_ctes(cpi_path)},
+                combined AS (
+                    SELECT * FROM read_parquet('{tier1_path}')
+                    UNION ALL
+                    SELECT * FROM read_parquet('{tier2_path}')
+                )
+                SELECT
+                    c.*,
+                    c.price * (
+                        (SELECT idx FROM base_cpi) / cpi.idx
+                    ) AS adjusted_price
+                FROM combined AS c
+                JOIN cpi
+                  ON cpi.yr = YEAR(c.date_of_transfer)
+                 AND cpi.mo = MONTH(c.date_of_transfer)
             ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
         """)
 
@@ -858,6 +906,7 @@ def run(
     cache_dir: pathlib.Path = CACHE,
     output_dir: pathlib.Path = OUTPUT,
     min_sales: int = 10,
+    cpi_path: pathlib.Path = DATA / "cpi.csv",
 ) -> None:
     """Run the full pipeline: join → spatial → aggregate → write CSVs.
 
@@ -945,6 +994,7 @@ def run(
                 dst=matched_parquet,
                 epc_full_path=epc_full_path,
                 on_tier1_complete=_on_tier1,
+                cpi_path=cpi_path,
             )
         elapsed = _fmt_elapsed(time.monotonic() - t0)
         n_rows = duckdb.execute(
@@ -1037,17 +1087,19 @@ def _run_aggregations(
         SELECT
             TRIM(LEFT(postcode, LENGTH(postcode) - 3)) AS postcode_district,
             COUNT(*) AS num_sales,
-            SUM(price) AS total_price,
             SUM(TOTAL_FLOOR_AREA) AS total_floor_area,
+            SUM(price) AS total_price,
             CAST(ROUND(SUM(price) / SUM(TOTAL_FLOOR_AREA)) AS INTEGER)
-                AS price_per_sqm
+                AS price_per_sqm,
+            CAST(ROUND(SUM(adjusted_price) / SUM(TOTAL_FLOOR_AREA)) AS INTEGER)
+                AS adj_price_per_sqm
         FROM read_parquet('{matched_parquet}')
         WHERE TOTAL_FLOOR_AREA IS NOT NULL
           AND TOTAL_FLOOR_AREA > 0
           AND postcode IS NOT NULL
         GROUP BY postcode_district
         HAVING COUNT(*) >= {min_sales}
-        ORDER BY price_per_sqm DESC
+        ORDER BY adj_price_per_sqm DESC
     """).df()
     district_path = output_dir / "price_per_sqm_postcode_district.csv"
     district_df.to_csv(district_path, index=False)
@@ -1064,10 +1116,12 @@ def _run_aggregations(
         SELECT
             l.LSOA21CD,
             COUNT(*) AS num_sales,
-            SUM(m.price) AS total_price,
             SUM(m.TOTAL_FLOOR_AREA) AS total_floor_area,
+            SUM(m.price) AS total_price,
             CAST(ROUND(SUM(m.price) / SUM(m.TOTAL_FLOOR_AREA)) AS INTEGER)
-                AS price_per_sqm
+                AS price_per_sqm,
+            CAST(ROUND(SUM(m.adjusted_price) / SUM(m.TOTAL_FLOOR_AREA)) AS INTEGER)
+                AS adj_price_per_sqm
         FROM read_parquet('{matched_parquet}') AS m
         JOIN read_parquet('{uprn_lsoa_parquet}') AS l
           ON CAST(m.uprn AS BIGINT) = CAST(l.UPRN AS BIGINT)
@@ -1075,7 +1129,7 @@ def _run_aggregations(
           AND m.TOTAL_FLOOR_AREA > 0
         GROUP BY l.LSOA21CD
         HAVING COUNT(*) >= {min_sales}
-        ORDER BY price_per_sqm DESC
+        ORDER BY adj_price_per_sqm DESC
     """).df()
     lsoa_path = output_dir / "price_per_sqm_lsoa.csv"
     lsoa_df.to_csv(lsoa_path, index=False)
@@ -1090,6 +1144,7 @@ def rematch(
     cache_dir: pathlib.Path = CACHE,
     output_dir: pathlib.Path = OUTPUT,
     min_sales: int = 10,
+    cpi_path: pathlib.Path = DATA / "cpi.csv",
 ) -> None:
     """Extend existing matches with tier-3 normalisation, then re-aggregate.
 
@@ -1110,6 +1165,7 @@ def rematch(
         cache_dir: Directory containing Parquet checkpoints.
         output_dir: Directory for output CSVs.
         min_sales:  Minimum sales per geography to include in output.
+        cpi_path:  Path to the ONS CPI monthly CSV (for adjusted_price).
     """
     console = Console()
     console.print()
@@ -1148,14 +1204,27 @@ def rematch(
             return
 
         # Append tier-3 results to matched.parquet atomically.
+        # Deflate tier-3 prices before appending so adjusted_price is
+        # consistent with the tier-1/2 rows already in matched.parquet.
         # DuckDB reads both files without loading either into Python heap.
         tmp_merged = matched_parquet.with_suffix(".tmp.parquet")
         try:
             duckdb.execute(f"""
                 COPY (
+                    WITH
+                    {_cpi_ctes(cpi_path)},
+                    tier3 AS (SELECT * FROM read_parquet('{tier3_path}'))
                     SELECT * FROM read_parquet('{matched_parquet}')
                     UNION ALL
-                    SELECT * FROM read_parquet('{tier3_path}')
+                    SELECT
+                        t.*,
+                        t.price * (
+                            (SELECT idx FROM base_cpi) / cpi.idx
+                        ) AS adjusted_price
+                    FROM tier3 AS t
+                    JOIN cpi
+                      ON cpi.yr = YEAR(t.date_of_transfer)
+                     AND cpi.mo = MONTH(t.date_of_transfer)
                 ) TO '{tmp_merged}' (FORMAT PARQUET, COMPRESSION ZSTD)
             """)
             tmp_merged.rename(matched_parquet)
