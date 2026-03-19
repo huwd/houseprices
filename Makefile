@@ -55,8 +55,8 @@ rematch:  ## Apply tier-3 normalisation to unmatched records (no re-download; re
 # ── Output page ────────────────────────────────────────────────────────────
 
 .PHONY: boundaries
-boundaries:  ## Fetch + cache postcode district boundary GeoJSON (one-off, ~48 tile downloads)
-	uv run scripts/fetch_boundaries.py
+boundaries:  ## Convert Geolytix PostalBoundariesOpen SHP → WGS84 GeoJSON (run after make download)
+	uv run scripts/prepare_boundaries.py
 
 .PHONY: page
 page:  ## Build output/index.html from pipeline outputs (run boundaries + pipeline first)
