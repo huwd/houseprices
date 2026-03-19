@@ -673,3 +673,97 @@ def test_check_freshness_head_fails_slim_absent_returns_not_fresh(
     with patch("houseprices.download._http_meta", return_value={}):
         is_fresh, meta = dl._check_freshness(slim, "https://example.com/")
     assert is_fresh is False
+
+
+# ---------------------------------------------------------------------------
+# download_cpi
+# ---------------------------------------------------------------------------
+
+_ONS_MONTHS_RESPONSE = {
+    "months": [
+        {"date": "2021 JUN", "value": "116.5"},
+        {"date": "2026 JAN", "value": "140.0"},
+    ]
+}
+
+
+def _mock_json_response(payload: dict) -> MagicMock:
+    resp = MagicMock()
+    resp.raise_for_status.return_value = None
+    resp.json.return_value = payload
+    return resp
+
+
+def test_download_cpi_uses_ons_cpi_url(tmp_path: pathlib.Path) -> None:
+    """download_cpi must GET the ONS_CPI_URL constant."""
+    dl.ONS_CPI_URL = "http://example.com/cpi"
+    with patch(
+        "houseprices.download.requests.get",
+        return_value=_mock_json_response(_ONS_MONTHS_RESPONSE),
+    ) as mock_get:
+        dl.download_cpi(tmp_path)
+    assert mock_get.call_args.args[0] == dl.ONS_CPI_URL
+
+
+def test_download_cpi_saves_as_cpi_csv(tmp_path: pathlib.Path) -> None:
+    """Output file must be named cpi.csv."""
+    dl.ONS_CPI_URL = "http://example.com/cpi"
+    with patch(
+        "houseprices.download.requests.get",
+        return_value=_mock_json_response(_ONS_MONTHS_RESPONSE),
+    ):
+        result = dl.download_cpi(tmp_path)
+    assert result.name == "cpi.csv"
+
+
+def test_download_cpi_skips_if_csv_exists(tmp_path: pathlib.Path) -> None:
+    """Skip download if cpi.csv already exists."""
+    existing = tmp_path / "cpi.csv"
+    existing.write_text("date,cpi\n2021-06,116.5\n")
+    with patch("houseprices.download.requests.get") as mock_get:
+        result = dl.download_cpi(tmp_path)
+    mock_get.assert_not_called()
+    assert result == existing
+
+
+def test_download_cpi_parses_months_to_csv_rows(tmp_path: pathlib.Path) -> None:
+    """JSON months array is written as date,cpi rows."""
+    dl.ONS_CPI_URL = "http://example.com/cpi"
+    with patch(
+        "houseprices.download.requests.get",
+        return_value=_mock_json_response(_ONS_MONTHS_RESPONSE),
+    ):
+        result = dl.download_cpi(tmp_path)
+    lines = result.read_text().splitlines()
+    assert lines[0] == "date,cpi"
+    assert "2021-06" in lines[1]
+    assert "116.5" in lines[1]
+    assert "2026-01" in lines[2]
+    assert "140.0" in lines[2]
+
+
+def test_download_cpi_date_format_is_yyyy_mm(tmp_path: pathlib.Path) -> None:
+    """All date values in the output must match YYYY-MM."""
+    import re
+
+    dl.ONS_CPI_URL = "http://example.com/cpi"
+    with patch(
+        "houseprices.download.requests.get",
+        return_value=_mock_json_response(_ONS_MONTHS_RESPONSE),
+    ):
+        result = dl.download_cpi(tmp_path)
+    for line in result.read_text().splitlines()[1:]:
+        date_part = line.split(",")[0]
+        assert re.fullmatch(r"\d{4}-\d{2}", date_part), f"Bad date format: {date_part}"
+
+
+def test_download_cpi_raises_on_http_error(tmp_path: pathlib.Path) -> None:
+    """HTTP error from the ONS API must propagate."""
+    dl.ONS_CPI_URL = "http://example.com/cpi"
+    resp = MagicMock()
+    resp.raise_for_status.side_effect = Exception("503 Service Unavailable")
+    with (
+        patch("houseprices.download.requests.get", return_value=resp),
+        pytest.raises(Exception, match="503"),
+    ):
+        dl.download_cpi(tmp_path)
