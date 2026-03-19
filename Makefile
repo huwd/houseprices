@@ -8,13 +8,14 @@ install:  ## Install all dependencies (dev + notebook extras)
 
 # ── Data ───────────────────────────────────────────────────────────────────
 
+# Pass ARGS="--skip step1 step2 ..." to skip steps, e.g. make download ARGS="--skip ppd epc ubdc uprn lsoa"
 .PHONY: download
-download:  ## Download and extract all raw data (~25 GB). Requires .env credentials.
-	uv run python src/houseprices/download.py
+download:  ## Download and extract all raw data (~25 GB). Requires .env credentials. Pass ARGS="--skip ..." to skip steps.
+	uv run python src/houseprices/download.py $(ARGS)
 
 .PHONY: clean-data
 clean-data:  ## Remove downloaded data files from data/ (preserves committed files and dotfiles)
-	find data/ -maxdepth 1 -type f ! -name '.*' ! -name 'SOURCES.md' ! -name 'anna_reference.json.example' -delete
+	find data/ -maxdepth 1 -type f ! -name '.*' ! -name 'SOURCES.md' ! -name 'anna_reference.json.example' ! -name 'cpi.csv' -delete
 
 .PHONY: clean-cache
 clean-cache:  ## Delete pipeline checkpoints (keeps slim Parquets; safe to re-run without re-downloading)
