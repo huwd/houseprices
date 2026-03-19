@@ -13,7 +13,7 @@ Format: `[ ] <title>` with body notes below each entry.
   confirmed working. `EPC_BULK_URL` set in `download.py`.
   File: `all-domestic-certificates.zip` (~6.4 GB).
 
-- [ ] **EPC bulk download: actually download and extract**
+- [x] **EPC bulk download: actually download and extract**
 
   Run `download_epc(data_dir)` once on a good connection. Extract to
   `data/epc-domestic-all.csv` (the pipeline expects a single flat CSV).
@@ -24,7 +24,7 @@ Format: `[ ] <title>` with body notes below each entry.
   Downloads API (`api.os.uk/downloads/v1/products/OpenUPRN/downloads`).
   `OS_OPEN_UPRN_URL` set in `download.py`. ~616 MB zipped, Feb 2026 build.
 
-- [ ] **OS Open UPRN: download**
+- [x] **OS Open UPRN: download**
 
   Run `download_os_open_uprn(data_dir)`. (~616 MB zipped.)
 
@@ -34,7 +34,7 @@ Format: `[ ] <title>` with body notes below each entry.
   Returns JSON with a time-limited pre-signed Azure blob URL. `UBDC_URL` set
   in `download.py`; `download_ubdc()` resolves the signed URL at call time.
 
-- [ ] **UBDC PPD→UPRN lookup: download and validate**
+- [x] **UBDC PPD→UPRN lookup: download and validate**
 
   - Inspect fields — confirm `lmk` maps to `transaction_unique_identifier` in PPD
   - Check whether coverage extends beyond January 2022
@@ -46,7 +46,7 @@ Format: `[ ] <title>` with body notes below each entry.
   no reprojection needed in `spatial.py`. `LSOA_BGC_URL` set in `download.py`.
   Dataset: LSOA Dec 2021 BGC V5, item 68515293204e43ca8ab56fa13ae8a547. ~79 MB.
 
-- [ ] **ONS LSOA boundaries: download**
+- [x] **ONS LSOA boundaries: download**
 
   Run `download_lsoa_boundaries(data_dir)`. (~79 MB.)
 
@@ -91,6 +91,23 @@ Format: `[ ] <title>` with body notes below each entry.
   - Biggest movers (up and down) by postcode district
   - Optional choropleth if LSOA output is viable
   - Narrative writeup exported to `output/comparison.md`
+
+---
+
+## Closed GitHub issues (recently resolved)
+
+- [x] **#67 — Inflation-adjust prices to real Jan-2026 £/m² (CPI)**
+
+  Implemented in PR #72. CPI download, deflation helpers, `adj_price_per_sqm`
+  in both output CSVs, research note at `research/cpi-deflator-choice.md`.
+
+- [x] **#60 — Improve sale-EPC temporal matching**
+
+  Implemented in PR #72. `_join_tier1` now uses a window-function CTE to select
+  the most recent prior EPC (or earliest post-sale fallback within 2 years) per
+  sale, with a 10-year gap ceiling. Diagnostic columns `gap_days` and
+  `is_post_sale` added to `matched.parquet`. Research note at
+  `research/sale-epc-temporal-matching.md`.
 
 ---
 
