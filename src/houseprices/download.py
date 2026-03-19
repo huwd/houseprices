@@ -481,12 +481,46 @@ def extract_ubdc(data_dir: pathlib.Path) -> pathlib.Path:
 
 
 if __name__ == "__main__":  # pragma: no cover
+    import argparse
+
     from houseprices.pipeline import (  # noqa: E402
         prepare_epc,
         prepare_ppd,
         prepare_ubdc,
         prepare_uprn,
     )
+
+    _STEP_NAMES = ("ppd", "epc", "ubdc", "uprn", "lsoa", "cpi")
+
+    parser = argparse.ArgumentParser(description="Download raw data files.")
+    parser.add_argument(
+        "--skip",
+        metavar="STEP",
+        nargs="+",
+        choices=_STEP_NAMES,
+        default=[],
+        help=(
+            f"Steps to skip. Choices: {', '.join(_STEP_NAMES)}. "
+            "If the expected output already exists the step is noted as skipped. "
+            "If not, a warning is printed and the pipeline will likely fail later."
+        ),
+    )
+    args = parser.parse_args()
+    skip: set[str] = set(args.skip)
+
+    def _maybe_skip(step: str, outputs: list[pathlib.Path]) -> bool:
+        """Return True and print a message if *step* should be skipped."""
+        if step not in skip:
+            return False
+        missing = [p for p in outputs if not p.exists()]
+        if not missing:
+            _console.print(f"  [dim]⊘  {step:<18} skipped (--skip)[/dim]")
+        else:
+            names = ", ".join(p.name for p in missing)
+            _console.print(
+                f"  [red]⚠  {step:<18} skipped but output missing: {names}[/red]"
+            )
+        return True
 
     data = pathlib.Path("data")
     cache = pathlib.Path("cache")
@@ -495,15 +529,16 @@ if __name__ == "__main__":  # pragma: no cover
 
     # PPD — check ETag/Last-Modified before downloading (5 GB).
     ppd_slim = cache / "ppd_slim.parquet"
-    ppd_fresh, ppd_meta = _check_freshness(ppd_slim, PPD_URL)
-    if ppd_fresh:
-        _console.print(f"  [dim]⊘  {ppd_slim.name} up to date[/dim]")
-    else:
-        ppd_slim.unlink(missing_ok=True)
-        ppd = download_ppd(data)
-        prepare_ppd(ppd, ppd_slim)
-        ppd.unlink(missing_ok=True)
-        _save_meta(ppd_slim, ppd_meta)
+    if not _maybe_skip("ppd", [ppd_slim]):
+        ppd_fresh, ppd_meta = _check_freshness(ppd_slim, PPD_URL)
+        if ppd_fresh:
+            _console.print(f"  [dim]⊘  {ppd_slim.name} up to date[/dim]")
+        else:
+            ppd_slim.unlink(missing_ok=True)
+            ppd = download_ppd(data)
+            prepare_ppd(ppd, ppd_slim)
+            ppd.unlink(missing_ok=True)
+            _save_meta(ppd_slim, ppd_meta)
 
     # EPC — check ETag/Last-Modified before downloading (6 GB ZIP + extraction).
     # Produces two Parquet files from the same raw CSV in one pass:
@@ -511,50 +546,55 @@ if __name__ == "__main__":  # pragma: no cover
     #   epc_full.parquet — all rows, column-projected; used by tier-1 temporal
     epc_slim = cache / "epc_slim.parquet"
     epc_full = cache / "epc_full.parquet"
-    epc_email = os.environ["EPC_EMAIL"]
-    epc_api_key = os.environ["EPC_API_KEY"]
-    epc_token = base64.b64encode(f"{epc_email}:{epc_api_key}".encode()).decode()
-    epc_auth = {"Authorization": f"Basic {epc_token}"}
-    epc_fresh, epc_meta = _check_freshness(epc_slim, EPC_BULK_URL, headers=epc_auth)
-    if epc_fresh and epc_full.exists():
-        _console.print(f"  [dim]⊘  {epc_slim.name} up to date[/dim]")
-        _console.print(f"  [dim]⊘  {epc_full.name} up to date[/dim]")
-    else:
-        epc_slim.unlink(missing_ok=True)
-        epc_full.unlink(missing_ok=True)
-        download_epc(data)
-        epc = extract_epc(data)
-        prepare_epc(epc, epc_slim)
-        prepare_epc(epc, epc_full, deduplicate=False)
-        epc.unlink(missing_ok=True)
-        _save_meta(epc_slim, epc_meta)
+    if not _maybe_skip("epc", [epc_slim, epc_full]):
+        epc_email = os.environ["EPC_EMAIL"]
+        epc_api_key = os.environ["EPC_API_KEY"]
+        epc_token = base64.b64encode(f"{epc_email}:{epc_api_key}".encode()).decode()
+        epc_auth = {"Authorization": f"Basic {epc_token}"}
+        epc_fresh, epc_meta = _check_freshness(epc_slim, EPC_BULK_URL, headers=epc_auth)
+        if epc_fresh and epc_full.exists():
+            _console.print(f"  [dim]⊘  {epc_slim.name} up to date[/dim]")
+            _console.print(f"  [dim]⊘  {epc_full.name} up to date[/dim]")
+        else:
+            epc_slim.unlink(missing_ok=True)
+            epc_full.unlink(missing_ok=True)
+            download_epc(data)
+            epc = extract_epc(data)
+            prepare_epc(epc, epc_slim)
+            prepare_epc(epc, epc_full, deduplicate=False)
+            epc.unlink(missing_ok=True)
+            _save_meta(epc_slim, epc_meta)
 
     # UBDC — the API URL resolves via a time-limited pre-signed redirect, so a
     # HEAD check is not meaningful.  Skip if the slim Parquet already exists.
     ubdc_slim = cache / "ubdc_slim.parquet"
-    if ubdc_slim.exists():
-        _console.print(f"  [dim]⊘  {ubdc_slim.name} already prepared[/dim]")
-    else:
-        download_ubdc(data)
-        ubdc = extract_ubdc(data)
-        prepare_ubdc(ubdc, ubdc_slim)
-        ubdc.unlink(missing_ok=True)
+    if not _maybe_skip("ubdc", [ubdc_slim]):
+        if ubdc_slim.exists():
+            _console.print(f"  [dim]⊘  {ubdc_slim.name} already prepared[/dim]")
+        else:
+            download_ubdc(data)
+            ubdc = extract_ubdc(data)
+            prepare_ubdc(ubdc, ubdc_slim)
+            ubdc.unlink(missing_ok=True)
 
     # OS Open UPRN — check ETag/Last-Modified before downloading (~600 MB ZIP).
     uprn_slim = cache / "uprn_slim.parquet"
-    uprn_fresh, uprn_meta = _check_freshness(uprn_slim, OS_OPEN_UPRN_URL)
-    if uprn_fresh:
-        _console.print(f"  [dim]⊘  {uprn_slim.name} up to date[/dim]")
-    else:
-        uprn_slim.unlink(missing_ok=True)
-        download_os_open_uprn(data)
-        uprn = extract_os_open_uprn(data)
-        prepare_uprn(uprn, uprn_slim)
-        uprn.unlink(missing_ok=True)
-        _save_meta(uprn_slim, uprn_meta)
+    if not _maybe_skip("uprn", [uprn_slim]):
+        uprn_fresh, uprn_meta = _check_freshness(uprn_slim, OS_OPEN_UPRN_URL)
+        if uprn_fresh:
+            _console.print(f"  [dim]⊘  {uprn_slim.name} up to date[/dim]")
+        else:
+            uprn_slim.unlink(missing_ok=True)
+            download_os_open_uprn(data)
+            uprn = extract_os_open_uprn(data)
+            prepare_uprn(uprn, uprn_slim)
+            uprn.unlink(missing_ok=True)
+            _save_meta(uprn_slim, uprn_meta)
 
-    # LSOA boundaries — small download; existing skip logic in the function suffices.
-    download_lsoa_boundaries(data)
+    # LSOA boundaries — small download; existing skip logic is in the function.
+    if not _maybe_skip("lsoa", [data / "lsoa_boundaries.gpkg"]):
+        download_lsoa_boundaries(data)
 
     # ONS CPI deflators — small JSON fetch; skip logic is in the function.
-    download_cpi(data)
+    if not _maybe_skip("cpi", [data / "cpi.csv"]):
+        download_cpi(data)
