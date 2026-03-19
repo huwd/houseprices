@@ -595,6 +595,29 @@ def test_prepare_epc_handles_backslash_escaped_quotes(tmp_path: pathlib.Path) ->
     assert df.iloc[0]["TOTAL_FLOOR_AREA"] == 60.0
 
 
+def test_prepare_epc_handles_single_quoted_addresses(tmp_path: pathlib.Path) -> None:
+    """prepare_epc must not misparse rows where address fields contain single
+    quotes, e.g. 'OLD TRINITY HALL'.
+
+    In the full 5.7 GB EPC file DuckDB samples only the first 20 KB.  If that
+    sample contains a field like 'OLD TRINITY HALL' (single quotes wrapping
+    the whole value), DuckDB may auto-detect quote='\\'' or escape='\\''.
+    This shifts every column, causing total_floor_area to receive a timestamp
+    value and raising ConversionException.
+
+    The fix is to pin quote='\"' and escape='\"' on the read_csv call so
+    auto-detection cannot choose single quote as the quote/escape character.
+
+    Small fixtures don't reliably trigger the wrong auto-detection — this test
+    guards against regressions and documents the real-world failure.
+    """
+    dst = tmp_path / "epc_slim.parquet"
+    prepare_epc(FIXTURES / "epc_single_quotes.csv", dst)
+    df = pd.read_parquet(dst)
+    assert len(df) == 1
+    assert df.iloc[0]["TOTAL_FLOOR_AREA"] == 83.0
+
+
 # ---------------------------------------------------------------------------
 # prepare_uprn
 # ---------------------------------------------------------------------------
