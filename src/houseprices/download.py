@@ -67,6 +67,11 @@ OS_OPEN_UPRN_URL = (
     "?area=GB&format=CSV&redirect"
 )
 
+# ONS CPI All Items Index 2015=100 — monthly JSON via ONS time series API (OGL).
+# Series D7BT in dataset MM23.  No authentication required.
+# Returns JSON {"months": [{"date": "2021 JUN", "value": "116.5"}, ...]}
+ONS_CPI_URL = "https://api.ons.gov.uk/v1/datasets/MM23/timeseries/D7BT/data"
+
 # ONS LSOA December 2021 Boundaries EW BGC V5 — FGDB (OGL).
 # Source: ONS Open Geography Portal (ArcGIS Hub), item 68515293204e43ca8ab56fa13ae8a547.
 # Only FGDB is pre-cached; GeoPackage/Shapefile generation returns 500.
@@ -333,6 +338,39 @@ def download_lsoa_boundaries(data_dir: pathlib.Path) -> pathlib.Path:
     return dest
 
 
+_MONTH_ABBREV: dict[str, int] = {
+    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+}
+
+
+def download_cpi(data_dir: pathlib.Path) -> pathlib.Path:
+    """Download ONS CPI All Items monthly index and write as cpi.csv.
+
+    Fetches the MM23/D7BT time series from the ONS API (no authentication
+    required).  Writes *data_dir*/cpi.csv with columns ``date`` (YYYY-MM)
+    and ``cpi`` (float).  Skips if cpi.csv already exists.
+    """
+    dest = data_dir / "cpi.csv"
+    if dest.exists():
+        _console.print(f"  [dim]⊘  {dest.name} already downloaded[/dim]")
+        return dest
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    response = requests.get(ONS_CPI_URL, timeout=30)
+    response.raise_for_status()
+    months = response.json()["months"]
+
+    with dest.open("w", newline="") as fh:
+        fh.write("date,cpi\n")
+        for entry in months:
+            year_str, mon_abbrev = entry["date"].split()
+            month = _MONTH_ABBREV[mon_abbrev]
+            fh.write(f"{year_str}-{month:02d},{float(entry['value'])}\n")
+
+    return dest
+
+
 # ---------------------------------------------------------------------------
 # Extraction functions
 # ---------------------------------------------------------------------------
@@ -507,3 +545,6 @@ if __name__ == "__main__":  # pragma: no cover
 
     # LSOA boundaries — small download; existing skip logic in the function suffices.
     download_lsoa_boundaries(data)
+
+    # ONS CPI deflators — small JSON fetch; skip logic is in the function.
+    download_cpi(data)
