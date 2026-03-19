@@ -61,11 +61,13 @@ make install
 
 ### 3. Set up credentials
 
-The EPC bulk download requires a free account at [epc.opendatacommunities.org](https://epc.opendatacommunities.org/login). Once registered, your API key is shown in account settings.
+The EPC bulk download requires a GOV.UK One Login account at
+[get-energy-performance-data.communities.gov.uk](https://get-energy-performance-data.communities.gov.uk/).
+Once logged in, copy your bearer token from the [API account page](https://api.get-energy-performance-data.communities.gov.uk/api/my-account).
 
 ```bash
 cp .env.example .env
-# edit .env — add EPC_EMAIL and EPC_API_KEY
+# edit .env — add EPC_BEARER_TOKEN
 ```
 
 Everything else downloads without credentials.
