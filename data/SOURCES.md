@@ -27,17 +27,37 @@ This data is licensed under the Open Government Licence v3.0.
 
 | | |
 |---|---|
-| **File** | `epc/` (bulk download ZIPs, extracted) |
-| **Licence** | Open Government Licence v3.0 |
-| **Provider** | Department for Energy Security and Net Zero (DESNZ) |
-| **URL** | https://epc.opendatacommunities.org/ |
+| **File** | `epc-domestic-all.csv` (extracted from bulk ZIP) |
+| **Licence** | Split — see below |
+| **Provider** | Ministry of Housing, Communities & Local Government (MHCLG) |
+| **URL** | https://get-energy-performance-data.communities.gov.uk/ |
+| **API docs** | https://get-energy-performance-data.communities.gov.uk/api-technical-documentation |
+| **OAS spec** | https://raw.githubusercontent.com/communitiesuk/epb-data-warehouse/main/api/api.yml |
+| **Bulk endpoint** | `GET /api/files/domestic/csv` → HTTP 302 → pre-signed S3 ZIP |
 | **Coverage** | England and Wales, ~30 million certificates from 2008 |
-| **Updated** | Monthly |
-| **Format** | ZIP bundles of CSVs, ~5.6 GB total |
-| **Account required** | Free registration at epc.opendatacommunities.org |
+| **Updated** | Monthly, regenerated on the 1st |
+| **Format** | ZIP of year-split CSVs (~2.9 GB) |
+| **Account required** | GOV.UK One Login at get-energy-performance-data.communities.gov.uk |
+| **Auth** | Bearer token (`EPC_BEARER_TOKEN` env var); retrieve from `/api/my-account` |
+
+**Licence split:**
+- **Non-address fields** (`UPRN`, `TOTAL_FLOOR_AREA`, `LODGEMENT_DATETIME`,
+  `BUILT_FORM`, `CONSTRUCTION_AGE_BAND`, `CURRENT_ENERGY_RATING`, etc.) —
+  Open Government Licence v3.0
+- **Address fields** (`ADDRESS1`, `ADDRESS2`, `ADDRESS3`, `POSTCODE`) —
+  OS AddressBase Premium / Royal Mail PAF copyright; use permitted for energy
+  efficiency analysis and property market transparency (our use case); raw
+  address data must not be published at record level
+
+This pipeline uses postcode only as a join/grouping key and publishes only
+aggregate statistics — no raw address strings appear in output CSVs.
 
 Note: records include a `UPRN` field backfilled by DLUHC via address-matching
 against OS AddressBase (~92% coverage back to 2008). See `research/uprn-coverage-in-epc-data.md`.
+
+Migration note: the previous platform (`epc.opendatacommunities.org`) used
+HTTP Basic Auth. Replaced by GOV.UK One Login bearer token as of 2026-03.
+See `research/epc-api-migration.md` for full migration details.
 
 ---
 
