@@ -253,15 +253,12 @@ def main() -> None:
     print("Rendering…")
     version = load_version()
     changelog_html = (
-        changelog_to_html(CHANGELOG_PATH.read_text())
-        if CHANGELOG_PATH.exists()
-        else ""
+        changelog_to_html(CHANGELOG_PATH.read_text()) if CHANGELOG_PATH.exists() else ""
     )
 
     template = TEMPLATE_PATH.read_text()
     rendered = (
-        template
-        .replace("__STATS__", json.dumps(stats, separators=(",", ":")))
+        template.replace("__STATS__", json.dumps(stats, separators=(",", ":")))
         .replace("__VERSION__", version)
         .replace("__CHANGELOG_HTML__", changelog_html)
     )
