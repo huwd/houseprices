@@ -83,6 +83,18 @@ ONS_CPI_URL = (
     "?format=csv&uri=/economy/inflationandpriceindices/timeseries/d7bt/mm23"
 )
 
+# Geolytix PostalBoundariesOpen — Shapefile ZIP (OGL + Geolytix attribution).
+# Contains PostalDistrict.shp (2736 districts), PostalSector.shp, PostalArea.shp.
+# CRS: BNG (Airy 1830 ellipsoid); reproject to WGS84 for GeoJSON output.
+# Field: PostDist (4-char string, e.g. "SW1A").
+# Licence: OGL + attribution "Postal Boundaries © GeoLytix copyright and
+#   database right 2012; Contains Ordnance Survey data © Crown copyright 2012"
+# Google Drive direct download (no authentication required).
+GEOLYTIX_URL = (
+    "https://drive.usercontent.google.com/download"
+    "?id=1V57a19QzaiqTP8wHVasfYNGwP-o6tDm-&export=download&authuser=0"
+)
+
 # ONS LSOA December 2021 Boundaries EW BGC V5 — FGDB (OGL).
 # Source: ONS Open Geography Portal (ArcGIS Hub), item 68515293204e43ca8ab56fa13ae8a547.
 # Only FGDB is pre-cached; GeoPackage/Shapefile generation returns 500.
@@ -445,6 +457,25 @@ _MONTH_ABBREV: dict[str, int] = {
     "NOV": 11,
     "DEC": 12,
 }
+
+
+def download_geolytix(data_dir: pathlib.Path) -> pathlib.Path:
+    """Download the Geolytix PostalBoundariesOpen ZIP.
+
+    Downloads the outer ZIP (which contains PostalBoundariesSHP.zip,
+    PostalBoundariesTAB.zip, licence PDF, and user guide) to
+    *data_dir*/geolytix_postal_boundaries.zip.
+
+    No authentication required — direct Google Drive download.
+    Skips if the file already exists.
+
+    Licence: OGL + Geolytix attribution.
+    See data/SOURCES.md for the full attribution statement.
+    """
+    return _stream_to_file(
+        GEOLYTIX_URL,
+        data_dir / "geolytix_postal_boundaries.zip",
+    )
 
 
 def download_cpi(data_dir: pathlib.Path) -> pathlib.Path:
