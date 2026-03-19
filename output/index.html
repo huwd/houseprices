@@ -266,6 +266,115 @@
       text-decoration: underline;
     }
 
+    /* ── Analysis version badge ── */
+    .analysis-version {
+      display: inline-block;
+      font-size: 0.7rem;
+      color: var(--color-muted);
+      border: 1px solid var(--color-border);
+      border-radius: 3px;
+      padding: 0 0.35rem;
+      margin-left: 0.5rem;
+      vertical-align: middle;
+      letter-spacing: 0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Changelog (collapsible) ── */
+    .changelog {
+      margin-top: 1.5rem;
+      border-top: 1px solid var(--color-border);
+      padding-top: 1rem;
+    }
+
+    .changelog summary {
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      user-select: none;
+    }
+
+    .changelog summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .changelog summary::before {
+      content: '▶';
+      font-size: 0.6rem;
+      color: var(--color-muted);
+      transition: transform 0.15s ease;
+      display: inline-block;
+    }
+
+    .changelog[open] summary::before {
+      transform: rotate(90deg);
+    }
+
+    .changelog-body {
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: var(--color-muted);
+    }
+
+    .changelog-body h4 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--color-text);
+      margin: 1rem 0 0.4rem;
+    }
+
+    .changelog-body h4:first-child {
+      margin-top: 0;
+    }
+
+    .changelog-body p {
+      margin-bottom: 0.4rem;
+      color: var(--color-muted);
+    }
+
+    .changelog-body ul {
+      padding-left: 1.2rem;
+      margin: 0.3rem 0;
+    }
+
+    .changelog-body li {
+      margin-bottom: 0.2rem;
+    }
+
+    .changelog-body table {
+      width: 100%;
+      margin: 0.5rem 0;
+      font-size: 0.78rem;
+    }
+
+    .changelog-body th,
+    .changelog-body td {
+      text-align: left;
+      padding: 0.3rem 0.4rem 0.3rem 0;
+      border-bottom: 1px solid var(--color-border);
+      color: var(--color-muted);
+    }
+
+    .changelog-body th {
+      font-weight: 600;
+      color: var(--color-text);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .changelog-body code {
+      font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+      font-size: 0.9em;
+      background: var(--color-border);
+      border-radius: 2px;
+      padding: 0 0.25em;
+    }
+
     /* ── Range filter (legend) ── */
     .range-filter {
       margin-top: 8px;
@@ -372,7 +481,7 @@
 
   <div class="page-title">
     <h1>House Prices per Metre² in England &amp; Wales</h1>
-    <h2>An analysis of government open data, mapped by <a href="https://www.huwdiprose.co.uk/">Huw Diprose</a></h2>
+    <h2>An analysis of government open data, mapped by <a href="https://www.huwdiprose.co.uk/">Huw Diprose</a><span class="analysis-version" title="Analysis version">v0.1.0</span></h2>
     <p class="intro-text">This map shows the average price per m² of houses in each postcode district in
       England &amp; Wales. It is inspired by the pioneering work of
       <a href="https://houseprices.anna.ps/">Anna Powell-Smith</a> in 2017,
@@ -450,6 +559,55 @@
       district with no matching residential transactions, for example industrial estates
       or parts of the City of London.
     </p>
+    <details class="changelog">
+      <summary>Changelog</summary>
+      <div class="changelog-body">
+        <h4>v0.1.0 — 19 March 2026</h4>
+        <p>First versioned release.</p>
+
+        <h4>Data sources</h4>
+        <table>
+          <thead><tr><th>Source</th><th>Coverage</th></tr></thead>
+          <tbody>
+            <tr><td>HM Land Registry Price Paid</td><td>Aug 2007–Jan 2026</td></tr>
+            <tr><td>DLUHC Energy Performance Certificates</td><td>All domestic lodgements, England &amp; Wales</td></tr>
+            <tr><td>UBDC PPD–UPRN lookup</td><td>Transactions to Jan 2022</td></tr>
+            <tr><td>GeoLytix postcode district boundaries</td><td>—</td></tr>
+          </tbody>
+        </table>
+
+        <h4>Matching methodology</h4>
+        <ul>
+          <li><strong>Tier 1 — UPRN exact match.</strong> Sales up to Jan 2022 are joined via the
+            <a href="https://doi.org/10.20394/agu7hprj">UBDC PPD–UPRN lookup</a> then to EPC by UPRN,
+            selecting the most recent certificate lodged on or before the sale date.</li>
+          <li><strong>Tier 2 — Normalised address match.</strong> Post-Jan 2022 sales (and tier-1 misses)
+            are matched by postcode plus a normalised address string (sub-address, building number/name,
+            street), again taking the most recent pre-sale EPC.</li>
+          <li><strong>Tier 3 — Postcode median fallback.</strong> Remaining unmatched sales receive the
+            median floor area for their postcode from the EPC register.</li>
+        </ul>
+
+        <h4>Aggregation</h4>
+        <p>Price per m² = Σ(sale price) ÷ Σ(floor area) — a value-weighted aggregate, not a mean of
+        per-property ratios. Districts with fewer than 10 matched sales are excluded.</p>
+
+        <h4>Key commits</h4>
+        <table>
+          <thead><tr><th>Commit</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>91920ab</code></td><td>Initial pipeline setup</td></tr>
+            <tr><td><code>31aeb42</code></td><td>First full pipeline run</td></tr>
+            <tr><td><code>cee3740</code></td><td>Add tier-3 address normalisation</td></tr>
+            <tr><td><code>8929d3b</code></td><td>Regenerate CSVs with tier-3 matches</td></tr>
+            <tr><td><code>30ef34a</code></td><td>Confirm UBDC lookup ends at Jan 2022</td></tr>
+            <tr><td><code>049aa57</code></td><td>Add choropleth output page</td></tr>
+            <tr><td><code>da82e13</code></td><td>Temporal EPC selection in tier-1 join (HEAD at v0.1.0)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
     <h3>Attribution</h3>
     <p>Price Paid data produced by HM Land Registry © Crown copyright 2026, licensed under the
       <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence v3.0</a>.
