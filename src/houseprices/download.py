@@ -67,10 +67,13 @@ OS_OPEN_UPRN_URL = (
     "?area=GB&format=CSV&redirect"
 )
 
-# ONS CPI All Items Index 2015=100 — monthly JSON via ONS time series API (OGL).
+# ONS CPI All Items Index 2015=100 — CSV download via ONS generator (OGL).
 # Series D7BT in dataset MM23.  No authentication required.
-# Returns JSON {"months": [{"date": "2021 JUN", "value": "116.5"}, ...]}
-ONS_CPI_URL = "https://api.ons.gov.uk/v1/datasets/MM23/timeseries/D7BT/data"
+# Returns a quoted CSV; first 8 rows are metadata, then annual/quarterly/monthly rows.
+ONS_CPI_URL = (
+    "https://www.ons.gov.uk/generator"
+    "?format=csv&uri=/economy/inflationandpriceindices/timeseries/d7bt/mm23"
+)
 
 # ONS LSOA December 2021 Boundaries EW BGC V5 — FGDB (OGL).
 # Source: ONS Open Geography Portal (ArcGIS Hub), item 68515293204e43ca8ab56fa13ae8a547.
@@ -357,10 +360,17 @@ _MONTH_ABBREV: dict[str, int] = {
 def download_cpi(data_dir: pathlib.Path) -> pathlib.Path:
     """Download ONS CPI All Items monthly index and write as cpi.csv.
 
-    Fetches the MM23/D7BT time series from the ONS API (no authentication
-    required).  Writes *data_dir*/cpi.csv with columns ``date`` (YYYY-MM)
-    and ``cpi`` (float).  Skips if cpi.csv already exists.
+    Fetches the MM23/D7BT time series as a CSV from the ONS generator
+    endpoint (no authentication required).  The CSV has 8 metadata header
+    rows followed by annual, quarterly, and monthly data rows — only the
+    monthly rows (label format ``"YYYY MMM"``) are written to the output.
+
+    Writes *data_dir*/cpi.csv with columns ``date`` (YYYY-MM) and ``cpi``
+    (float).  Skips if cpi.csv already exists.
     """
+    import csv
+    import io
+
     dest = data_dir / "cpi.csv"
     if dest.exists():
         _console.print(f"  [dim]⊘  {dest.name} already downloaded[/dim]")
@@ -369,14 +379,27 @@ def download_cpi(data_dir: pathlib.Path) -> pathlib.Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     response = requests.get(ONS_CPI_URL, timeout=30)
     response.raise_for_status()
-    months = response.json()["months"]
+
+    reader = csv.reader(io.StringIO(response.text))
+    # Skip the 8-row metadata header (Title, CDID, Source dataset ID,
+    # PreUnit, Unit, Release date, Next release, Important notes).
+    for _ in range(8):
+        next(reader, None)
 
     with dest.open("w", newline="") as fh:
         fh.write("date,cpi\n")
-        for entry in months:
-            year_str, mon_abbrev = entry["date"].split()
+        for row in reader:
+            if len(row) < 2 or not row[1].strip():
+                continue
+            label = row[0].strip()
+            # Monthly rows have the format "YYYY MMM"; skip annual ("YYYY")
+            # and quarterly ("YYYY Q1") rows.
+            parts = label.split()
+            if len(parts) != 2 or parts[1] not in _MONTH_ABBREV:
+                continue
+            year_str, mon_abbrev = parts
             month = _MONTH_ABBREV[mon_abbrev]
-            fh.write(f"{year_str}-{month:02d},{float(entry['value'])}\n")
+            fh.write(f"{year_str}-{month:02d},{float(row[1].strip())}\n")
 
     return dest
 
