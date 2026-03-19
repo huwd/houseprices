@@ -166,6 +166,7 @@ def joined(epc_slim: pathlib.Path, tmp_path: pathlib.Path) -> pd.DataFrame:
         epc_slim,
         FIXTURES / "ubdc_sample.csv",
         dst=dst,
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
     return pd.read_parquet(dst)
 
@@ -631,7 +632,13 @@ def test_join_datasets_accepts_prepared_parquet(tmp_path: pathlib.Path) -> None:
     dst = tmp_path / "matched.parquet"
     prepare_epc(FIXTURES / "epc_sample.csv", epc_slim)
     prepare_ubdc(FIXTURES / "ubdc_sample.csv", ubdc_slim)
-    join_datasets(FIXTURES / "ppd_sample.csv", epc_slim, ubdc_slim, dst=dst)
+    join_datasets(
+        FIXTURES / "ppd_sample.csv",
+        epc_slim,
+        ubdc_slim,
+        dst=dst,
+        cpi_path=FIXTURES / "cpi_sample.csv",
+    )
     result = pd.read_parquet(dst)
     assert len(result) == 4
     assert set(result["match_tier"]) == {1, 2}
@@ -734,7 +741,11 @@ def test_join_datasets_result_has_no_duplicate_transactions(
     """Combining tier1 and tier2 must not produce duplicate transaction IDs."""
     dst = tmp_path / "matched.parquet"
     join_datasets(
-        FIXTURES / "ppd_sample.csv", epc_slim, FIXTURES / "ubdc_sample.csv", dst=dst
+        FIXTURES / "ppd_sample.csv",
+        epc_slim,
+        FIXTURES / "ubdc_sample.csv",
+        dst=dst,
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
     result = pd.read_parquet(dst)
     assert result["transaction_unique_identifier"].nunique() == len(result)
@@ -768,6 +779,7 @@ def test_join_datasets_calls_callback_with_tier1_count(
         FIXTURES / "ubdc_sample.csv",
         dst=tmp_path / "matched.parquet",
         on_tier1_complete=calls.append,
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
     assert len(calls) == 1
     assert calls[0] == 1
@@ -783,6 +795,7 @@ def test_join_datasets_no_callback_does_not_raise(
         epc_slim,
         FIXTURES / "ubdc_sample.csv",
         dst=dst,
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
     assert dst.exists()
     assert len(pd.read_parquet(dst)) == 4
@@ -852,7 +865,13 @@ def test_join_datasets_accepts_prepared_ppd_parquet(
     ppd_slim = tmp_path / "ppd_slim.parquet"
     dst = tmp_path / "matched.parquet"
     prepare_ppd(FIXTURES / "ppd_sample.csv", ppd_slim)
-    join_datasets(ppd_slim, epc_slim, FIXTURES / "ubdc_sample.csv", dst=dst)
+    join_datasets(
+        ppd_slim,
+        epc_slim,
+        FIXTURES / "ubdc_sample.csv",
+        dst=dst,
+        cpi_path=FIXTURES / "cpi_sample.csv",
+    )
     result = pd.read_parquet(dst)
     assert len(result) == 4
     assert set(result["match_tier"]) == {1, 2}
@@ -960,6 +979,7 @@ def existing_matched(epc_slim: pathlib.Path, tmp_path: pathlib.Path) -> pathlib.
         epc_slim,
         FIXTURES / "ubdc_sample.csv",
         dst=dst,
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
     return dst
 
@@ -1058,6 +1078,7 @@ def aggregation_inputs(
         epc_slim,
         FIXTURES / "ubdc_sample.csv",
         dst=matched,
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
     # Empty uprn_lsoa (no spatial join in unit tests; LSOA output will have 0 rows)
     uprn_lsoa = tmp_path / "uprn_lsoa.parquet"
@@ -1120,6 +1141,57 @@ def test_run_aggregations_min_sales_filter(
     assert len(df) == 0
 
 
+def test_run_aggregations_district_csv_has_adj_price_per_sqm_column(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """District CSV must contain adj_price_per_sqm (real Jan-2026 £/m²)."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    console = Console(quiet=True)
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=console
+    )
+    df = pd.read_csv(output_dir / "price_per_sqm_postcode_district.csv")
+    assert "adj_price_per_sqm" in df.columns
+
+
+def test_run_aggregations_adj_price_per_sqm_above_nominal(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """adj_price_per_sqm must exceed price_per_sqm for pre-base-month sales."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    console = Console(quiet=True)
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=console
+    )
+    df = pd.read_csv(output_dir / "price_per_sqm_postcode_district.csv")
+    # All fixture sales are pre-2026 → adjusted price must exceed nominal
+    assert (df["adj_price_per_sqm"] > df["price_per_sqm"]).all()
+
+
+# ---------------------------------------------------------------------------
+# adjusted_price column in join output (issue #67)
+# ---------------------------------------------------------------------------
+
+
+def test_join_datasets_result_has_adjusted_price_column(
+    joined: pd.DataFrame,
+) -> None:
+    """matched.parquet must carry an adjusted_price column (real Jan-2026 £)."""
+    assert "adjusted_price" in joined.columns
+
+
+def test_join_datasets_adjusted_price_above_nominal_for_pre_base_month_sales(
+    joined: pd.DataFrame,
+) -> None:
+    """adjusted_price must exceed price for all pre-base-month fixture sales."""
+    # All ppd_sample sales are pre-2026; CPI at sale month < base-month CPI
+    assert (joined["adjusted_price"] > joined["price"]).all()
+
+
 # ---------------------------------------------------------------------------
 # rematch
 #
@@ -1145,6 +1217,7 @@ def _build_rematch_cache(
         epc_tier3_slim,
         FIXTURES / "ubdc_sample.csv",
         dst=matched,
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
     # Empty uprn_lsoa — no spatial join in unit tests.
     uprn_lsoa = cache_dir / "uprn_lsoa.parquet"
@@ -1175,6 +1248,7 @@ def test_rematch_appends_tier3_to_matched(
         cache_dir=cache_dir,
         output_dir=tmp_path / "output",
         min_sales=1,
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
 
     n_after = len(pd.read_parquet(matched))
@@ -1196,6 +1270,7 @@ def test_rematch_tier3_rows_have_match_tier_3(
         cache_dir=cache_dir,
         output_dir=tmp_path / "output",
         min_sales=1,
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
 
     df = pd.read_parquet(cache_dir / "matched.parquet")
@@ -1217,6 +1292,7 @@ def test_rematch_no_duplicates_after_append(
         cache_dir=cache_dir,
         output_dir=tmp_path / "output",
         min_sales=1,
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
 
     df = pd.read_parquet(cache_dir / "matched.parquet")
@@ -1233,6 +1309,7 @@ def test_rematch_missing_matched_parquet_returns_early(tmp_path: pathlib.Path) -
         epc_path=FIXTURES / "epc_sample.csv",
         cache_dir=cache_dir,
         output_dir=tmp_path / "output",
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
     # No output should have been created
     assert not (tmp_path / "output").exists()
@@ -1251,6 +1328,7 @@ def test_rematch_no_new_matches_leaves_matched_unchanged(
         epc_slim,
         FIXTURES / "ubdc_sample.csv",
         dst=matched,
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
     mtime_before = matched.stat().st_mtime
     ppd_slim = cache_dir / "ppd_slim.parquet"
@@ -1263,6 +1341,7 @@ def test_rematch_no_new_matches_leaves_matched_unchanged(
         epc_path=epc_slim,
         cache_dir=cache_dir,
         output_dir=tmp_path / "output",
+        cpi_path=FIXTURES / "cpi_sample.csv",
     )
     assert matched.stat().st_mtime == mtime_before
 
