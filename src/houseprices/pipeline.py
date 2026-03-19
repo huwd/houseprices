@@ -204,27 +204,37 @@ def prepare_epc(
         """)
         if deduplicate:
             # Step 2: deduplicate from the slim Parquet.
-            # MAX_BY(value, key) returns the value from the row with the maximum
-            # key — equivalent to the most-recent-certificate logic above but
-            # implemented as a GROUP BY aggregate, not a window function.
+            # Split into two passes to avoid a hash table that is too large
+            # for the memory limit.  A single GROUP BY UPRN with 8× MAX_BY
+            # columns holds ~15 M groups × ~125 bytes each ≈ 2+ GB — at or
+            # beyond DUCKDB_MEMORY_LIMIT on a 2 GB config.
+            #
+            # Pass 2a: aggregate only UPRN → max datetime (hash table ≈ 400 MB).
+            con.execute(f"""
+                CREATE TEMP TABLE _uprn_max AS
+                SELECT UPRN, MAX(LODGEMENT_DATETIME) AS max_dt
+                FROM read_parquet('{tmp}')
+                WHERE UPRN IS NOT NULL
+                GROUP BY UPRN
+            """)
+            # Pass 2b: equijoin back to fetch all columns for the winning row.
+            # The build side is _uprn_max (~400 MB); the probe side streams.
+            # ROW_NUMBER handles the rare case of two certs sharing the same
+            # max datetime for the same UPRN (ties get an arbitrary winner).
             con.execute(f"""
                 COPY (
                     SELECT
-                        UPRN,
-                        MAX(LODGEMENT_DATETIME) AS LODGEMENT_DATETIME,
-                        MAX_BY(TOTAL_FLOOR_AREA, LODGEMENT_DATETIME)
-                            AS TOTAL_FLOOR_AREA,
-                        MAX_BY(ADDRESS1, LODGEMENT_DATETIME) AS ADDRESS1,
-                        MAX_BY(ADDRESS2, LODGEMENT_DATETIME) AS ADDRESS2,
-                        MAX_BY(POSTCODE, LODGEMENT_DATETIME) AS POSTCODE,
-                        MAX_BY(BUILT_FORM, LODGEMENT_DATETIME) AS BUILT_FORM,
-                        MAX_BY(CONSTRUCTION_AGE_BAND, LODGEMENT_DATETIME)
-                            AS CONSTRUCTION_AGE_BAND,
-                        MAX_BY(CURRENT_ENERGY_RATING, LODGEMENT_DATETIME)
-                            AS CURRENT_ENERGY_RATING
-                    FROM read_parquet('{tmp}')
-                    WHERE UPRN IS NOT NULL
-                    GROUP BY UPRN
+                        UPRN, LODGEMENT_DATETIME, TOTAL_FLOOR_AREA,
+                        ADDRESS1, ADDRESS2, POSTCODE,
+                        BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING
+                    FROM (
+                        SELECT t.*,
+                            ROW_NUMBER() OVER (PARTITION BY t.UPRN) AS rn
+                        FROM read_parquet('{tmp}') t
+                        JOIN _uprn_max m
+                            ON t.UPRN = m.UPRN
+                            AND t.LODGEMENT_DATETIME IS NOT DISTINCT FROM m.max_dt
+                    ) WHERE rn = 1
                     UNION ALL
                     SELECT * FROM read_parquet('{tmp}') WHERE UPRN IS NULL
                 ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
