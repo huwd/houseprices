@@ -192,7 +192,7 @@ def prepare_epc(
                     UPRN, LODGEMENT_DATETIME, TOTAL_FLOOR_AREA,
                     ADDRESS1, ADDRESS2, POSTCODE,
                     BUILT_FORM, CONSTRUCTION_AGE_BAND, CURRENT_ENERGY_RATING
-                FROM read_csv('{src_str}')
+                FROM read_csv('{src_str}', strict_mode=false)
             ) TO '{tmp}' (FORMAT PARQUET, COMPRESSION ZSTD)
         """)
         if deduplicate:
