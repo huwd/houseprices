@@ -679,18 +679,28 @@ def test_check_freshness_head_fails_slim_absent_returns_not_fresh(
 # download_cpi
 # ---------------------------------------------------------------------------
 
-_ONS_MONTHS_RESPONSE = {
-    "months": [
-        {"date": "2021 JUN", "value": "116.5"},
-        {"date": "2026 JAN", "value": "140.0"},
-    ]
-}
+# ONS generator returns a quoted CSV: 8 metadata rows, then annual/quarterly/monthly.
+# The parser must skip the header and annual/quarterly rows, keeping only monthly ones.
+_ONS_CSV_RESPONSE = (
+    '"Title","CPI INDEX 00: ALL ITEMS 2015=100"\n'
+    '"CDID","D7BT"\n'
+    '"Source dataset ID","MM23"\n'
+    '"PreUnit",""\n'
+    '"Unit","Index, base year = 100"\n'
+    '"Release date","18-02-2026"\n'
+    '"Next release","25 March 2026"\n'
+    '"Important notes",\n'
+    '"2021","114.3"\n'  # annual row — must be skipped
+    '"2021 Q2","116.0"\n'  # quarterly row — must be skipped
+    '"2021 JUN","116.5"\n'  # monthly — must be kept
+    '"2026 JAN","140.0"\n'  # monthly — must be kept
+)
 
 
-def _mock_json_response(payload: dict) -> MagicMock:
+def _mock_csv_response(text: str) -> MagicMock:
     resp = MagicMock()
     resp.raise_for_status.return_value = None
-    resp.json.return_value = payload
+    resp.text = text
     return resp
 
 
@@ -699,7 +709,7 @@ def test_download_cpi_uses_ons_cpi_url(tmp_path: pathlib.Path) -> None:
     dl.ONS_CPI_URL = "http://example.com/cpi"
     with patch(
         "houseprices.download.requests.get",
-        return_value=_mock_json_response(_ONS_MONTHS_RESPONSE),
+        return_value=_mock_csv_response(_ONS_CSV_RESPONSE),
     ) as mock_get:
         dl.download_cpi(tmp_path)
     assert mock_get.call_args.args[0] == dl.ONS_CPI_URL
@@ -710,7 +720,7 @@ def test_download_cpi_saves_as_cpi_csv(tmp_path: pathlib.Path) -> None:
     dl.ONS_CPI_URL = "http://example.com/cpi"
     with patch(
         "houseprices.download.requests.get",
-        return_value=_mock_json_response(_ONS_MONTHS_RESPONSE),
+        return_value=_mock_csv_response(_ONS_CSV_RESPONSE),
     ):
         result = dl.download_cpi(tmp_path)
     assert result.name == "cpi.csv"
@@ -727,11 +737,11 @@ def test_download_cpi_skips_if_csv_exists(tmp_path: pathlib.Path) -> None:
 
 
 def test_download_cpi_parses_months_to_csv_rows(tmp_path: pathlib.Path) -> None:
-    """JSON months array is written as date,cpi rows."""
+    """Monthly rows from the ONS CSV are written as date,cpi rows."""
     dl.ONS_CPI_URL = "http://example.com/cpi"
     with patch(
         "houseprices.download.requests.get",
-        return_value=_mock_json_response(_ONS_MONTHS_RESPONSE),
+        return_value=_mock_csv_response(_ONS_CSV_RESPONSE),
     ):
         result = dl.download_cpi(tmp_path)
     lines = result.read_text().splitlines()
@@ -742,6 +752,19 @@ def test_download_cpi_parses_months_to_csv_rows(tmp_path: pathlib.Path) -> None:
     assert "140.0" in lines[2]
 
 
+def test_download_cpi_skips_annual_and_quarterly_rows(tmp_path: pathlib.Path) -> None:
+    """Annual ("2021") and quarterly ("2021 Q2") rows must not appear in output."""
+    dl.ONS_CPI_URL = "http://example.com/cpi"
+    with patch(
+        "houseprices.download.requests.get",
+        return_value=_mock_csv_response(_ONS_CSV_RESPONSE),
+    ):
+        result = dl.download_cpi(tmp_path)
+    content = result.read_text()
+    assert "2021," not in content  # annual row date would be bare year
+    assert "Q2" not in content  # quarterly label must not appear
+
+
 def test_download_cpi_date_format_is_yyyy_mm(tmp_path: pathlib.Path) -> None:
     """All date values in the output must match YYYY-MM."""
     import re
@@ -749,7 +772,7 @@ def test_download_cpi_date_format_is_yyyy_mm(tmp_path: pathlib.Path) -> None:
     dl.ONS_CPI_URL = "http://example.com/cpi"
     with patch(
         "houseprices.download.requests.get",
-        return_value=_mock_json_response(_ONS_MONTHS_RESPONSE),
+        return_value=_mock_csv_response(_ONS_CSV_RESPONSE),
     ):
         result = dl.download_cpi(tmp_path)
     for line in result.read_text().splitlines()[1:]:
@@ -758,7 +781,7 @@ def test_download_cpi_date_format_is_yyyy_mm(tmp_path: pathlib.Path) -> None:
 
 
 def test_download_cpi_raises_on_http_error(tmp_path: pathlib.Path) -> None:
-    """HTTP error from the ONS API must propagate."""
+    """HTTP error from the ONS endpoint must propagate."""
     dl.ONS_CPI_URL = "http://example.com/cpi"
     resp = MagicMock()
     resp.raise_for_status.side_effect = Exception("503 Service Unavailable")
