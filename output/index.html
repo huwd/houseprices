@@ -576,8 +576,6 @@
     <details class="changelog">
       <summary>Changelog</summary>
       <div class="changelog-body">
-        <h4>[Unreleased]</h4>
-        <p>---</p>
         <h4>[0.2.0] — 2026-03-19</h4>
         <h4>Data vintages</h4>
         <table><thead><tr>
@@ -767,10 +765,10 @@
         <h4>1. Sale selection</h4>
         <p>Transactions are filtered to standard residential sales to private individuals (<code>transaction_category = &#x27;A&#x27;</code>). New-build and established property are both included. Leasehold and freehold are both included.</p>
         <h4>2. EPC–sale matching (three tiers)</h4>
-        <p><strong>Tier 1 — UPRN exact match</strong> Each sale is joined to the UBDC Price Paid–UPRN lookup table (<a href="https://doi.org/10.20394/agu7hprj">doi:10.20394/agu7hprj</a>), which provides a Unique Property Reference Number for transactions up to January 2022. That UPRN is then joined to the EPC register to retrieve the most recent certificate lodged <em>before or on the sale date</em>. This is the highest-confidence tier.</p>
+        <p><strong>Tier 1 — UPRN exact match</strong> Each sale is joined to the UBDC Price Paid–UPRN lookup table (<a href="https://doi.org/10.20394/agu7hprj">doi:10.20394/agu7hprj</a>), which provides a Unique Property Reference Number for transactions up to January 2022. That UPRN is then joined to the EPC register to retrieve the most recent certificate lodged _before or on the sale date_. This is the highest-confidence tier.</p>
         <p><strong>Tier 2 — Address normalisation match</strong> For sales after January 2022 (where no UPRN link exists) and for any earlier sales that failed tier 1, the sale address is normalised: sub-address, building name/number, and street name are concatenated and lowercased, punctuation stripped. The normalised string is matched against the same normalised form in the EPC register, restricted to the same postcode. The most recent EPC before the sale date is selected.</p>
         <p><strong>Tier 3 — Postcode fallback</strong> Remaining unmatched sales are assigned the median floor area of all EPCs within the same postcode. This tier is lower confidence and flagged in the data.</p>
-        <p><em>Temporal selection note:</em> in all tiers, the EPC selected is the most recent certificate lodged on or before the sale date. This avoids using post-sale improvements to infer the floor area at the time of sale.</p>
+        <p>_Temporal selection note:_ in all tiers, the EPC selected is the most recent certificate lodged on or before the sale date. This avoids using post-sale improvements to infer the floor area at the time of sale.</p>
         <h4>3. Aggregation</h4>
         <p>Price per m² for each postcode district is computed as:</p>
         <pre><code>price_per_sqm = Σ(sale_price) / Σ(floor_area_m²)</code></pre>
