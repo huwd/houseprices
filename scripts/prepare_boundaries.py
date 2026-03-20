@@ -24,6 +24,7 @@ Usage:
 import argparse
 import json
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,9 @@ _INNER_ZIP_NAME = "PostalBoundariesSHP.zip"
 _MANUAL_ZIP = DATA / "GEOLYTIX - PostalBoundariesOpen2012" / "PostalBoundariesSHP.zip"
 _SHP_NAME = "PostalDistrict.shp"
 _OUTPUT = DATA / "postcode_districts.geojson"
+_WGS84_PRECISION = "0.00001"
+_MAPSHAPER_DEFAULT_RETAIN = "7%"
+_OGR2OGR_DEFAULT_SIMPLIFY_M = "100"
 
 
 def _find_shp_vsipath() -> str:
@@ -106,10 +110,120 @@ def _report_missing(output: pathlib.Path) -> None:
         )
 
 
+def _run_checked(command: list[str], label: str) -> None:
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"ERROR: {label} failed:\n{result.stderr}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _ogr2ogr_geojson(
+    src_path: str,
+    dst_path: pathlib.Path,
+    simplify_meters: str | None,
+) -> None:
+    command = [
+        "ogr2ogr",
+        "-f",
+        "GeoJSON",
+        "-t_srs",
+        "EPSG:4326",
+    ]
+    if simplify_meters is not None:
+        command.extend(["-simplify", simplify_meters])
+    command.extend(
+        [
+            "-lco",
+            "COORDINATE_PRECISION=5",
+            str(dst_path),
+            src_path,
+        ]
+    )
+    _run_checked(command, "ogr2ogr")
+
+
+def _mapshaper_geojson(
+    src_path: pathlib.Path,
+    dst_path: pathlib.Path,
+    retain_percentage: str,
+) -> None:
+    if shutil.which("npx") is None:
+        print(
+            "ERROR: topology-aware simplification requires npx on PATH.\n"
+            "  Install Node.js or rerun with --engine ogr2ogr.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    with tempfile.TemporaryDirectory() as tmp_dir_str:
+        tmp_dir = pathlib.Path(tmp_dir_str)
+        output_stub = tmp_dir / "postcode_districts.geojson"
+        _run_checked(
+            [
+                "npx",
+                "--yes",
+                "mapshaper",
+                str(src_path),
+                "-simplify",
+                retain_percentage,
+                "weighted",
+                "keep-shapes",
+                "planar",
+                "-clean",
+                "rewind",
+                "-o",
+                "format=geojson",
+                f"precision={_WGS84_PRECISION}",
+                "fix-geometry",
+                "extension=.geojson",
+                str(output_stub),
+            ],
+            "mapshaper",
+        )
+
+        outputs = sorted(tmp_dir.glob("*.geojson"))
+        if not outputs:
+            print("ERROR: mapshaper produced no GeoJSON output.", file=sys.stderr)
+            sys.exit(1)
+
+        largest = max(outputs, key=lambda path: path.stat().st_size)
+        largest.replace(dst_path)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--force", action="store_true", help="Overwrite output if it already exists."
+    )
+    parser.add_argument(
+        "--engine",
+        choices=("mapshaper", "ogr2ogr"),
+        default="mapshaper",
+        help=(
+            "Simplification engine to use. mapshaper preserves shared borders; "
+            "ogr2ogr keeps the legacy per-feature simplify path."
+        ),
+    )
+    parser.add_argument(
+        "--retain",
+        default=_MAPSHAPER_DEFAULT_RETAIN,
+        help=(
+            "For --engine mapshaper, retain this percentage of removable vertices "
+            f"(default: {_MAPSHAPER_DEFAULT_RETAIN})."
+        ),
+    )
+    parser.add_argument(
+        "--simplify-m",
+        default=_OGR2OGR_DEFAULT_SIMPLIFY_M,
+        help=(
+            "For --engine ogr2ogr, simplify in source CRS metres before reprojection "
+            f"(default: {_OGR2OGR_DEFAULT_SIMPLIFY_M})."
+        ),
     )
     args = parser.parse_args()
 
@@ -121,44 +235,27 @@ def main() -> None:
     print(f"  → Converting {vsi_path}")
     print(f"     to {_OUTPUT}")
 
-    with tempfile.NamedTemporaryFile(suffix=".geojson", delete=False) as tmp:
-        tmp_path = pathlib.Path(tmp.name)
-    tmp_path.unlink()  # ogr2ogr refuses to overwrite an existing file
+    with tempfile.TemporaryDirectory() as tmp_dir_str:
+        tmp_dir = pathlib.Path(tmp_dir_str)
+        raw_path = tmp_dir / "postcode_districts_raw.geojson"
+        tmp_path = tmp_dir / "postcode_districts.geojson"
 
-    try:
-        result = subprocess.run(
-            [
-                "ogr2ogr",
-                "-f",
-                "GeoJSON",
-                "-t_srs",
-                "EPSG:4326",
-                # Simplify in BNG (source CRS, metres) before reprojection.
-                # 100 m tolerance gives smooth district polygons at web-map
-                # zoom levels while keeping the output under ~10 MB.
-                "-simplify",
-                "100",
-                # 5 decimal places ≈ 1 m precision in WGS84 — more than
-                # sufficient; reduces GeoJSON byte count significantly.
-                "-lco",
-                "COORDINATE_PRECISION=5",
-                str(tmp_path),
-                vsi_path,
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            print(f"ERROR: ogr2ogr failed:\n{result.stderr}", file=sys.stderr)
-            tmp_path.unlink(missing_ok=True)
-            sys.exit(1)
+        if args.engine == "mapshaper":
+            print(
+                "     using topology-aware simplification"
+                f" ({args.retain} retained vertices)"
+            )
+            _ogr2ogr_geojson(vsi_path, raw_path, simplify_meters=None)
+            _mapshaper_geojson(raw_path, tmp_path, args.retain)
+        else:
+            print(
+                "     using legacy per-feature ogr2ogr simplification"
+                f" ({args.simplify_m} m tolerance)"
+            )
+            _ogr2ogr_geojson(vsi_path, tmp_path, simplify_meters=args.simplify_m)
 
         _report_missing(tmp_path)
         tmp_path.replace(_OUTPUT)
-    except Exception:
-        tmp_path.unlink(missing_ok=True)
-        raise
 
     data = json.loads(_OUTPUT.read_text())
     print(f"  ✓  {len(data['features'])} districts written to {_OUTPUT.name}")
