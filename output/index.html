@@ -11,6 +11,7 @@
     :root {
       --sans-font: -apple-system, BlinkMacSystemFont, "avenir next", avenir,
         helvetica, "helvetica neue", ubuntu, roboto, noto, "segoe ui", arial, sans-serif;
+      --content-width: 73rem;
     }
 
     @media (prefers-color-scheme: light) {
@@ -61,7 +62,7 @@
     }
 
     header ul {
-      max-width: 43rem;
+      max-width: var(--content-width);
       margin: 0 auto;
       list-style: none;
       display: flex;
@@ -85,7 +86,7 @@
 
     /* ── Page title ── */
     .page-title {
-      max-width: 43rem;
+      max-width: var(--content-width);
       margin: 0 auto;
       padding: 1.5rem 2rem 0;
     }
@@ -112,7 +113,7 @@
     /* ── Map ── */
     #map {
       width: 100%;
-      max-width: 1100px;
+      max-width: var(--content-width);
       height: 75vh;
       margin: 0 auto;
       display: block;
@@ -196,7 +197,7 @@
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 2rem;
-      max-width: 43rem;
+      max-width: var(--content-width);
       margin: 0 auto;
       padding: 2rem 2rem 0;
     }
@@ -235,7 +236,7 @@
 
     /* ── Methodology ── */
     .methodology {
-      max-width: 43rem;
+      max-width: var(--content-width);
       margin: 0 auto;
       padding: 1.5rem 2rem 3rem;
       font-size: 0.85rem;
