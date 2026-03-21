@@ -118,6 +118,25 @@ def load_version() -> str:
     return "v" + VERSION_PATH.read_text().strip()
 
 
+def load_data_date() -> str:
+    """Parse the most recent release date from CHANGELOG.md.
+
+    Looks for the first '## [x.y.z] — YYYY-MM-DD' heading and returns the
+    date formatted as 'Month YYYY' (e.g. 'March 2026').  Falls back to an
+    empty string if CHANGELOG.md is missing or no dated release is found.
+    """
+    if not CHANGELOG_PATH.exists():
+        return ""
+    import datetime
+
+    pattern = re.compile(r"^## \[\d+\.\d+\.\d+\] — (\d{4}-\d{2}-\d{2})", re.MULTILINE)
+    m = pattern.search(CHANGELOG_PATH.read_text())
+    if not m:
+        return ""
+    date = datetime.date.fromisoformat(m.group(1))
+    return date.strftime("%B %Y")
+
+
 def _inline(text: str) -> str:
     """Apply inline markdown transforms: escape HTML, then bold/italic/code/links."""
     text = html.escape(text)
@@ -272,6 +291,7 @@ def main() -> None:
 
     print("Rendering…")
     version = load_version()
+    data_date = load_data_date()
     changelog_html = (
         changelog_to_html(CHANGELOG_PATH.read_text()) if CHANGELOG_PATH.exists() else ""
     )
@@ -280,6 +300,7 @@ def main() -> None:
     rendered = (
         template.replace("__STATS__", json.dumps(stats, separators=(",", ":")))
         .replace("__VERSION__", version)
+        .replace("__DATA_DATE__", data_date)
         .replace("__CHANGELOG_HTML__", changelog_html)
     )
 
