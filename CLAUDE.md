@@ -185,18 +185,18 @@ preview URL for that branch. Cloudflare Pages automatically builds each branch
 and exposes it at:
 
 ```
-https://<deployment-hash>.<project-name>.pages.dev/
+https://<branch-name>.<project-name>.pages.dev/
 ```
 
-where `<deployment-hash>` is an 8-character hex string (Cloudflare's deployment
-ID, not the git commit SHA) and `<project-name>` is `houseprices-6r0`.
+where `<branch-name>` is the git branch name with `/` replaced by `-` and
+`<project-name>` is `houseprices-6r0`.
 
-Example PR body:
+Example PR body for branch `feat/cloudflare-pages-deploy`:
 
 ```markdown
 ## Preview
 
-https://387d19e5.houseprices-6r0.pages.dev/
+https://feat-cloudflare-pages-deploy.houseprices-6r0.pages.dev/
 ```
 
 The URL appears in the Cloudflare Pages dashboard under the deployment for the
