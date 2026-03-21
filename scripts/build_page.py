@@ -136,7 +136,7 @@ def load_data_date() -> str:
     if not m:
         return ""
     date = datetime.date.fromisoformat(m.group(1))
-    return date.strftime("%B %Y")
+    return date.strftime("%b %Y")
 
 
 def _inline(text: str) -> str:
