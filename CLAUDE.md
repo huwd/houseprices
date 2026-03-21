@@ -178,6 +178,32 @@ versioned release.
 
 ---
 
+## Pull request standards
+
+Include a **Preview** section in every PR description with the Cloudflare Pages
+preview URL for that branch. Cloudflare Pages automatically builds each branch
+and exposes it at:
+
+```
+https://<deployment-hash>.<project-name>.pages.dev/
+```
+
+where `<deployment-hash>` is an 8-character hex string (Cloudflare's deployment
+ID, not the git commit SHA) and `<project-name>` is `houseprices-6r0`.
+
+Example PR body:
+
+```markdown
+## Preview
+
+https://387d19e5.houseprices-6r0.pages.dev/
+```
+
+The URL appears in the Cloudflare Pages dashboard under the deployment for the
+branch, and as a commit status check on the PR.
+
+---
+
 ## Key decisions (resolved)
 
 - **ONS boundary CRS**: BNG EPSG:27700 — matches OS Open UPRN; no reprojection
