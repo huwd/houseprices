@@ -597,6 +597,13 @@
       district with no matching residential transactions, for example industrial estates
       or parts of the City of London.
     </p>
+    <p>The map uses a hybrid colour scale. The first seven colour bands use quantile breaks,
+      dividing the 2,277 districts into roughly equal groups of ~325 each — this maximises
+      visual contrast across the bulk of the distribution. The top two bands use fixed
+      thresholds: £5,000/m² and £10,000/m². Districts above £5,000/m² are predominantly
+      inner London; above £10,000/m² is almost exclusively central London (Mayfair,
+      Covent Garden, and the City).
+    </p>
     <details class="changelog">
       <summary>Changelog</summary>
       <div class="changelog-body">
@@ -652,10 +659,16 @@
     async function init() {
       const GEOJSON = await fetch('postcode_districts.geojson').then(r => r.json());
 
-      // ── Colour scale (7-class YlOrRd, quantile breaks) ───────────────────────────
+      // ── Colour scale (9-class hybrid, YlOrRd→purple) ─────────────────────────────
+      // 7-class quantile breaks for the main distribution (~325 districts each),
+      // plus two manual breaks into purple for the high-value tail:
+      //   £3,428–£5,000  outer London / expensive commuter belt  (~222 districts)
+      //   £5,000–£10,000 inner London / prime regional cities     (~74 districts)
+      //   £10,000+       central London only                      (~31 districts)
       const PALETTE = [
         '#ffffb2', '#fed976', '#feb24c', '#fd8d3c',
         '#fc4e2a', '#e31a1c', '#b10026',
+        '#7a0177', '#49006a',
       ];
 
       const allPrices = GEOJSON.features
@@ -663,11 +676,12 @@
         .filter(v => v != null)
         .sort((a, b) => a - b);
 
-      // Quantile break values
-      const breaks = [0, 1 / 7, 2 / 7, 3 / 7, 4 / 7, 5 / 7, 6 / 7, 1].map(q => {
+      // 7 quantile lower-bounds, then manual purple thresholds
+      const quantileBreaks = [0, 1/7, 2/7, 3/7, 4/7, 5/7, 6/7].map(q => {
         const i = Math.min(Math.floor(q * allPrices.length), allPrices.length - 1);
         return allPrices[i];
       });
+      const breaks = [...quantileBreaks, 5000, 10000, allPrices[allPrices.length - 1]];
 
       function getColour(price) {
         if (price == null) return '#cccccc';
