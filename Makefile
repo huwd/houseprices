@@ -62,6 +62,10 @@ boundaries:  ## Convert Geolytix PostalBoundariesOpen SHP → WGS84 GeoJSON (run
 page:  ## Build output/index.html from pipeline outputs (run boundaries + pipeline first)
 	uv run python scripts/build_page.py
 
+.PHONY: serve
+serve:  ## Serve output/ on http://localhost:8000 for local preview
+	uv run python -m http.server 8000 --directory output
+
 # ── Notebook ───────────────────────────────────────────────────────────────
 
 .PHONY: explore
