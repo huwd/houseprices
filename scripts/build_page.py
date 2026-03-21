@@ -60,7 +60,7 @@ def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
     ]
     ranked.sort(key=lambda r: r["price_per_sqm"])
 
-    date_range = f"Aug 2007–{data_date}" if data_date else "Aug 2007–present"
+    date_range = f"Jan 1995–{data_date}" if data_date else "Jan 1995–present"
 
     return {
         "median_price_per_sqm": median,
