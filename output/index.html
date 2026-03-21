@@ -69,6 +69,7 @@
       align-items: baseline;
       gap: 1rem;
       padding: 1rem 2rem;
+      transition: padding 0.25s ease;
     }
 
     header li:first-child {
@@ -89,6 +90,7 @@
       max-width: var(--content-width);
       margin: 0 auto;
       padding: 1.5rem 2rem 0;
+      transition: padding 0.25s ease;
     }
 
     .page-title h1 {
@@ -200,6 +202,7 @@
       max-width: var(--content-width);
       margin: 0 auto;
       padding: 2rem 2rem 0;
+      transition: padding 0.25s ease;
     }
 
     h2 {
@@ -239,6 +242,7 @@
       max-width: var(--content-width);
       margin: 0 auto;
       padding: 1.5rem 2rem 3rem;
+      transition: padding 0.25s ease;
       font-size: 0.85rem;
     }
 
@@ -473,6 +477,20 @@
     }
 
     /* ── Responsive ── */
+
+    /* Drop horizontal padding once the viewport is wide enough that
+       max-width: var(--content-width) kicks in — keeps content flush
+       with the map edges. Must match --content-width (73rem). */
+    @media (min-width: 73rem) {
+      header ul,
+      .page-title,
+      .tables-row,
+      .methodology {
+        padding-left: 0;
+        padding-right: 0;
+      }
+    }
+
     @media (max-width: 560px) {
       .tables-row {
         grid-template-columns: 1fr;
