@@ -48,7 +48,7 @@ def load_price_data() -> dict[str, dict]:
     return data
 
 
-def compute_stats(price_data: dict[str, dict]) -> dict:
+def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
     prices = sorted(r["price_per_sqm"] for r in price_data.values())
     median = int(statistics.median(prices))
     total_sales = sum(r["num_sales"] for r in price_data.values())
@@ -60,10 +60,12 @@ def compute_stats(price_data: dict[str, dict]) -> dict:
     ]
     ranked.sort(key=lambda r: r["price_per_sqm"])
 
+    date_range = f"Aug 2007–{data_date}" if data_date else "Aug 2007–present"
+
     return {
         "median_price_per_sqm": median,
         "num_districts": len(price_data),
-        "date_range": "Aug 2007–Jan 2026",
+        "date_range": date_range,
         "total_sales": total_sales,
         "top10": [
             {"district": r["district"], "price_per_sqm": r["price_per_sqm"]}
@@ -272,6 +274,9 @@ def main() -> None:
             )
         sys.exit(1)
 
+    version = load_version()
+    data_date = load_data_date()
+
     print("Loading data…")
     boundaries = json.loads(BOUNDARIES_PATH.read_text())
     price_data = load_price_data()
@@ -282,7 +287,7 @@ def main() -> None:
 
     print("Joining…")
     geojson = build_geojson(boundaries, price_data)
-    stats = compute_stats(price_data)
+    stats = compute_stats(price_data, data_date)
 
     print("Writing GeoJSON…")
     OUT_GEOJSON.write_text(json.dumps(geojson, separators=(",", ":")))
@@ -290,8 +295,6 @@ def main() -> None:
     print(f"  Written → {OUT_GEOJSON} ({geojson_kb:,} KB)")
 
     print("Rendering…")
-    version = load_version()
-    data_date = load_data_date()
     changelog_html = (
         changelog_to_html(CHANGELOG_PATH.read_text()) if CHANGELOG_PATH.exists() else ""
     )
