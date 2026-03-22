@@ -454,6 +454,54 @@ th:last-child {
   padding: 0;
 }
 
+/* ── Search control ── */
+.search-control {
+  background: var(--color-card-bg);
+  padding: 0.4rem;
+  border-radius: 4px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
+}
+
+.search-control input {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  padding: 0.3rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  width: 148px;
+  outline: none;
+  font-family: var(--sans-font);
+}
+
+.search-control input:focus {
+  border-color: var(--color-accent);
+}
+
+.search-control input::placeholder {
+  color: var(--color-muted);
+}
+
+.search-suggestions {
+  margin-top: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.search-suggestion {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  background: var(--color-card-bg);
+  color: var(--color-text);
+}
+
+.search-suggestion:hover,
+.search-suggestion--active {
+  background: var(--color-border);
+}
+
 /* ── Range filter (legend) ── */
 .range-filter {
   margin-top: 8px;
