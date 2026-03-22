@@ -7,6 +7,8 @@ import pandas as pd
 import pytest
 from rich.console import Console
 
+import json
+
 from houseprices.pipeline import (
     Geography,
     _configure_duckdb,
@@ -1569,3 +1571,70 @@ def test_join_tier1_is_post_sale_true_for_post_sale_fallback(
     """TXN-T02: matched to a post-sale EPC → is_post_sale must be True."""
     row = joined_temporal[joined_temporal["transaction_unique_identifier"] == TXN_T02]
     assert row.iloc[0]["is_post_sale"] is True or row.iloc[0]["is_post_sale"] == True  # noqa: E712
+
+
+# ---------------------------------------------------------------------------
+# _run_aggregations — metadata.json (issue #89)
+# ---------------------------------------------------------------------------
+
+
+def test_run_aggregations_writes_metadata_json(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """_run_aggregations must write output/metadata.json."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=Console(quiet=True)
+    )
+    assert (output_dir / "metadata.json").exists()
+
+
+def test_run_aggregations_metadata_has_min_max_sale_date(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """metadata.json must contain min_sale_date and max_sale_date keys."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=Console(quiet=True)
+    )
+    meta = json.loads((output_dir / "metadata.json").read_text())
+    assert "min_sale_date" in meta
+    assert "max_sale_date" in meta
+
+
+def test_run_aggregations_metadata_dates_are_iso_format(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """metadata.json dates must be YYYY-MM-DD strings."""
+    import re
+
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=Console(quiet=True)
+    )
+    meta = json.loads((output_dir / "metadata.json").read_text())
+    iso = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    assert iso.match(meta["min_sale_date"]), f"Not ISO: {meta['min_sale_date']}"
+    assert iso.match(meta["max_sale_date"]), f"Not ISO: {meta['max_sale_date']}"
+
+
+def test_run_aggregations_metadata_dates_match_fixture_range(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """metadata.json dates must reflect actual min/max from the fixture data."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=Console(quiet=True)
+    )
+    meta = json.loads((output_dir / "metadata.json").read_text())
+    # ppd_sample.csv spans 2020-05-01 to 2023-09-01
+    assert meta["min_sale_date"] == "2020-05-01"
+    assert meta["max_sale_date"] == "2023-09-01"

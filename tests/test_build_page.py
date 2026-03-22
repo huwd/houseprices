@@ -252,3 +252,46 @@ def test_build_data_json_version_included(tmp_path: pathlib.Path) -> None:
     result = build_page.build_data_json(tmp_path, version="v1.2.3")
 
     assert result.get("version") == "v1.2.3"
+
+
+# ---------------------------------------------------------------------------
+# load_metadata (issue #89)
+# ---------------------------------------------------------------------------
+
+
+def test_load_metadata_returns_min_max_dates(tmp_path: pathlib.Path) -> None:
+    """load_metadata reads min_sale_date and max_sale_date from metadata.json."""
+    import json
+
+    (tmp_path / "metadata.json").write_text(
+        json.dumps({"min_sale_date": "1995-01-01", "max_sale_date": "2026-03-01"})
+    )
+    meta = build_page.load_metadata(tmp_path)
+    assert meta["min_sale_date"] == "1995-01-01"
+    assert meta["max_sale_date"] == "2026-03-01"
+
+
+def test_load_metadata_missing_file_returns_empty_dict(tmp_path: pathlib.Path) -> None:
+    """load_metadata returns {} when metadata.json does not exist."""
+    meta = build_page.load_metadata(tmp_path)
+    assert meta == {}
+
+
+def test_compute_stats_date_range_uses_metadata_dates(tmp_path: pathlib.Path) -> None:
+    """compute_stats must build date_range from metadata min/max, not hardcoded text."""
+    import json
+
+    (tmp_path / "metadata.json").write_text(
+        json.dumps({"min_sale_date": "1995-04-01", "max_sale_date": "2026-02-01"})
+    )
+    meta = build_page.load_metadata(tmp_path)
+    price_data = {"SW1A": {"price_per_sqm": 5000, "adj_price_per_sqm": 5200, "num_sales": 50}}
+    stats = build_page.compute_stats(price_data, meta)
+    assert stats["date_range"] == "Apr 1995–Feb 2026"
+
+
+def test_compute_stats_date_range_fallback_when_no_metadata(tmp_path: pathlib.Path) -> None:
+    """compute_stats falls back gracefully when metadata is empty."""
+    price_data = {"SW1A": {"price_per_sqm": 5000, "adj_price_per_sqm": 5200, "num_sales": 50}}
+    stats = build_page.compute_stats(price_data, {})
+    assert stats["date_range"] == ""
