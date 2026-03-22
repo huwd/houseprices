@@ -206,6 +206,105 @@ async function init() {
     mapLoading.addEventListener('transitionend', () => mapLoading.remove(), {once: true});
   }
 
+  // ── Point-in-polygon (ray casting) for locate ────────────────────────────────
+  function pointInRing(lng, lat, ring) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      if ((yi > lat) !== (yj > lat) && lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)
+        inside = !inside;
+    }
+    return inside;
+  }
+
+  function findDistrict(lng, lat) {
+    for (const feature of GEOJSON.features) {
+      const geom = feature.geometry;
+      if (!geom) continue;
+      let polys = [];
+      if (geom.type === 'Polygon') polys = [geom.coordinates];
+      else if (geom.type === 'MultiPolygon') polys = geom.coordinates;
+      else if (geom.type === 'GeometryCollection')
+        geom.geometries.forEach(g => {
+          if (g.type === 'Polygon') polys.push(g.coordinates);
+          else if (g.type === 'MultiPolygon') polys.push(...g.coordinates);
+        });
+      for (const poly of polys)
+        if (pointInRing(lng, lat, poly[0])) return feature.properties.PostDist;
+    }
+    return null;
+  }
+
+  // ── Locate control (top-left, below zoom) ─────────────────────────────────────
+  const locateCtrl = L.control({position: 'topleft'});
+  locateCtrl.onAdd = function () {
+    const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+    const btn = L.DomUtil.create('a', 'locate-btn', div);
+    btn.href = '#';
+    btn.title = 'Find my location';
+    btn.setAttribute('role', 'button');
+    btn.setAttribute('aria-label', 'Find my location');
+    btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16"
+      fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <circle cx="12" cy="12" r="4"/>
+      <line x1="12" y1="2" x2="12" y2="7"/>
+      <line x1="12" y1="17" x2="12" y2="22"/>
+      <line x1="2" y1="12" x2="7" y2="12"/>
+      <line x1="17" y1="12" x2="22" y2="12"/>
+    </svg>`;
+
+    L.DomEvent.disableClickPropagation(div);
+
+    L.DomEvent.on(btn, 'click', function (e) {
+      L.DomEvent.preventDefault(e);
+      if (!navigator.geolocation) {
+        btn.title = 'Geolocation not supported';
+        return;
+      }
+      btn.classList.add('locate-btn--loading');
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          btn.classList.remove('locate-btn--loading');
+          const {longitude: lng, latitude: lat} = pos.coords;
+          const code = findDistrict(lng, lat);
+          if (!code) {
+            btn.classList.add('locate-btn--error');
+            btn.title = 'No district found at your location';
+            setTimeout(() => {
+              btn.classList.remove('locate-btn--error');
+              btn.title = 'Find my location';
+            }, 3000);
+            return;
+          }
+          const layer = districtLayers[code];
+          if (!layer) return;
+          setDistrictParam(code);
+          map.flyToBounds(layer.getBounds(), {padding: [60, 60], duration: 1.5, maxZoom: 13});
+          map.once('moveend', function () {
+            if (activeLayer) geoLayer.resetStyle(activeLayer);
+            activeLayer = layer;
+            layer.setStyle({weight: 2, color: '#333', fillOpacity: 0.9});
+            layer.bringToFront();
+            infoCtrl._render(layer.feature.properties);
+          });
+        },
+        err => {
+          btn.classList.remove('locate-btn--loading');
+          btn.classList.add('locate-btn--error');
+          btn.title = err.code === 1 ? 'Location access denied' : 'Location unavailable';
+          setTimeout(() => {
+            btn.classList.remove('locate-btn--error');
+            btn.title = 'Find my location';
+          }, 3000);
+        },
+        {timeout: 10000}
+      );
+    });
+
+    return div;
+  };
+  locateCtrl.addTo(map);
+
   // ── Search control (top-left) ─────────────────────────────────────────────────
   const searchCtrl = L.control({position: 'topleft'});
   searchCtrl.onAdd = function () {
