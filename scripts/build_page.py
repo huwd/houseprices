@@ -46,7 +46,19 @@ LONDON_AREAS = {"E", "EC", "N", "NW", "SE", "SW", "W", "WC"}
 
 # Postcode areas substantially within Greater London but using non-London prefixes.
 # Excluded from "first district outside Greater London" calculation.
-GREATER_LONDON_FRINGE = {"TW", "KT", "HA", "UB", "CR", "SM", "BR", "DA", "EN", "IG", "RM"}
+GREATER_LONDON_FRINGE = {
+    "TW",
+    "KT",
+    "HA",
+    "UB",
+    "CR",
+    "SM",
+    "BR",
+    "DA",
+    "EN",
+    "IG",
+    "RM",
+}
 
 
 def _postcode_area(district: str) -> str:
@@ -89,7 +101,8 @@ def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
         else:
             break
 
-    # First (most expensive) district outside Greater London (traditional areas + fringe)
+    # First (most expensive) district outside Greater London
+    # (traditional London areas + fringe postcodes)
     first_non_london = None
     for i, r in enumerate(ranked_desc):
         area = _postcode_area(r["district"])
@@ -103,8 +116,7 @@ def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
 
     # London districts in the top 100
     london_in_top_100 = sum(
-        1 for r in ranked_desc[:100]
-        if _postcode_area(r["district"]) in LONDON_AREAS
+        1 for r in ranked_desc[:100] if _postcode_area(r["district"]) in LONDON_AREAS
     )
 
     return {
@@ -112,7 +124,8 @@ def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
         "num_districts": len(price_data),
         "date_range": date_range,
         "total_sales": total_sales,
-        "cpi_base": "January 2026",  # ONS CPI D7BT base month — update if methodology changes
+        # ONS CPI D7BT base month — update if methodology changes
+        "cpi_base": "January 2026",
         "top10": [
             {"district": r["district"], "price_per_sqm": r["price_per_sqm"]}
             for r in ranked_desc[:10]
@@ -341,8 +354,7 @@ def main() -> None:
     stats = compute_stats(price_data, data_date)
 
     no_data_count = sum(
-        1 for f in geojson["features"]
-        if f["properties"].get("price_per_sqm") is None
+        1 for f in geojson["features"] if f["properties"].get("price_per_sqm") is None
     )
     stats["facts"]["no_data_count"] = no_data_count
 
