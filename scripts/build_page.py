@@ -155,6 +155,7 @@ def load_price_data() -> dict[str, dict]:
         for row in csv.DictReader(f):
             data[row["postcode_district"]] = {
                 "price_per_sqm": int(row["price_per_sqm"]),
+                "adj_price_per_sqm": int(row["adj_price_per_sqm"]),
                 "num_sales": int(row["num_sales"]),
             }
     return data
@@ -489,6 +490,23 @@ def main() -> None:
         1 for f in geojson["features"] if f["properties"].get("price_per_sqm") is None
     )
     stats["facts"]["no_data_count"] = no_data_count
+
+    boundary_districts = {f["properties"]["PostDist"] for f in boundaries["features"]}
+    stats["missing_geometry"] = [
+        {
+            "district": d,
+            "num_sales": v["num_sales"],
+            "adj_price_per_sqm": v["adj_price_per_sqm"],
+        }
+        for d, v in sorted(price_data.items())
+        if d not in boundary_districts
+    ]
+    if stats["missing_geometry"]:
+        print(
+            f"  Warning: {len(stats['missing_geometry'])} district(s) have price data "
+            "but no boundary geometry: "
+            + ", ".join(d["district"] for d in stats["missing_geometry"])
+        )
 
     print("Writing GeoJSON…")
     OUT_GEOJSON.write_text(json.dumps(geojson, separators=(",", ":")))

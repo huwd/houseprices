@@ -473,8 +473,17 @@ async function init() {
       `and ${dLink('EC2V')}, ${dLink('EC2N')}, ${dLink('EC2R')}, ${dLink('EC3M')}, ${dLink('EC3V')}, and ${dLink('EC4N')} form the densely ` +
       `financial core of the City of London, where residential properties are also rare.`;
 
+    const missing = STATS.missing_geometry || [];
+    const p4 = missing.length === 0 ? '' :
+      missing.length === 1
+        ? `${dLink(missing[0].district)} has ${missing[0].num_sales.toLocaleString()} matched sales ` +
+          `(inflation-adjusted £${missing[0].adj_price_per_sqm.toLocaleString()}/m²) but does not appear on the map. ` +
+          `The postcode district was created after our boundary source was last updated in 2012 and no polygon exists for it yet.`
+        : `${missing.length} districts have matched sales data but no boundary geometry and do not appear on the map: ` +
+          missing.map(d => `${dLink(d.district)} (${d.num_sales.toLocaleString()} sales)`).join(', ') + '.';
+
     document.getElementById('facts-strip').innerHTML =
-      `<p>${p1}</p><p>${p2}</p><p>${p3}</p>`;
+      `<p>${p1}</p><p>${p2}</p><p>${p3}</p>` + (p4 ? `<p>${p4}</p>` : '');
   }
 
   function ordinal(n) {
