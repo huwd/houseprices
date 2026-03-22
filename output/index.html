@@ -95,6 +95,55 @@
     </div>
   </div>
 
+  <div class="download-data">
+    <h3>Download the data</h3>
+    <p>The underlying datasets are available as CSV files, licensed under the
+      <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence v3.0</a>.
+      A machine-readable index with row counts and file sizes is available as
+      <a href="data.json"><code>data.json</code></a>.
+    </p>
+    <div class="download-cards">
+      <div class="download-card">
+        <h4>By postcode district</h4>
+        <p>One row per postcode district (e.g. SW1A). 2,277 districts.</p>
+        <a class="download-btn" href="price_per_sqm_postcode_district.csv"
+           download="price_per_sqm_postcode_district.csv">Download CSV</a>
+        <table class="schema-table">
+          <thead>
+            <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>postcode_district</code></td><td>string</td><td>UK postcode district (e.g. SW1A)</td></tr>
+            <tr><td><code>num_sales</code></td><td>integer</td><td>Number of residential sales matched to an EPC record</td></tr>
+            <tr><td><code>total_floor_area</code></td><td>float</td><td>Total floor area of matched properties (m²)</td></tr>
+            <tr><td><code>total_price</code></td><td>float</td><td>Total transaction value of matched sales (£)</td></tr>
+            <tr><td><code>price_per_sqm</code></td><td>integer</td><td>Nominal price per m² = total_price / total_floor_area (£)</td></tr>
+            <tr><td><code>adj_price_per_sqm</code></td><td>integer</td><td>CPI-adjusted price per m², base January 2026 (£), using ONS CPI series D7BT</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="download-card">
+        <h4>By LSOA</h4>
+        <p>One row per 2021 Lower Super Output Area. Finer geography than postcode districts.</p>
+        <a class="download-btn" href="price_per_sqm_lsoa.csv"
+           download="price_per_sqm_lsoa.csv">Download CSV</a>
+        <table class="schema-table">
+          <thead>
+            <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>LSOA21CD</code></td><td>string</td><td>ONS 2021 Lower Super Output Area code (e.g. E01000001)</td></tr>
+            <tr><td><code>num_sales</code></td><td>integer</td><td>Number of residential sales matched to an EPC record</td></tr>
+            <tr><td><code>total_floor_area</code></td><td>float</td><td>Total floor area of matched properties (m²)</td></tr>
+            <tr><td><code>total_price</code></td><td>float</td><td>Total transaction value of matched sales (£)</td></tr>
+            <tr><td><code>price_per_sqm</code></td><td>integer</td><td>Nominal price per m² = total_price / total_floor_area (£)</td></tr>
+            <tr><td><code>adj_price_per_sqm</code></td><td>integer</td><td>CPI-adjusted price per m², base January 2026 (£), using ONS CPI series D7BT</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div class="methodology">
     <h3>Methodology</h3>
     <p>Sale prices are taken from

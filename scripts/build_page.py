@@ -38,8 +38,91 @@ OUT_HTML = OUTPUT / "index.html"
 OUT_GEOJSON = OUTPUT / "postcode_districts.geojson"
 OUT_CSS = OUTPUT / "page.css"
 OUT_JS = OUTPUT / "page.js"
+OUT_DATA_JSON = OUTPUT / "data.json"
 
 MIN_SALES_FOR_RANKING = 20  # exclude very thin districts from top/bottom tables
+
+# ---------------------------------------------------------------------------
+# CSV schema definitions — used in data.json and the Download section
+# ---------------------------------------------------------------------------
+
+_DISTRICT_SCHEMA = [
+    {
+        "name": "postcode_district",
+        "type": "string",
+        "description": "UK postcode district (e.g. SW1A)",
+    },
+    {
+        "name": "num_sales",
+        "type": "integer",
+        "description": "Number of residential sales matched to an EPC record",
+    },
+    {
+        "name": "total_floor_area",
+        "type": "float",
+        "description": "Total floor area of matched properties (m²)",
+    },
+    {
+        "name": "total_price",
+        "type": "float",
+        "description": "Total transaction value of matched sales (£)",
+    },
+    {
+        "name": "price_per_sqm",
+        "type": "integer",
+        "description": (
+            "Nominal price per m² = total_price / total_floor_area (£). "
+            "Not a mean of per-property ratios."
+        ),
+    },
+    {
+        "name": "adj_price_per_sqm",
+        "type": "integer",
+        "description": (
+            "CPI-adjusted price per m², base January 2026 (£). "
+            "Deflated using ONS CPI series D7BT."
+        ),
+    },
+]
+
+_LSOA_SCHEMA = [
+    {
+        "name": "LSOA21CD",
+        "type": "string",
+        "description": "ONS 2021 Lower Super Output Area code (e.g. E01000001)",
+    },
+    {
+        "name": "num_sales",
+        "type": "integer",
+        "description": "Number of residential sales matched to an EPC record",
+    },
+    {
+        "name": "total_floor_area",
+        "type": "float",
+        "description": "Total floor area of matched properties (m²)",
+    },
+    {
+        "name": "total_price",
+        "type": "float",
+        "description": "Total transaction value of matched sales (£)",
+    },
+    {
+        "name": "price_per_sqm",
+        "type": "integer",
+        "description": (
+            "Nominal price per m² = total_price / total_floor_area (£). "
+            "Not a mean of per-property ratios."
+        ),
+    },
+    {
+        "name": "adj_price_per_sqm",
+        "type": "integer",
+        "description": (
+            "CPI-adjusted price per m², base January 2026 (£). "
+            "Deflated using ONS CPI series D7BT."
+        ),
+    },
+]
 
 # Traditional London postcode areas (E, EC, N, NW, SE, SW, W, WC)
 LONDON_AREAS = {"E", "EC", "N", "NW", "SE", "SW", "W", "WC"}
@@ -323,6 +406,55 @@ def changelog_to_html(md: str) -> str:
     return "\n        ".join(parts)
 
 
+def build_data_json(output_dir: pathlib.Path, version: str) -> dict:
+    """Build a machine-readable index of available CSV datasets.
+
+    Returns a dict suitable for serialising to data.json.  Reads the two
+    output CSVs to report row counts and file sizes.
+    """
+    datasets = []
+    for filename, description, schema in (
+        (
+            "price_per_sqm_postcode_district.csv",
+            (
+                "Inflation-adjusted price per m² by postcode district "
+                "(England & Wales, Jan 1995–present). "
+                "Derived from HM Land Registry Price Paid Data "
+                "joined to EPC floor areas."
+            ),
+            _DISTRICT_SCHEMA,
+        ),
+        (
+            "price_per_sqm_lsoa.csv",
+            (
+                "Inflation-adjusted price per m² by 2021 LSOA "
+                "(England & Wales, Jan 1995–present). "
+                "Derived from HM Land Registry Price Paid Data "
+                "joined to EPC floor areas."
+            ),
+            _LSOA_SCHEMA,
+        ),
+    ):
+        csv_path = output_dir / filename
+        row_count = 0
+        with open(csv_path) as f:
+            reader = csv.DictReader(f)
+            for _ in reader:
+                row_count += 1
+        datasets.append(
+            {
+                "name": filename.replace(".csv", "").replace("_", " ").title(),
+                "filename": filename,
+                "description": description,
+                "rows": row_count,
+                "size_bytes": csv_path.stat().st_size,
+                "schema": schema,
+            }
+        )
+
+    return {"version": version, "datasets": datasets}
+
+
 def main() -> None:
     # Validate inputs
     missing = [p for p in (BOUNDARIES_PATH, CSV_PATH, TEMPLATE_PATH) if not p.exists()]
@@ -385,6 +517,11 @@ def main() -> None:
     shutil.copy2(JS_PATH, OUT_JS)
     print(f"  Copied  → {OUT_CSS}")
     print(f"  Copied  → {OUT_JS}")
+
+    print("Writing data.json…")
+    data_json = build_data_json(OUTPUT, version)
+    OUT_DATA_JSON.write_text(json.dumps(data_json, indent=2))
+    print(f"  Written → {OUT_DATA_JSON}")
 
     print(f"  Median: £{stats['median_price_per_sqm']:,}/m²")
     print(f"  Districts: {stats['num_districts']:,}")
