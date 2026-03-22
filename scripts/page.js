@@ -239,11 +239,11 @@ async function init() {
     const fnl = f.first_non_london;
     document.getElementById('facts-strip').innerHTML =
       `Out of ${STATS.num_districts.toLocaleString()} postcode districts analysed, ` +
-      `the top ${f.london_streak.toLocaleString()} are all London postcodes — ` +
+      `the top ${f.london_streak.toLocaleString()} are all London postcodes and ` +
       `${f.london_in_top_100} of the top 100 are in the capital. ` +
-      `The first district outside London is ${dLink(fnl.district)}, ` +
-      `ranked ${fnl.rank}${ordinal(fnl.rank)} at ` +
-      `£${fnl.price_per_sqm.toLocaleString()}/m².`;
+      `The first district with a non-London postcode prefix is ${dLink(fnl.district)} (Richmond), ` +
+      `ranked ${fnl.rank}${ordinal(fnl.rank)} at £${fnl.price_per_sqm.toLocaleString()}/m² — ` +
+      `technically in Greater London, but the TW area uses a Surrey-style code.`;
   }
 
   function ordinal(n) {
