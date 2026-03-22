@@ -317,6 +317,11 @@ th:last-child {
 
 
 
+.attribution {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
 .map-link {
   color: var(--color-accent);
   text-decoration: none;
