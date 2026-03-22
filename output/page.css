@@ -1,0 +1,505 @@
+:root {
+  --sans-font: -apple-system, BlinkMacSystemFont, "avenir next", avenir,
+    helvetica, "helvetica neue", ubuntu, roboto, noto, "segoe ui", arial, sans-serif;
+  --content-width: 73rem;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-accent: #176da5;
+    --color-bg: #f9f9f9;
+    --color-text: #000000;
+    --color-muted: rgba(0, 0, 0, 0.55);
+    --color-border: #dddddd;
+    --color-card-bg: #ffffff;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-accent: #76cbff;
+    --color-bg: #171a23;
+    --color-text: #ffffff;
+    --color-muted: rgba(255, 255, 255, 0.55);
+    --color-border: #2e3347;
+    --color-card-bg: #1f2433;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--sans-font);
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--color-accent);
+}
+
+/* ── Header ── */
+header {
+  border-bottom: 1px solid var(--color-text);
+}
+
+header ul {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 1rem 2rem;
+  transition: padding 0.25s ease;
+}
+
+header li:first-child {
+  font-weight: 600;
+}
+
+header a {
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+header a:hover {
+  text-decoration: underline;
+}
+
+/* ── Page title ── */
+.page-title {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 1.5rem 2rem 0;
+  transition: padding 0.25s ease;
+}
+
+.page-title h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0 0 0.25rem;
+}
+
+.page-title h2 {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--color-muted);
+  margin: 0 0 0.5rem;
+}
+
+.intro-text {
+  font-size: 1rem;
+  margin: 0 0 1rem;
+}
+
+/* ── Map ── */
+#map {
+  width: 100%;
+  max-width: var(--content-width);
+  height: 75vh;
+  margin: 0 auto;
+  display: block;
+}
+
+/* Leaflet controls inherit body colours */
+.leaflet-control-zoom a,
+.leaflet-bar a {
+  background: var(--color-card-bg) !important;
+  color: var(--color-text) !important;
+  border-color: var(--color-border) !important;
+}
+
+.info,
+.legend {
+  background: var(--color-card-bg);
+  color: var(--color-text);
+  padding: 0.6rem 0.8rem;
+  border-radius: 4px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.info h4 {
+  font-weight: 600;
+  margin-bottom: 2px;
+  font-size: 0.95rem;
+}
+
+.info .muted {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+.legend-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 1px 3px;
+  margin: 0 -3px;
+  transition: background 0.15s ease;
+}
+
+.legend-row:hover {
+  background: var(--color-border);
+}
+
+.legend-row--active {
+  background: var(--color-border);
+  font-weight: 600;
+}
+
+.legend-swatch {
+  width: 16px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Stats strip ── */
+.stats-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2rem;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.stat-label {
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+
+/* ── Tables ── */
+.tables-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 2rem 2rem 0;
+  transition: padding 0.25s ease;
+}
+
+h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 1rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+th {
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+}
+
+td:last-child,
+th:last-child {
+  text-align: right;
+}
+
+/* ── Methodology ── */
+.methodology {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 1.5rem 2rem 3rem;
+  transition: padding 0.25s ease;
+  font-size: 1rem;
+}
+
+.methodology p+p {
+  margin-top: 0.5rem;
+}
+
+.methodology h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+
+
+.map-link {
+  color: var(--color-accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.map-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Analysis version badge ── */
+.analysis-version {
+  display: inline-block;
+  font-size: 0.7rem;
+  color: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 0 0.35rem;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Changelog (collapsible) ── */
+.changelog {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+}
+
+.changelog summary {
+  cursor: pointer;
+  font-size: 1.1rem;
+  font-weight: 600;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  user-select: none;
+}
+
+.changelog summary::-webkit-details-marker {
+  display: none;
+}
+
+.changelog summary::before {
+  content: '▶';
+  font-size: 0.6rem;
+  color: var(--color-muted);
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+
+.changelog[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.changelog-body {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+.changelog-body h4 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 1rem 0 0.4rem;
+}
+
+.changelog-body h4:first-child {
+  margin-top: 0;
+}
+
+.changelog-body p {
+  margin-bottom: 0.4rem;
+  color: var(--color-muted);
+}
+
+.changelog-body ul {
+  padding-left: 1.2rem;
+  margin: 0.3rem 0;
+}
+
+.changelog-body li {
+  margin-bottom: 0.2rem;
+}
+
+.changelog-body table {
+  width: 100%;
+  margin: 0.5rem 0;
+  font-size: 0.78rem;
+}
+
+.changelog-body th,
+.changelog-body td {
+  text-align: left;
+  padding: 0.3rem 0.4rem 0.3rem 0;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-muted);
+}
+
+.changelog-body th {
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.changelog-body code {
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--color-border);
+  border-radius: 2px;
+  padding: 0 0.25em;
+}
+
+.changelog-body pre {
+  background: var(--color-border);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.4rem 0;
+  overflow-x: auto;
+}
+
+.changelog-body pre code {
+  background: none;
+  padding: 0;
+}
+
+/* ── Range filter (legend) ── */
+.range-filter {
+  margin-top: 8px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 6px;
+}
+
+.range-wrap {
+  position: relative;
+  height: 18px;
+  margin: 4px 0 2px;
+}
+
+.range-track {
+  position: absolute;
+  top: 7px;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: var(--color-border);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.range-fill {
+  position: absolute;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 2px;
+}
+
+.range-wrap input[type=range] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 18px;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  margin: 0;
+}
+
+.range-wrap input[type=range]::-webkit-slider-thumb {
+  pointer-events: all;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+  -webkit-appearance: none;
+  border: 2px solid var(--color-card-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.range-wrap input[type=range]::-moz-range-thumb {
+  pointer-events: all;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+  border: 2px solid var(--color-card-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.range-wrap input[type=range]::-webkit-slider-runnable-track {
+  background: transparent;
+}
+
+.range-wrap input[type=range]::-moz-range-track {
+  background: transparent;
+}
+
+.range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  margin-top: 2px;
+}
+
+/* ── Responsive ── */
+
+/* Drop horizontal padding once the viewport is wide enough that
+   max-width: var(--content-width) kicks in — keeps content flush
+   with the map edges. Must match --content-width (73rem). */
+@media (min-width: 73rem) {
+  header ul,
+  .page-title,
+  .tables-row,
+  .methodology {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .tables-row {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-strip {
+    gap: 1rem;
+  }
+}
