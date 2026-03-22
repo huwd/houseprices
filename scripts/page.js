@@ -252,7 +252,7 @@ async function init() {
       `${dLink('TW6')} is Heathrow Airport; ` +
       `${dLink('W1C')} is the heart of Oxford Street, almost entirely commercial; ` +
       `${dLink('PE35')} is the Sandringham Estate; ` +
-      `and ${dLink('EC2V')}, EC2N, EC2R, EC3M, EC3V, and EC4N form the densely ` +
+      `and ${dLink('EC2V')}, ${dLink('EC2N')}, ${dLink('EC2R')}, ${dLink('EC3M')}, ${dLink('EC3V')}, and ${dLink('EC4N')} form the densely ` +
       `financial core of the City of London, where residential properties are rare.`;
 
     document.getElementById('facts-strip').innerHTML =
