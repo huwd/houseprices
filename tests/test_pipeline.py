@@ -1,13 +1,12 @@
 """Tests for pipeline.py: address normalisation, EPC loading, join, aggregation."""
 
+import json
 import pathlib
 
 import duckdb
 import pandas as pd
 import pytest
 from rich.console import Console
-
-import json
 
 from houseprices.pipeline import (
     Geography,
@@ -1586,7 +1585,12 @@ def test_run_aggregations_writes_metadata_json(
     matched, uprn_lsoa, ppd_slim = aggregation_inputs
     output_dir = tmp_path / "output"
     _run_aggregations(
-        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=Console(quiet=True)
+        matched,
+        uprn_lsoa,
+        ppd_slim,
+        output_dir,
+        min_sales=1,
+        console=Console(quiet=True),
     )
     assert (output_dir / "metadata.json").exists()
 
@@ -1599,7 +1603,12 @@ def test_run_aggregations_metadata_has_min_max_sale_date(
     matched, uprn_lsoa, ppd_slim = aggregation_inputs
     output_dir = tmp_path / "output"
     _run_aggregations(
-        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=Console(quiet=True)
+        matched,
+        uprn_lsoa,
+        ppd_slim,
+        output_dir,
+        min_sales=1,
+        console=Console(quiet=True),
     )
     meta = json.loads((output_dir / "metadata.json").read_text())
     assert "min_sale_date" in meta
@@ -1616,7 +1625,12 @@ def test_run_aggregations_metadata_dates_are_iso_format(
     matched, uprn_lsoa, ppd_slim = aggregation_inputs
     output_dir = tmp_path / "output"
     _run_aggregations(
-        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=Console(quiet=True)
+        matched,
+        uprn_lsoa,
+        ppd_slim,
+        output_dir,
+        min_sales=1,
+        console=Console(quiet=True),
     )
     meta = json.loads((output_dir / "metadata.json").read_text())
     iso = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -1632,7 +1646,12 @@ def test_run_aggregations_metadata_dates_match_fixture_range(
     matched, uprn_lsoa, ppd_slim = aggregation_inputs
     output_dir = tmp_path / "output"
     _run_aggregations(
-        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=Console(quiet=True)
+        matched,
+        uprn_lsoa,
+        ppd_slim,
+        output_dir,
+        min_sales=1,
+        console=Console(quiet=True),
     )
     meta = json.loads((output_dir / "metadata.json").read_text())
     import datetime
