@@ -19,6 +19,9 @@ import re
 import shutil
 import statistics
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 
 ROOT = pathlib.Path(__file__).parent.parent
 OUTPUT = ROOT / "output"
@@ -41,6 +44,15 @@ OUT_JS = OUTPUT / "page.js"
 OUT_DATA_JSON = OUTPUT / "data.json"
 
 MIN_SALES_FOR_RANKING = 20  # exclude very thin districts from top/bottom tables
+
+# ONS Open Geography Portal — postcode district boundary layer (BGC, WGS84).
+# Published under OGL: https://geoportal.statistics.gov.uk/
+# Queried at build time to fill in geometry for districts absent from Geolytix
+# (e.g. E20 — created after the 2012 Geolytix vintage).
+ONS_POSTCODE_DISTRICT_URL = (
+    "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services"
+    "/Postcode_Districts_December_2023_Boundaries_UK_BGC/FeatureServer/0/query"
+)
 
 # ---------------------------------------------------------------------------
 # CSV schema definitions — used in data.json and the Download section
@@ -243,6 +255,37 @@ def compute_stats(price_data: dict[str, dict], metadata: dict[str, str]) -> dict
             "first_non_london": first_non_london,
         },
     }
+
+
+def fetch_ons_geometry(district: str, timeout: int = 30) -> dict[str, object] | None:
+    """Fetch boundary geometry for *district* from the ONS Geography Portal.
+
+    Queries the ArcGIS FeatureServer for the postcode district BGC layer.
+    Returns a GeoJSON Feature dict with ``PostDist`` set, or ``None`` if the
+    district is not found or if the request fails (network error, bad JSON, etc.).
+    """
+    params = urllib.parse.urlencode(
+        {
+            "where": f"PostDist='{district}'",
+            "outFields": "PostDist",
+            "f": "geojson",
+            "outSR": "4326",
+        }
+    )
+    url = f"{ONS_POSTCODE_DISTRICT_URL}?{params}"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            data: dict[str, object] = json.loads(resp.read())
+        features = data.get("features", [])
+        if not isinstance(features, list) or not features:
+            return None
+        feature: dict[str, object] = features[0]
+        props = feature.get("properties")
+        if isinstance(props, dict):
+            props["PostDist"] = district
+        return feature
+    except Exception:
+        return None
 
 
 def _strip_points(geometry: dict) -> dict:
@@ -513,6 +556,23 @@ def main() -> None:
         f"{len(price_data)} price records"
     )
 
+    # Detect districts with price data but no Geolytix boundary geometry.
+    boundary_districts = {f["properties"]["PostDist"] for f in boundaries["features"]}
+    pre_join_missing = sorted(d for d in price_data if d not in boundary_districts)
+    if pre_join_missing:
+        print(
+            f"  Warning: {len(pre_join_missing)} district(s) have price data "
+            "but no Geolytix boundary geometry: " + ", ".join(pre_join_missing)
+        )
+        print("Fetching ONS boundary geometry for missing districts…")
+        for d in pre_join_missing:
+            feature = fetch_ons_geometry(d)
+            if feature is not None:
+                boundaries["features"].append(feature)
+                print(f"  ✓ ONS geometry found for {d}")
+            else:
+                print(f"  ✗ No ONS geometry for {d} — district excluded from map")
+
     print("Joining…")
     geojson = build_geojson(boundaries, price_data)
     stats = compute_stats(price_data, metadata)
@@ -522,7 +582,9 @@ def main() -> None:
     )
     stats["facts"]["no_data_count"] = no_data_count
 
-    boundary_districts = {f["properties"]["PostDist"] for f in boundaries["features"]}
+    # Districts still missing geometry after the ONS fallback are surfaced on
+    # the page and written to output/missing_districts.txt.
+    post_join_districts = {f["properties"]["PostDist"] for f in geojson["features"]}
     stats["missing_geometry"] = [
         {
             "district": d,
@@ -530,14 +592,21 @@ def main() -> None:
             "adj_price_per_sqm": v["adj_price_per_sqm"],
         }
         for d, v in sorted(price_data.items())
-        if d not in boundary_districts
+        if d not in post_join_districts
     ]
     if stats["missing_geometry"]:
+        unresolved = [item["district"] for item in stats["missing_geometry"]]
         print(
-            f"  Warning: {len(stats['missing_geometry'])} district(s) have price data "
-            "but no boundary geometry: "
-            + ", ".join(d["district"] for d in stats["missing_geometry"])
+            f"  Warning: {len(unresolved)} district(s) still without boundary "
+            "geometry (excluded from map): " + ", ".join(unresolved)
         )
+        missing_txt = OUTPUT / "missing_districts.txt"
+        missing_txt.write_text(
+            "Districts with price data but no boundary geometry (excluded from map):\n"
+            + "\n".join(unresolved)
+            + "\n"
+        )
+        print(f"  Written → {missing_txt}")
 
     print("Writing GeoJSON…")
     OUT_GEOJSON.write_text(json.dumps(geojson, separators=(",", ":")))
