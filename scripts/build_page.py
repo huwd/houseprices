@@ -16,6 +16,7 @@ import html
 import json
 import pathlib
 import re
+import shutil
 import statistics
 import sys
 
@@ -27,12 +28,16 @@ SCRIPTS = ROOT / "scripts"
 BOUNDARIES_PATH = DATA / "postcode_districts.geojson"
 CSV_PATH = OUTPUT / "price_per_sqm_postcode_district.csv"
 TEMPLATE_PATH = SCRIPTS / "page_template.html"
+CSS_PATH = SCRIPTS / "page.css"
+JS_PATH = SCRIPTS / "page.js"
 VERSION_PATH = OUTPUT / "VERSION.txt"
 CHANGELOG_PATH = OUTPUT / "CHANGELOG.md"
 OUT_HTML = OUTPUT / "index.html"
 # Joined GeoJSON written alongside index.html so the page can fetch() it.
 # Serving separately enables browser caching and CDN gzip compression.
 OUT_GEOJSON = OUTPUT / "postcode_districts.geojson"
+OUT_CSS = OUTPUT / "page.css"
+OUT_JS = OUTPUT / "page.js"
 
 MIN_SALES_FOR_RANKING = 20  # exclude very thin districts from top/bottom tables
 
@@ -310,6 +315,12 @@ def main() -> None:
     OUT_HTML.write_text(rendered)
     size_kb = OUT_HTML.stat().st_size // 1024
     print(f"  Written → {OUT_HTML} ({size_kb:,} KB)")
+
+    shutil.copy2(CSS_PATH, OUT_CSS)
+    shutil.copy2(JS_PATH, OUT_JS)
+    print(f"  Copied  → {OUT_CSS}")
+    print(f"  Copied  → {OUT_JS}")
+
     print(f"  Median: £{stats['median_price_per_sqm']:,}/m²")
     print(f"  Districts: {stats['num_districts']:,}")
     print(f"  Sales: {stats['total_sales']:,}")
