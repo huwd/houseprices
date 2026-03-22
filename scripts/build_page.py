@@ -161,7 +161,9 @@ def load_price_data() -> dict[str, dict]:
     return data
 
 
-def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
+def compute_stats(price_data: dict[str, dict], metadata: dict[str, str]) -> dict:
+    import datetime
+
     prices = sorted(r["price_per_sqm"] for r in price_data.values())
     median = int(statistics.median(prices))
     total_sales = sum(r["num_sales"] for r in price_data.values())
@@ -174,7 +176,12 @@ def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
     ranked.sort(key=lambda r: r["price_per_sqm"])
     ranked_desc = ranked[::-1]
 
-    date_range = f"Jan 1995–{data_date}" if data_date else "Jan 1995–present"
+    if metadata.get("min_sale_date") and metadata.get("max_sale_date"):
+        min_d = datetime.date.fromisoformat(metadata["min_sale_date"])
+        max_d = datetime.date.fromisoformat(metadata["max_sale_date"])
+        date_range = f"{min_d.strftime('%b %Y')}–{max_d.strftime('%b %Y')}"
+    else:
+        date_range = ""
 
     # ── Interesting facts ──────────────────────────────────────────────────────
     # How many consecutive London districts sit at the very top of the table
@@ -278,6 +285,18 @@ def load_version() -> str:
     if not VERSION_PATH.exists():
         return ""
     return "v" + VERSION_PATH.read_text().strip()
+
+
+def load_metadata(output_dir: pathlib.Path | None = None) -> dict[str, str]:
+    """Load output/metadata.json written by the pipeline.
+
+    Returns a dict with ``min_sale_date`` and ``max_sale_date`` (ISO strings),
+    or an empty dict if the file is absent.
+    """
+    path = (output_dir or OUTPUT) / "metadata.json"
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text())  # type: ignore[no-any-return]
 
 
 def load_data_date() -> str:
@@ -484,7 +503,7 @@ def main() -> None:
         sys.exit(1)
 
     version = load_version()
-    data_date = load_data_date()
+    metadata = load_metadata()
 
     print("Loading data…")
     boundaries = json.loads(BOUNDARIES_PATH.read_text())
@@ -496,7 +515,7 @@ def main() -> None:
 
     print("Joining…")
     geojson = build_geojson(boundaries, price_data)
-    stats = compute_stats(price_data, data_date)
+    stats = compute_stats(price_data, metadata)
 
     no_data_count = sum(
         1 for f in geojson["features"] if f["properties"].get("price_per_sqm") is None
