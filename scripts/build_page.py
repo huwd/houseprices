@@ -556,23 +556,6 @@ def main() -> None:
         f"{len(price_data)} price records"
     )
 
-    # Detect districts with price data but no Geolytix boundary geometry.
-    boundary_districts = {f["properties"]["PostDist"] for f in boundaries["features"]}
-    pre_join_missing = sorted(d for d in price_data if d not in boundary_districts)
-    if pre_join_missing:
-        print(
-            f"  Warning: {len(pre_join_missing)} district(s) have price data "
-            "but no Geolytix boundary geometry: " + ", ".join(pre_join_missing)
-        )
-        print("Fetching ONS boundary geometry for missing districts…")
-        for d in pre_join_missing:
-            feature = fetch_ons_geometry(d)
-            if feature is not None:
-                boundaries["features"].append(feature)
-                print(f"  ✓ ONS geometry found for {d}")
-            else:
-                print(f"  ✗ No ONS geometry for {d} — district excluded from map")
-
     print("Joining…")
     geojson = build_geojson(boundaries, price_data)
     stats = compute_stats(price_data, metadata)
@@ -582,9 +565,10 @@ def main() -> None:
     )
     stats["facts"]["no_data_count"] = no_data_count
 
-    # Districts still missing geometry after the ONS fallback are surfaced on
-    # the page and written to output/missing_districts.txt.
-    post_join_districts = {f["properties"]["PostDist"] for f in geojson["features"]}
+    # Districts with price data but no boundary polygon are excluded from the
+    # choropleth map.  Surfaced on the page and written to missing_districts.txt.
+    # Fix by running: uv run scripts/prepare_boundaries.py --augment-ons <DISTRICT>
+    mapped_districts = {f["properties"]["PostDist"] for f in geojson["features"]}
     stats["missing_geometry"] = [
         {
             "district": d,
@@ -592,7 +576,7 @@ def main() -> None:
             "adj_price_per_sqm": v["adj_price_per_sqm"],
         }
         for d, v in sorted(price_data.items())
-        if d not in post_join_districts
+        if d not in mapped_districts
     ]
     if stats["missing_geometry"]:
         unresolved = [item["district"] for item in stats["missing_geometry"]]
