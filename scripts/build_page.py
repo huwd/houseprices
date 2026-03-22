@@ -44,6 +44,10 @@ MIN_SALES_FOR_RANKING = 20  # exclude very thin districts from top/bottom tables
 # Traditional London postcode areas (E, EC, N, NW, SE, SW, W, WC)
 LONDON_AREAS = {"E", "EC", "N", "NW", "SE", "SW", "W", "WC"}
 
+# Postcode areas substantially within Greater London but using non-London prefixes.
+# Excluded from "first district outside Greater London" calculation.
+GREATER_LONDON_FRINGE = {"TW", "KT", "HA", "UB", "CR", "SM", "BR", "DA", "EN", "IG", "RM"}
+
 
 def _postcode_area(district: str) -> str:
     m = re.match(r"^([A-Z]+)", district)
@@ -85,10 +89,11 @@ def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
         else:
             break
 
-    # First (most expensive) district outside London and its rank
+    # First (most expensive) district outside Greater London (traditional areas + fringe)
     first_non_london = None
     for i, r in enumerate(ranked_desc):
-        if _postcode_area(r["district"]) not in LONDON_AREAS:
+        area = _postcode_area(r["district"])
+        if area not in LONDON_AREAS and area not in GREATER_LONDON_FRINGE:
             first_non_london = {
                 "district": r["district"],
                 "rank": i + 1,

@@ -242,9 +242,8 @@ async function init() {
       `Out of ${STATS.num_districts.toLocaleString()} postcode districts analysed, ` +
       `the top ${f.london_streak.toLocaleString()} are all London postcodes and ` +
       `${f.london_in_top_100} of the top 100 are in the capital. ` +
-      `The first district with a non-London postcode prefix is ${dLink(fnl.district)} (Richmond), ` +
-      `ranked ${fnl.rank}${ordinal(fnl.rank)} at £${fnl.price_per_sqm.toLocaleString()}/m² — ` +
-      `technically in Greater London, but the TW area uses a Surrey-style code.`;
+      `The first district outside Greater London is ${dLink(fnl.district)} (Cambridge), ` +
+      `ranked ${fnl.rank}${ordinal(fnl.rank)} at £${fnl.price_per_sqm.toLocaleString()}/m².`;
 
     const p2 =
       `Grey districts have no matched sales data. Most of the ${f.no_data_count.toLocaleString()} grey areas ` +
