@@ -33,13 +33,13 @@
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
           {
-            "context": "lint"
+            "context": "CI / Lint"
           },
           {
-            "context": "typecheck"
+            "context": "CI / Type check"
           },
           {
-            "context": "test"
+            "context": "CI / Test"
           }
         ]
       }
