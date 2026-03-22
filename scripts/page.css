@@ -108,6 +108,35 @@ header a:hover {
   height: 75vh;
   margin: 0 auto;
   display: block;
+  position: relative;
+}
+
+.map-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: var(--color-bg);
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  z-index: 1000;
+  transition: opacity 0.4s ease;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Override Leaflet's default #ddd pre-tile background */

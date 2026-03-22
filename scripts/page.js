@@ -199,6 +199,13 @@ async function init() {
     },
   }).addTo(map);
 
+  // ── Dismiss loading overlay ───────────────────────────────────────────────────
+  const mapLoading = document.getElementById('map-loading');
+  if (mapLoading) {
+    mapLoading.style.opacity = '0';
+    mapLoading.addEventListener('transitionend', () => mapLoading.remove(), {once: true});
+  }
+
   // ── Deep-link: restore district from ?postcode= on page load ─────────────────
   if (initialDistrict) {
     const layer = districtLayers[initialDistrict];
