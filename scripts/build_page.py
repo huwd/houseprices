@@ -373,6 +373,7 @@ def main() -> None:
         template.replace("__STATS__", json.dumps(stats, separators=(",", ":")))
         .replace("__VERSION__", version)
         .replace("__DATA_DATE__", data_date)
+        .replace("__NUM_DISTRICTS__", f"{stats['num_districts']:,}")
         .replace("__CHANGELOG_HTML__", changelog_html)
     )
 
