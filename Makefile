@@ -66,6 +66,12 @@ page:  ## Build output/index.html from pipeline outputs (run boundaries + pipeli
 serve:  ## Serve output/ on http://localhost:8000 for local preview
 	uv run python -m http.server 8000 --directory output
 
+.PHONY: dev
+dev:  ## Watch scripts/ and rebuild page on change; serves output/ on http://localhost:8000
+	@trap 'kill 0' SIGINT; \
+		uv run python -m http.server 8000 --directory output & \
+		uv run watchfiles "make page" scripts/page.js scripts/page.css scripts/page_template.html
+
 # ── Notebook ───────────────────────────────────────────────────────────────
 
 .PHONY: explore
