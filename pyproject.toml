@@ -65,3 +65,9 @@ branch = true
 [tool.coverage.report]
 fail_under = 80
 
+[dependency-groups]
+dev = [
+    "jsonschema>=4.26.0",
+    "pytest-cov>=7.0.0",
+]
+

@@ -1,0 +1,83 @@
+{
+  "version": "v0.2.0",
+  "datasets": [
+    {
+      "name": "Price Per Sqm Postcode District",
+      "filename": "price_per_sqm_postcode_district.csv",
+      "description": "Inflation-adjusted price per m\u00b2 by postcode district (England & Wales, Jan 1995\u2013present). Derived from HM Land Registry Price Paid Data joined to EPC floor areas.",
+      "rows": 2277,
+      "size_bytes": 94383,
+      "schema": [
+        {
+          "name": "postcode_district",
+          "type": "string",
+          "description": "UK postcode district (e.g. SW1A)"
+        },
+        {
+          "name": "num_sales",
+          "type": "integer",
+          "description": "Number of residential sales matched to an EPC record"
+        },
+        {
+          "name": "total_floor_area",
+          "type": "float",
+          "description": "Total floor area of matched properties (m\u00b2)"
+        },
+        {
+          "name": "total_price",
+          "type": "float",
+          "description": "Total transaction value of matched sales (\u00a3)"
+        },
+        {
+          "name": "price_per_sqm",
+          "type": "integer",
+          "description": "Nominal price per m\u00b2 = total_price / total_floor_area (\u00a3). Not a mean of per-property ratios."
+        },
+        {
+          "name": "adj_price_per_sqm",
+          "type": "integer",
+          "description": "CPI-adjusted price per m\u00b2, base January 2026 (\u00a3). Deflated using ONS CPI series D7BT."
+        }
+      ]
+    },
+    {
+      "name": "Price Per Sqm Lsoa",
+      "filename": "price_per_sqm_lsoa.csv",
+      "description": "Inflation-adjusted price per m\u00b2 by 2021 LSOA (England & Wales, Jan 1995\u2013present). Derived from HM Land Registry Price Paid Data joined to EPC floor areas.",
+      "rows": 35659,
+      "size_bytes": 1534491,
+      "schema": [
+        {
+          "name": "LSOA21CD",
+          "type": "string",
+          "description": "ONS 2021 Lower Super Output Area code (e.g. E01000001)"
+        },
+        {
+          "name": "num_sales",
+          "type": "integer",
+          "description": "Number of residential sales matched to an EPC record"
+        },
+        {
+          "name": "total_floor_area",
+          "type": "float",
+          "description": "Total floor area of matched properties (m\u00b2)"
+        },
+        {
+          "name": "total_price",
+          "type": "float",
+          "description": "Total transaction value of matched sales (\u00a3)"
+        },
+        {
+          "name": "price_per_sqm",
+          "type": "integer",
+          "description": "Nominal price per m\u00b2 = total_price / total_floor_area (\u00a3). Not a mean of per-property ratios."
+        },
+        {
+          "name": "adj_price_per_sqm",
+          "type": "integer",
+          "description": "CPI-adjusted price per m\u00b2, base January 2026 (\u00a3). Deflated using ONS CPI series D7BT."
+        }
+      ]
+    }
+  ]
+}

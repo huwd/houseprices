@@ -317,6 +317,105 @@ th:last-child {
 
 
 
+/* ── Download the data ── */
+
+.download-data {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 1.5rem 2rem;
+  transition: padding 0.25s ease;
+}
+
+.download-data h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.download-data p {
+  margin-bottom: 1rem;
+  font-size: 1rem;
+}
+
+.download-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.download-card {
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 1.25rem;
+}
+
+.download-card h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.download-card p {
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  margin-bottom: 0.75rem;
+}
+
+.download-btn {
+  display: inline-block;
+  padding: 0.45rem 1rem;
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: 4px;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 1rem;
+  transition: opacity 0.15s ease;
+}
+
+.download-btn:hover {
+  opacity: 0.85;
+}
+
+.schema-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.schema-table th {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 2px solid var(--color-border);
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.schema-table td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.schema-table td:first-child {
+  white-space: nowrap;
+}
+
+.schema-table td:nth-child(2) {
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .download-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
 .attribution {
   font-size: 0.8rem;
   color: var(--color-muted);
@@ -614,6 +713,7 @@ th:last-child {
   header ul,
   .page-title,
   .tables-row,
+  .download-data,
   .methodology {
     padding-left: 0;
     padding-right: 0;
