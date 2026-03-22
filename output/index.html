@@ -1046,7 +1046,7 @@
 
       function onMouseout(e) {
         if (activeLayer !== e.target) geoLayer.resetStyle(e.target);
-        infoCtrl._render(null);
+        infoCtrl._render(activeLayer ? activeLayer.feature.properties : null);
       }
 
       function setDistrictParam(code) {
