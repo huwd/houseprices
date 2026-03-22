@@ -6,6 +6,7 @@ document.getElementById('stat-districts').textContent =
 document.getElementById('stat-sales').textContent =
   STATS.total_sales.toLocaleString();
 document.getElementById('stat-range').textContent = STATS.date_range;
+document.getElementById('stat-cpi-base').textContent = STATS.cpi_base;
 
 // ── Tables ────────────────────────────────────────────────────────────────────
 function populateTable(id, rows) {
