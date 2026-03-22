@@ -334,6 +334,12 @@ def main() -> None:
     geojson = build_geojson(boundaries, price_data)
     stats = compute_stats(price_data, data_date)
 
+    no_data_count = sum(
+        1 for f in geojson["features"]
+        if f["properties"].get("price_per_sqm") is None
+    )
+    stats["facts"]["no_data_count"] = no_data_count
+
     print("Writing GeoJSON…")
     OUT_GEOJSON.write_text(json.dumps(geojson, separators=(",", ":")))
     geojson_kb = OUT_GEOJSON.stat().st_size // 1024
