@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import csv
+import io
+import json
 import pathlib
 import sys
+import unittest.mock
 
 # build_page.py lives in scripts/ — add it to sys.path so we can import it.
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "scripts"))
@@ -301,3 +304,68 @@ def test_compute_stats_date_range_fallback_when_no_metadata(
     }
     stats = build_page.compute_stats(price_data, {})
     assert stats["date_range"] == ""
+
+
+# ---------------------------------------------------------------------------
+# fetch_ons_geometry
+# ---------------------------------------------------------------------------
+
+_ONS_E20_FEATURE = {
+    "type": "Feature",
+    "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[0.01, 51.5], [0.02, 51.5], [0.02, 51.51], [0.01, 51.5]]],
+    },
+    "properties": {"PostDist": "E20", "GlobalID": "some-guid"},
+}
+
+_ONS_RESPONSE_FOUND = json.dumps(
+    {"type": "FeatureCollection", "features": [_ONS_E20_FEATURE]}
+).encode()
+
+_ONS_RESPONSE_EMPTY = json.dumps(
+    {"type": "FeatureCollection", "features": []}
+).encode()
+
+
+def _mock_urlopen(payload: bytes):
+    """Return a context-manager mock that yields a file-like with *payload*."""
+    cm = unittest.mock.MagicMock()
+    cm.__enter__ = unittest.mock.Mock(return_value=io.BytesIO(payload))
+    cm.__exit__ = unittest.mock.Mock(return_value=False)
+    return unittest.mock.Mock(return_value=cm)
+
+
+def test_fetch_ons_geometry_returns_feature_when_found() -> None:
+    with unittest.mock.patch("urllib.request.urlopen", _mock_urlopen(_ONS_RESPONSE_FOUND)):
+        result = build_page.fetch_ons_geometry("E20")
+    assert result is not None
+    assert result["type"] == "Feature"
+    assert result["geometry"]["type"] == "Polygon"
+
+
+def test_fetch_ons_geometry_sets_postdist_property() -> None:
+    with unittest.mock.patch("urllib.request.urlopen", _mock_urlopen(_ONS_RESPONSE_FOUND)):
+        result = build_page.fetch_ons_geometry("E20")
+    assert result is not None
+    assert result["properties"]["PostDist"] == "E20"
+
+
+def test_fetch_ons_geometry_returns_none_when_no_features() -> None:
+    with unittest.mock.patch("urllib.request.urlopen", _mock_urlopen(_ONS_RESPONSE_EMPTY)):
+        result = build_page.fetch_ons_geometry("ZZ99")
+    assert result is None
+
+
+def test_fetch_ons_geometry_returns_none_on_network_error() -> None:
+    with unittest.mock.patch(
+        "urllib.request.urlopen", side_effect=OSError("network error")
+    ):
+        result = build_page.fetch_ons_geometry("E20")
+    assert result is None
+
+
+def test_fetch_ons_geometry_returns_none_on_bad_json() -> None:
+    with unittest.mock.patch("urllib.request.urlopen", _mock_urlopen(b"not-json")):
+        result = build_page.fetch_ons_geometry("E20")
+    assert result is None
