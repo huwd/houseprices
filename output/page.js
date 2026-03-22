@@ -206,6 +206,104 @@ async function init() {
     mapLoading.addEventListener('transitionend', () => mapLoading.remove(), {once: true});
   }
 
+  // ── Search control (top-left) ─────────────────────────────────────────────────
+  const searchCtrl = L.control({position: 'topleft'});
+  searchCtrl.onAdd = function () {
+    const div = L.DomUtil.create('div', 'search-control');
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+
+    const input = L.DomUtil.create('input', '', div);
+    input.type = 'text';
+    input.placeholder = 'Search postcode…';
+    input.setAttribute('aria-label', 'Search postcode district');
+
+    const suggestions = L.DomUtil.create('div', 'search-suggestions', div);
+    suggestions.style.display = 'none';
+
+    let activeIdx = -1;
+
+    function navigateTo(code) {
+      const layer = districtLayers[code];
+      if (!layer) return;
+      input.value = '';
+      suggestions.style.display = 'none';
+      activeIdx = -1;
+      setDistrictParam(code);
+      map.flyToBounds(layer.getBounds(), {padding: [60, 60], duration: 1.5, maxZoom: 13});
+      map.once('moveend', function () {
+        if (activeLayer) geoLayer.resetStyle(activeLayer);
+        activeLayer = layer;
+        layer.setStyle({weight: 2, color: '#333', fillOpacity: 0.9});
+        layer.bringToFront();
+        infoCtrl._render(layer.feature.properties);
+      });
+    }
+
+    function updateSuggestions() {
+      const q = input.value.trim().toUpperCase();
+      suggestions.innerHTML = '';
+      activeIdx = -1;
+      if (!q) { suggestions.style.display = 'none'; return; }
+
+      const matches = Object.keys(districtLayers)
+        .filter(k => k.startsWith(q))
+        .sort()
+        .slice(0, 7);
+
+      if (!matches.length) { suggestions.style.display = 'none'; return; }
+
+      matches.forEach(code => {
+        const item = L.DomUtil.create('div', 'search-suggestion', suggestions);
+        item.textContent = code;
+        item.addEventListener('mousedown', e => {
+          e.preventDefault(); // prevent input blur before click fires
+          navigateTo(code);
+        });
+      });
+      suggestions.style.display = 'block';
+    }
+
+    input.addEventListener('input', updateSuggestions);
+
+    input.addEventListener('keydown', function (e) {
+      const items = suggestions.querySelectorAll('.search-suggestion');
+      if (!items.length) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIdx = Math.min(activeIdx + 1, items.length - 1);
+        items.forEach((el, i) => el.classList.toggle('search-suggestion--active', i === activeIdx));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIdx = Math.max(activeIdx - 1, 0);
+        items.forEach((el, i) => el.classList.toggle('search-suggestion--active', i === activeIdx));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (activeIdx >= 0) {
+          navigateTo(items[activeIdx].textContent);
+        } else if (items.length === 1) {
+          navigateTo(items[0].textContent);
+        } else {
+          const exact = input.value.trim().toUpperCase();
+          if (districtLayers[exact]) navigateTo(exact);
+        }
+      } else if (e.key === 'Escape') {
+        input.value = '';
+        suggestions.style.display = 'none';
+        activeIdx = -1;
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      // Small delay so mousedown on a suggestion fires before blur hides it
+      setTimeout(() => { suggestions.style.display = 'none'; activeIdx = -1; }, 150);
+    });
+
+    return div;
+  };
+  searchCtrl.addTo(map);
+
   // ── Deep-link: restore district from ?postcode= on page load ─────────────────
   if (initialDistrict) {
     const layer = districtLayers[initialDistrict];
