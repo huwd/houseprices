@@ -436,7 +436,8 @@ async function init() {
     `${dLink(bot2[0].district)} and ${dLink(bot2[1].district)}. ` +
     `Zoom to ${cLink('London', 51.51, -0.13, 10)}, ` +
     `${cLink('Birmingham', 52.48, -1.90, 11)}, ` +
-    `${cLink('Manchester', 53.48, -2.24, 11)}.`;
+    `${cLink('Manchester', 53.48, -2.24, 11)}. ` +
+    `All historic prices have been adjusted for inflation to ${STATS.cpi_base} pounds using the ONS CPI index.`;
 
   // ── Interesting facts strip ───────────────────────────────────────────────────
   const f = STATS.facts;

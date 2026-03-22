@@ -112,6 +112,7 @@ def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
         "num_districts": len(price_data),
         "date_range": date_range,
         "total_sales": total_sales,
+        "cpi_base": "January 2026",  # ONS CPI D7BT base month — update if methodology changes
         "top10": [
             {"district": r["district"], "price_per_sqm": r["price_per_sqm"]}
             for r in ranked_desc[:10]
