@@ -1,6 +1,7 @@
 """Main pipeline: download → join → aggregate."""
 
 import datetime
+import json
 import os
 import pathlib
 import re
@@ -1152,6 +1153,21 @@ def _run_aggregations(
     lsoa_df.to_csv(lsoa_path, index=False)
     console.print(f"  [green]✓[/green]  {len(lsoa_df):,} LSOAs  →  {lsoa_path}")
     console.print()
+
+    # Write metadata.json with actual min/max sale dates from matched data.
+    row = con.execute(f"""
+        SELECT
+            CAST(MIN(date_of_transfer) AS DATE) AS min_sale_date,
+            CAST(MAX(date_of_transfer) AS DATE) AS max_sale_date
+        FROM read_parquet('{matched_parquet}')
+    """).fetchone()
+    metadata: dict[str, str] = {}
+    if row and row[0] is not None and row[1] is not None:
+        metadata["min_sale_date"] = str(row[0])
+        metadata["max_sale_date"] = str(row[1])
+    metadata_path = output_dir / "metadata.json"
+    metadata_path.write_text(json.dumps(metadata, indent=2))
+    console.print(f"  [green]✓[/green]  metadata  →  {metadata_path}")
 
 
 def rematch(
