@@ -471,7 +471,7 @@ async function init() {
       `${dLink('PE35')} is the Sandringham Estate; ` +
       `${dLink('TR23')} is Bryher in the Isles of Scilly, with fewer than ten recorded transactions; ` +
       `and ${dLink('EC2V')}, ${dLink('EC2N')}, ${dLink('EC2R')}, ${dLink('EC3M')}, ${dLink('EC3V')}, and ${dLink('EC4N')} form the densely ` +
-      `financial core of the City of London, where residential properties are rare.`;
+      `financial core of the City of London, where residential properties are also rare.`;
 
     document.getElementById('facts-strip').innerHTML =
       `<p>${p1}</p><p>${p2}</p><p>${p3}</p>`;
