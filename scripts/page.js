@@ -1,3 +1,8 @@
+// ── Feature flags ─────────────────────────────────────────────────────────────
+const FEATURES = {
+  gpsLocate: false,  // #93 — locate button broken; hidden until fixed
+};
+
 // ── Stats strip ───────────────────────────────────────────────────────────────
 document.getElementById('stat-median').textContent =
   '£' + STATS.median_price_per_sqm.toLocaleString();
@@ -237,6 +242,8 @@ async function init() {
   }
 
   // ── Locate control (top-left, below zoom) ─────────────────────────────────────
+  // Disabled: see issue #93
+  if (FEATURES.gpsLocate) {
   const locateCtrl = L.control({position: 'topleft'});
   locateCtrl.onAdd = function () {
     const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
@@ -305,6 +312,7 @@ async function init() {
     return div;
   };
   locateCtrl.addTo(map);
+  } // end FEATURES.gpsLocate
 
   // ── Search control (top-left) ─────────────────────────────────────────────────
   const searchCtrl = L.control({position: 'topleft'});
