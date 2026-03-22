@@ -285,13 +285,19 @@ def test_compute_stats_date_range_uses_metadata_dates(tmp_path: pathlib.Path) ->
         json.dumps({"min_sale_date": "1995-04-01", "max_sale_date": "2026-02-01"})
     )
     meta = build_page.load_metadata(tmp_path)
-    price_data = {"SW1A": {"price_per_sqm": 5000, "adj_price_per_sqm": 5200, "num_sales": 50}}
+    price_data = {
+        "SW1A": {"price_per_sqm": 5000, "adj_price_per_sqm": 5200, "num_sales": 50}
+    }
     stats = build_page.compute_stats(price_data, meta)
     assert stats["date_range"] == "Apr 1995–Feb 2026"
 
 
-def test_compute_stats_date_range_fallback_when_no_metadata(tmp_path: pathlib.Path) -> None:
+def test_compute_stats_date_range_fallback_when_no_metadata(
+    tmp_path: pathlib.Path,
+) -> None:
     """compute_stats falls back gracefully when metadata is empty."""
-    price_data = {"SW1A": {"price_per_sqm": 5000, "adj_price_per_sqm": 5200, "num_sales": 50}}
+    price_data = {
+        "SW1A": {"price_per_sqm": 5000, "adj_price_per_sqm": 5200, "num_sales": 50}
+    }
     stats = build_page.compute_stats(price_data, {})
     assert stats["date_range"] == ""
