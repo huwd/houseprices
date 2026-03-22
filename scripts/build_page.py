@@ -41,6 +41,14 @@ OUT_JS = OUTPUT / "page.js"
 
 MIN_SALES_FOR_RANKING = 20  # exclude very thin districts from top/bottom tables
 
+# Traditional London postcode areas (E, EC, N, NW, SE, SW, W, WC)
+LONDON_AREAS = {"E", "EC", "N", "NW", "SE", "SW", "W", "WC"}
+
+
+def _postcode_area(district: str) -> str:
+    m = re.match(r"^([A-Z]+)", district)
+    return m.group(1) if m else ""
+
 
 def load_price_data() -> dict[str, dict]:
     data: dict[str, dict] = {}
@@ -64,8 +72,35 @@ def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
         if v["num_sales"] >= MIN_SALES_FOR_RANKING
     ]
     ranked.sort(key=lambda r: r["price_per_sqm"])
+    ranked_desc = ranked[::-1]
 
     date_range = f"Jan 1995–{data_date}" if data_date else "Jan 1995–present"
+
+    # ── Interesting facts ──────────────────────────────────────────────────────
+    # How many consecutive London districts sit at the very top of the table
+    london_streak = 0
+    for r in ranked_desc:
+        if _postcode_area(r["district"]) in LONDON_AREAS:
+            london_streak += 1
+        else:
+            break
+
+    # First (most expensive) district outside London and its rank
+    first_non_london = None
+    for i, r in enumerate(ranked_desc):
+        if _postcode_area(r["district"]) not in LONDON_AREAS:
+            first_non_london = {
+                "district": r["district"],
+                "rank": i + 1,
+                "price_per_sqm": r["price_per_sqm"],
+            }
+            break
+
+    # London districts in the top 100
+    london_in_top_100 = sum(
+        1 for r in ranked_desc[:100]
+        if _postcode_area(r["district"]) in LONDON_AREAS
+    )
 
     return {
         "median_price_per_sqm": median,
@@ -74,12 +109,17 @@ def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
         "total_sales": total_sales,
         "top10": [
             {"district": r["district"], "price_per_sqm": r["price_per_sqm"]}
-            for r in ranked[-10:][::-1]
+            for r in ranked_desc[:10]
         ],
         "bottom10": [
             {"district": r["district"], "price_per_sqm": r["price_per_sqm"]}
             for r in ranked[:10]
         ],
+        "facts": {
+            "london_streak": london_streak,
+            "london_in_top_100": london_in_top_100,
+            "first_non_london": first_non_london,
+        },
     }
 
 

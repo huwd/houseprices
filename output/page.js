@@ -233,6 +233,25 @@ async function init() {
     `${cLink('Birmingham', 52.48, -1.90, 11)}, ` +
     `${cLink('Manchester', 53.48, -2.24, 11)}.`;
 
+  // ── Interesting facts strip ───────────────────────────────────────────────────
+  const f = STATS.facts;
+  if (f && f.first_non_london) {
+    const fnl = f.first_non_london;
+    document.getElementById('facts-strip').innerHTML =
+      `Out of ${STATS.num_districts.toLocaleString()} postcode districts analysed, ` +
+      `the top ${f.london_streak.toLocaleString()} are all London postcodes — ` +
+      `${f.london_in_top_100} of the top 100 are in the capital. ` +
+      `The first district outside London is ${dLink(fnl.district)}, ` +
+      `ranked ${fnl.rank}${ordinal(fnl.rank)} at ` +
+      `£${fnl.price_per_sqm.toLocaleString()}/m².`;
+  }
+
+  function ordinal(n) {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return s[(v - 20) % 10] || s[v] || s[0];
+  }
+
   document.addEventListener('click', function (e) {
     const a = e.target.closest('a.map-link');
     if (!a) return;
