@@ -189,12 +189,47 @@ database right 2012."
 
 **Note on E20 (Olympic Park):** E20 was created in late 2012, after this
 dataset was compiled. It is absent from `PostalDistrict.shp` (0 features).
-See `research/postcode-boundary-sources.md` and GitHub issues #80/#81 for the
-known workaround (map E20 sales to E15) and the outstanding task to add a
-proper E20 polygon.
+At build time, `build_page.py` detects any districts with price data but no
+Geolytix geometry and attempts to retrieve the boundary from the ONS Geography
+Portal (see §8 below).  If the ONS fetch succeeds the district appears on the
+map; if it fails the district is listed in `output/missing_districts.txt` and
+the page explains why it is absent.
 
 This replaces the previous boundary source (`scripts/fetch_boundaries.py`)
 which scraped Anna Powell-Smith's Mapbox tileset and is no longer maintained.
+
+---
+
+## 8. ONS Postcode District Boundaries (build-time fallback)
+
+| | |
+|---|---|
+| **API** | ONS Open Geography Portal — ArcGIS FeatureServer |
+| **Licence** | Open Government Licence v3.0 |
+| **Provider** | Office for National Statistics / Ordnance Survey |
+| **URL** | https://geoportal.statistics.gov.uk/ |
+| **Coverage** | Great Britain — current postcode districts (updated annually) |
+| **Format** | GeoJSON via ArcGIS REST query (`f=geojson&outSR=4326`) |
+| **Key field** | `PostDist` (4-char string, e.g. `E20`) — matches Geolytix field name |
+| **Queried by** | `fetch_ons_geometry()` in `scripts/build_page.py` at build time |
+
+Used as a gap-filling fallback for postcode districts present in the pipeline
+output but absent from the Geolytix dataset (districts created after October
+2012).  Only the districts that are missing are fetched — one HTTP request per
+missing district.
+
+The ArcGIS FeatureServer endpoint queried is:
+```
+https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/
+  Postcode_Districts_December_2023_Boundaries_UK_BGC/FeatureServer/0/query
+```
+
+If the ONS fetch fails (network error, district not found) the district is
+excluded from the choropleth map but remains in the CSV outputs.  Unresolved
+districts are written to `output/missing_districts.txt` and named on the page.
+
+Attribution: Contains National Statistics data © Crown copyright and database
+right 2024.  Licensed under the Open Government Licence v3.0.
 
 ---
 
