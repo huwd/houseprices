@@ -323,9 +323,7 @@ _ONS_RESPONSE_FOUND = json.dumps(
     {"type": "FeatureCollection", "features": [_ONS_E20_FEATURE]}
 ).encode()
 
-_ONS_RESPONSE_EMPTY = json.dumps(
-    {"type": "FeatureCollection", "features": []}
-).encode()
+_ONS_RESPONSE_EMPTY = json.dumps({"type": "FeatureCollection", "features": []}).encode()
 
 
 def _mock_urlopen(payload: bytes):
@@ -337,22 +335,27 @@ def _mock_urlopen(payload: bytes):
 
 
 def test_fetch_ons_geometry_returns_feature_when_found() -> None:
-    with unittest.mock.patch("urllib.request.urlopen", _mock_urlopen(_ONS_RESPONSE_FOUND)):
+    mock = _mock_urlopen(_ONS_RESPONSE_FOUND)
+    with unittest.mock.patch("urllib.request.urlopen", mock):
         result = build_page.fetch_ons_geometry("E20")
     assert result is not None
     assert result["type"] == "Feature"
-    assert result["geometry"]["type"] == "Polygon"
+    assert result["geometry"]["type"] == "Polygon"  # type: ignore[index]
 
 
 def test_fetch_ons_geometry_sets_postdist_property() -> None:
-    with unittest.mock.patch("urllib.request.urlopen", _mock_urlopen(_ONS_RESPONSE_FOUND)):
+    mock = _mock_urlopen(_ONS_RESPONSE_FOUND)
+    with unittest.mock.patch("urllib.request.urlopen", mock):
         result = build_page.fetch_ons_geometry("E20")
     assert result is not None
-    assert result["properties"]["PostDist"] == "E20"
+    props = result["properties"]
+    assert isinstance(props, dict)
+    assert props["PostDist"] == "E20"
 
 
 def test_fetch_ons_geometry_returns_none_when_no_features() -> None:
-    with unittest.mock.patch("urllib.request.urlopen", _mock_urlopen(_ONS_RESPONSE_EMPTY)):
+    mock = _mock_urlopen(_ONS_RESPONSE_EMPTY)
+    with unittest.mock.patch("urllib.request.urlopen", mock):
         result = build_page.fetch_ons_geometry("ZZ99")
     assert result is None
 
