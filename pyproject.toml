@@ -28,6 +28,7 @@ dev = [
     "pandas-stubs>=2.2.0",
     "types-requests>=2.32.0",
     "nbstripout>=0.9.0",
+    "watchfiles>=0.24.0",
 ]
 
 [build-system]
