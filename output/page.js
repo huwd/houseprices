@@ -248,7 +248,7 @@ async function init() {
     const p2 =
       `Grey districts have no matched sales data. Most of the ${f.no_data_count.toLocaleString()} grey areas ` +
       `are Scottish postcodes — HM Land Registry Price Paid Data covers England and Wales only ` +
-      `(with the exception of TD5 and TD9, which appear to have some matched EPC data). ` +
+      `(with the exception of ${dLink('TD5')} and ${dLink('TD9')}, which appear to have some matched EPC data). ` +
       `Within England and Wales a handful are absent for other reasons: ` +
       `${dLink('TW6')} is Heathrow Airport; ` +
       `${dLink('W1C')} is the heart of Oxford Street, almost entirely commercial; ` +
