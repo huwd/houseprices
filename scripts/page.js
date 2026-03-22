@@ -94,16 +94,26 @@ async function init() {
     map.setZoom(map.getZoom() + 1);
   }
 
-  L.tileLayer(
-    'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-    {
-      attribution:
-        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> ' +
-        'contributors © <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 19,
-    }
-  ).addTo(map);
+  const darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+
+  const tileOptions = {
+    attribution:
+      '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> ' +
+      'contributors © <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19,
+  };
+
+  function tileUrl(dark) {
+    return `https://{s}.basemaps.cartocdn.com/${dark ? 'dark' : 'light'}_all/{z}/{x}/{y}{r}.png`;
+  }
+
+  let tileLayer = L.tileLayer(tileUrl(darkMq.matches), tileOptions).addTo(map);
+
+  darkMq.addEventListener('change', e => {
+    tileLayer.remove();
+    tileLayer = L.tileLayer(tileUrl(e.matches), tileOptions).addTo(map);
+  });
 
   // Info control (top-right)
   const infoCtrl = L.control({position: 'topright'});
