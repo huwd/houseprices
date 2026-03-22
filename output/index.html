@@ -101,15 +101,19 @@
       <a href="https://www.gov.uk/government/collections/price-paid-data">HM Land Registry's
         Price Paid dataset</a> (standard residential sales to individuals, Jan 1995–Mar 2026).
       Floor area per property is taken from
-      <a href="https://epc.opendatacommunities.org/">Energy Performance Certificates</a>,
-      using the most recent certificate lodged for each property.
+      <a href="https://epc.opendatacommunities.org/">Energy Performance Certificates</a>.
     </p>
     <p>Each sale is matched to its EPC in two stages. First, an exact match on
       the property's Unique Property Reference Number (UPRN) using the
       <a href="https://doi.org/10.20394/agu7hprj">UBDC Price Paid–UPRN lookup table</a>,
-      which covers transactions up to January 2022. For sales after that date — where
-      no UPRN link is available — a second stage matches on postcode plus a normalised
-      address string (combining sub-address, building name or number, and street name).
+      which covers transactions up to January 2022. For each matched sale, the
+      certificate closest in time is used — preferring the most recent one lodged
+      before the sale date, with a fallback to the earliest post-sale certificate
+      if none exists within a ten-year window.
+      For sales after January 2022 — where no UPRN link is available — a second
+      stage matches on postcode plus a normalised address string (combining
+      sub-address, building name or number, and street name), and the most recent
+      certificate for that address is used.
     </p>
     <p>The price per m² for each postcode district is the total transaction value of all
       matched sales divided by their total floor area — not a mean of per-property ratios.
