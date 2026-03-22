@@ -199,6 +199,23 @@ header a:hover {
   color: var(--color-muted);
 }
 
+/* ── Facts strip ── */
+.facts-strip {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 1rem 2rem 0;
+  transition: padding 0.25s ease;
+  font-size: 1rem;
+  color: var(--color-muted);
+}
+
+@media (min-width: 73rem) {
+  .facts-strip {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
 /* ── Tables ── */
 .tables-row {
   display: grid;
