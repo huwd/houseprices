@@ -4,6 +4,16 @@
   --content-width: 73rem;
 }
 
+/* Dark is the default; light overrides via media query. */
+:root {
+  --color-accent: #76cbff;
+  --color-bg: #171a23;
+  --color-text: #ffffff;
+  --color-muted: rgba(255, 255, 255, 0.55);
+  --color-border: #2e3347;
+  --color-card-bg: #1f2433;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     --color-accent: #176da5;
@@ -12,17 +22,6 @@
     --color-muted: rgba(0, 0, 0, 0.55);
     --color-border: #dddddd;
     --color-card-bg: #ffffff;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-accent: #76cbff;
-    --color-bg: #171a23;
-    --color-text: #ffffff;
-    --color-muted: rgba(255, 255, 255, 0.55);
-    --color-border: #2e3347;
-    --color-card-bg: #1f2433;
   }
 }
 
@@ -109,6 +108,11 @@ header a:hover {
   height: 75vh;
   margin: 0 auto;
   display: block;
+}
+
+/* Override Leaflet's default #ddd pre-tile background */
+.leaflet-container {
+  background: var(--color-bg);
 }
 
 /* Leaflet controls inherit body colours */
