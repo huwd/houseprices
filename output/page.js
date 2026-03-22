@@ -262,24 +262,29 @@ async function init() {
         return;
       }
       btn.classList.add('locate-btn--loading');
+
+      function locateError(msg) {
+        btn.classList.remove('locate-btn--loading');
+        btn.classList.add('locate-btn--error');
+        btn.title = msg;
+        setTimeout(() => {
+          btn.classList.remove('locate-btn--error');
+          btn.title = 'Find my location';
+        }, 3000);
+      }
+
       navigator.geolocation.getCurrentPosition(
         pos => {
           btn.classList.remove('locate-btn--loading');
           const {longitude: lng, latitude: lat} = pos.coords;
           const code = findDistrict(lng, lat);
-          if (!code) {
-            btn.classList.add('locate-btn--error');
-            btn.title = 'No district found at your location';
-            setTimeout(() => {
-              btn.classList.remove('locate-btn--error');
-              btn.title = 'Find my location';
-            }, 3000);
-            return;
-          }
+          if (!code) { locateError('No district found at your location'); return; }
           const layer = districtLayers[code];
-          if (!layer) return;
+          if (!layer) { locateError('District data unavailable'); return; }
           setDistrictParam(code);
-          map.flyToBounds(layer.getBounds(), {padding: [60, 60], duration: 1.5, maxZoom: 13});
+          // Use L.geoJSON().getBounds() — Canvas renderer sets layer._bounds lazily
+          const bounds = L.geoJSON(layer.feature).getBounds();
+          map.flyToBounds(bounds, {padding: [60, 60], duration: 1.5, maxZoom: 13});
           map.once('moveend', function () {
             if (activeLayer) geoLayer.resetStyle(activeLayer);
             activeLayer = layer;
@@ -289,15 +294,10 @@ async function init() {
           });
         },
         err => {
-          btn.classList.remove('locate-btn--loading');
-          btn.classList.add('locate-btn--error');
-          btn.title = err.code === 1 ? 'Location access denied' : 'Location unavailable';
-          setTimeout(() => {
-            btn.classList.remove('locate-btn--error');
-            btn.title = 'Find my location';
-          }, 3000);
+          const msg = err.code === 1 ? 'Location access denied' : 'Location unavailable';
+          locateError(msg);
         },
-        {timeout: 10000}
+        {timeout: 10000, enableHighAccuracy: true}
       );
     });
 
