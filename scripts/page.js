@@ -237,13 +237,26 @@ async function init() {
   const f = STATS.facts;
   if (f && f.first_non_london) {
     const fnl = f.first_non_london;
-    document.getElementById('facts-strip').innerHTML =
+    const p1 =
       `Out of ${STATS.num_districts.toLocaleString()} postcode districts analysed, ` +
       `the top ${f.london_streak.toLocaleString()} are all London postcodes and ` +
       `${f.london_in_top_100} of the top 100 are in the capital. ` +
       `The first district with a non-London postcode prefix is ${dLink(fnl.district)} (Richmond), ` +
       `ranked ${fnl.rank}${ordinal(fnl.rank)} at £${fnl.price_per_sqm.toLocaleString()}/m² — ` +
       `technically in Greater London, but the TW area uses a Surrey-style code.`;
+
+    const p2 =
+      `Grey districts have no matched sales data. Most of the ${f.no_data_count.toLocaleString()} grey areas ` +
+      `are Scottish postcodes — HM Land Registry Price Paid Data covers England and Wales only. ` +
+      `Within England and Wales a handful are absent for other reasons: ` +
+      `${dLink('TW6')} is Heathrow Airport; ` +
+      `${dLink('W1C')} is the heart of Oxford Street, almost entirely commercial; ` +
+      `${dLink('PE35')} is the Sandringham Estate; ` +
+      `and ${dLink('EC2V')}, EC2N, EC2R, EC3M, EC3V, and EC4N form the densely ` +
+      `financial core of the City of London, where residential properties are rare.`;
+
+    document.getElementById('facts-strip').innerHTML =
+      `<p>${p1}</p><p>${p2}</p>`;
   }
 
   function ordinal(n) {
