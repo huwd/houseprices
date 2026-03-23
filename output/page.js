@@ -458,10 +458,14 @@ async function init() {
       nonLon.length === 1
         ? ` — the only exception is ${nonLonFmt[0]}`
         : ` — the only exceptions are ${nonLonFmt.slice(0, -1).join(', ')} and ${nonLonFmt[nonLonFmt.length - 1]}`;
+    const lonTop100Str = f.london_in_top_100 === 100
+      ? `all of the top 100 are within Greater London`
+      : `Greater London accounts for ${f.london_in_top_100} of the top 100${nonLonStr}`;
     const p1 =
       `Out of ${STATS.num_districts.toLocaleString()} postcode districts analysed, ` +
-      `the top ${f.london_streak.toLocaleString()} are all in London. ` +
-      `London accounts for ${f.london_in_top_100} of the top 100${nonLonStr}.`;
+      `the top ${f.london_streak.toLocaleString()} are all London postcodes and ${lonTop100Str}. ` +
+      `The first district outside Greater London is ${dLink(fnl.district)} (Cambridge), ` +
+      `ranked ${fnl.rank}${ordinal(fnl.rank)} at £${fnl.price_per_sqm.toLocaleString()}/m².`;
 
     const p2 =
       `Grey districts have no matched sales data. Most of the ${f.no_data_count.toLocaleString()} grey areas ` +
