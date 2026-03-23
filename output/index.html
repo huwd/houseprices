@@ -28,7 +28,7 @@
 
     <p class="intro-text"> It extends the pioneering work of <a href="https://houseprices.anna.ps/">Anna
         Powell-Smith</a> from 2017.
-      I've re-run the analysis with data to Mar 2026, matching records between the Price Paid dataset and floor
+      I've re-run the analysis with data to , matching records between the Price Paid dataset and floor
       area
       from the Energy Performance Certificate dataset.
       The result is a national dataset of price per m² for 2,277 postcode districts.
@@ -98,7 +98,8 @@
   <div class="download-data">
     <h3>Download the data</h3>
     <p>The underlying datasets are available as CSV files, licensed under the
-      <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence v3.0</a>.
+      <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence
+        v3.0</a>.
       A machine-readable index with row counts and file sizes is available as
       <a href="data.json"><code>data.json</code></a>.
     </p>
@@ -107,18 +108,46 @@
         <h4>By postcode district</h4>
         <p>One row per postcode district (e.g. SW1A). 2,277 districts.</p>
         <a class="download-btn" href="price_per_sqm_postcode_district.csv"
-           download="price_per_sqm_postcode_district.csv">Download CSV</a>
+          download="price_per_sqm_postcode_district.csv">Download CSV</a>
         <table class="schema-table">
           <thead>
-            <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+            <tr>
+              <th>Column</th>
+              <th>Type</th>
+              <th>Description</th>
+            </tr>
           </thead>
           <tbody>
-            <tr><td><code>postcode_district</code></td><td>string</td><td>UK postcode district (e.g. SW1A)</td></tr>
-            <tr><td><code>num_sales</code></td><td>integer</td><td>Number of residential sales matched to an EPC record</td></tr>
-            <tr><td><code>total_floor_area</code></td><td>float</td><td>Total floor area of matched properties (m²)</td></tr>
-            <tr><td><code>total_price</code></td><td>float</td><td>Total transaction value of matched sales (£)</td></tr>
-            <tr><td><code>price_per_sqm</code></td><td>integer</td><td>Nominal price per m² = total_price / total_floor_area (£)</td></tr>
-            <tr><td><code>adj_price_per_sqm</code></td><td>integer</td><td>CPI-adjusted price per m², base January 2026 (£), using ONS CPI series D7BT</td></tr>
+            <tr>
+              <td><code>postcode_district</code></td>
+              <td>string</td>
+              <td>UK postcode district (e.g. SW1A)</td>
+            </tr>
+            <tr>
+              <td><code>num_sales</code></td>
+              <td>integer</td>
+              <td>Number of residential sales matched to an EPC record</td>
+            </tr>
+            <tr>
+              <td><code>total_floor_area</code></td>
+              <td>float</td>
+              <td>Total floor area of matched properties (m²)</td>
+            </tr>
+            <tr>
+              <td><code>total_price</code></td>
+              <td>float</td>
+              <td>Total transaction value of matched sales (£)</td>
+            </tr>
+            <tr>
+              <td><code>price_per_sqm</code></td>
+              <td>integer</td>
+              <td>Nominal price per m² = total_price / total_floor_area (£)</td>
+            </tr>
+            <tr>
+              <td><code>adj_price_per_sqm</code></td>
+              <td>integer</td>
+              <td>CPI-adjusted price per m², base January 2026 (£), using ONS CPI series D7BT</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -129,7 +158,7 @@
     <h3>Methodology</h3>
     <p>Sale prices are taken from
       <a href="https://www.gov.uk/government/collections/price-paid-data">HM Land Registry's
-        Price Paid dataset</a> (standard residential sales to individuals, Jan 1995–Mar 2026).
+        Price Paid dataset</a> (standard residential sales to individuals, Jan 1995–).
       Floor area per property is taken from
       <a href="https://epc.opendatacommunities.org/">Energy Performance Certificates</a>.
     </p>
@@ -456,7 +485,7 @@
     </p>
   </div>
 
-  <script>const STATS = {"median_price_per_sqm":2169,"num_districts":2277,"date_range":"Jan 1995\u2013Mar 2026","total_sales":16577000,"cpi_base":"January 2026","top10":[{"district":"W1S","price_per_sqm":26515},{"district":"WC2A","price_per_sqm":24208},{"district":"WC2R","price_per_sqm":20285},{"district":"W1B","price_per_sqm":18387},{"district":"W1K","price_per_sqm":16881},{"district":"EC3R","price_per_sqm":16497},{"district":"W1J","price_per_sqm":16174},{"district":"W1T","price_per_sqm":14672},{"district":"N1C","price_per_sqm":14584},{"district":"WC2E","price_per_sqm":14569}],"bottom10":[{"district":"TS2","price_per_sqm":458},{"district":"TS1","price_per_sqm":570},{"district":"BD3","price_per_sqm":630},{"district":"DN31","price_per_sqm":699},{"district":"CF43","price_per_sqm":702},{"district":"DN1","price_per_sqm":734},{"district":"BD8","price_per_sqm":738},{"district":"BD5","price_per_sqm":750},{"district":"S4","price_per_sqm":763},{"district":"FY1","price_per_sqm":769}],"facts":{"london_streak":72,"london_in_top_100":100,"non_london_top_100":[],"first_non_london":{"district":"CB2","rank":118,"price_per_sqm":4619},"no_data_count":460},"missing_geometry":[{"district":"E20","num_sales":884,"adj_price_per_sqm":8595}]};</script>
+  <script>const STATS = {"median_price_per_sqm":2169,"num_districts":2277,"date_range":"","total_sales":16577000,"cpi_base":"January 2026","top10":[{"district":"W1S","price_per_sqm":26515},{"district":"WC2A","price_per_sqm":24208},{"district":"WC2R","price_per_sqm":20285},{"district":"W1B","price_per_sqm":18387},{"district":"W1K","price_per_sqm":16881},{"district":"EC3R","price_per_sqm":16497},{"district":"W1J","price_per_sqm":16174},{"district":"W1T","price_per_sqm":14672},{"district":"N1C","price_per_sqm":14584},{"district":"WC2E","price_per_sqm":14569}],"bottom10":[{"district":"TS2","price_per_sqm":458},{"district":"TS1","price_per_sqm":570},{"district":"BD3","price_per_sqm":630},{"district":"DN31","price_per_sqm":699},{"district":"CF43","price_per_sqm":702},{"district":"DN1","price_per_sqm":734},{"district":"BD8","price_per_sqm":738},{"district":"BD5","price_per_sqm":750},{"district":"S4","price_per_sqm":763},{"district":"FY1","price_per_sqm":769}],"facts":{"london_streak":72,"london_in_top_100":100,"non_london_top_100":[],"first_non_london":{"district":"CB2","rank":118,"price_per_sqm":4619},"no_data_count":460},"missing_geometry":[{"district":"E20","num_sales":884,"adj_price_per_sqm":8595}]};</script>
   <script src="page.js"></script>
 </body>
 
