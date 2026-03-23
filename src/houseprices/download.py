@@ -9,6 +9,8 @@ Credentials are read from environment variables at call time.  Copy
 file automatically when this module is imported.
 """
 
+import csv
+import datetime
 import json
 import os
 import pathlib
@@ -16,6 +18,7 @@ import shutil
 import subprocess
 import time
 import zipfile
+from dataclasses import dataclass
 
 import requests
 from dotenv import load_dotenv
@@ -641,8 +644,225 @@ def extract_ubdc(data_dir: pathlib.Path) -> pathlib.Path:
     return dest
 
 
+# ---------------------------------------------------------------------------
+# Staleness report
+# ---------------------------------------------------------------------------
+
+# How many months behind the current date CPI is allowed to lag before we
+# consider it stale.  ONS publishes CPI ~6 weeks after the reference month,
+# so the published series is routinely one month behind the calendar month.
+_CPI_LAG_MONTHS = 1
+
+
+@dataclass
+class SourceStatus:
+    """Staleness result for a single data source."""
+
+    name: str  # Human label shown in the table (e.g. "PPD")
+    file: str  # Relative file path shown in the table
+    status: str  # "up_to_date" | "stale" | "static" | "unknown" | "not_downloaded"
+    note: str  # Free-text detail (ETag, last-modified, date, etc.)
+
+
+def _cpi_is_stale(cpi_path: pathlib.Path, now: datetime.date) -> bool:
+    """Return True if *cpi_path* is missing or more than _CPI_LAG_MONTHS behind *now*.
+
+    Reads the ``date`` column (YYYY-MM format) and finds the latest row.
+    A lag of up to _CPI_LAG_MONTHS is expected — ONS publishes CPI data
+    approximately six weeks after the reference month.
+    """
+    if not cpi_path.exists():
+        return True
+    try:
+        with cpi_path.open(newline="") as fh:
+            reader = csv.DictReader(fh)
+            dates = [row["date"] for row in reader if row.get("date")]
+        if not dates:
+            return True
+        latest = max(datetime.date.fromisoformat(d + "-01") for d in dates)
+        # Allow up to _CPI_LAG_MONTHS months of lag.
+        threshold = (now.replace(day=1) - datetime.timedelta(days=1)).replace(day=1)
+        for _ in range(_CPI_LAG_MONTHS - 1):
+            threshold = (threshold - datetime.timedelta(days=1)).replace(day=1)
+        return latest < threshold
+    except Exception:
+        return True
+
+
+def check_status(
+    cache_dir: pathlib.Path = pathlib.Path("cache"),
+    data_dir: pathlib.Path = pathlib.Path("data"),
+    *,
+    bearer_token: str = "",
+) -> list[SourceStatus]:
+    """Check staleness of all six data sources without downloading anything.
+
+    Makes HEAD/GET requests for dynamic sources and compares against stored
+    .meta.json sidecars.  Returns one SourceStatus per source.
+
+    Statuses:
+    - "up_to_date"    — remote matches stored metadata
+    - "stale"         — remote has changed (or no stored metadata)
+    - "not_downloaded"— slim Parquet absent and we can see the remote exists
+    - "unknown"       — network failed or credentials missing; cannot determine
+    - "static"        — no check needed; source does not change (UBDC, LSOA)
+    """
+    statuses: list[SourceStatus] = []
+
+    # PPD ----------------------------------------------------------------
+    ppd_slim = cache_dir / "ppd_slim.parquet"
+    remote = _http_meta(PPD_URL)
+    if not remote:
+        note = "network unreachable"
+        status = "unknown" if ppd_slim.exists() else "unknown"
+    elif not ppd_slim.exists():
+        note = remote.get("Last-Modified", "")
+        status = "not_downloaded"
+    else:
+        stored = _load_meta(ppd_slim)
+        if not stored or not _meta_matches(stored, remote):
+            note = remote.get("Last-Modified", remote.get("ETag", ""))
+            status = "stale"
+        else:
+            note = remote.get("Last-Modified", remote.get("ETag", ""))
+            status = "up_to_date"
+    statuses.append(SourceStatus("PPD", "cache/ppd_slim.parquet", status, note))
+
+    # EPC ----------------------------------------------------------------
+    epc_slim = cache_dir / "epc_slim.parquet"
+    if not bearer_token:
+        statuses.append(
+            SourceStatus(
+                "EPC",
+                "cache/epc_slim.parquet",
+                "unknown",
+                "no credentials (EPC_BEARER_TOKEN not set)",
+            )
+        )
+    else:
+        remote_ts = _epc_last_updated(bearer_token)
+        if not remote_ts:
+            note = "EPC info endpoint unreachable"
+            status = "unknown"
+        elif not epc_slim.exists():
+            status = "not_downloaded"
+            note = f"lastUpdated: {remote_ts}"
+        else:
+            stored = _load_meta(epc_slim)
+            stored_ts = stored.get("lastUpdated", "")
+            if stored_ts == remote_ts:
+                status = "up_to_date"
+                note = f"lastUpdated: {remote_ts}"
+            else:
+                status = "stale"
+                note = f"lastUpdated changed → {remote_ts}"
+        statuses.append(SourceStatus("EPC", "cache/epc_slim.parquet", status, note))
+
+    # UPRN ---------------------------------------------------------------
+    uprn_slim = cache_dir / "uprn_slim.parquet"
+    remote = _http_meta(OS_OPEN_UPRN_URL)
+    if not remote:
+        note = "network unreachable"
+        status = "unknown"
+    elif not uprn_slim.exists():
+        note = remote.get("Last-Modified", "")
+        status = "not_downloaded"
+    else:
+        stored = _load_meta(uprn_slim)
+        if not stored or not _meta_matches(stored, remote):
+            note = remote.get("Last-Modified", remote.get("ETag", ""))
+            status = "stale"
+        else:
+            note = remote.get("Last-Modified", remote.get("ETag", ""))
+            status = "up_to_date"
+    statuses.append(SourceStatus("UPRN", "cache/uprn_slim.parquet", status, note))
+
+    # CPI ----------------------------------------------------------------
+    cpi_path = data_dir / "cpi.csv"
+    today = datetime.date.today()
+    if not cpi_path.exists():
+        cpi_status = "not_downloaded"
+        cpi_note = "cpi.csv not found"
+    elif _cpi_is_stale(cpi_path, today):
+        try:
+            with cpi_path.open(newline="") as fh:
+                reader = csv.DictReader(fh)
+                dates = [row["date"] for row in reader if row.get("date")]
+            latest = max(dates) if dates else "?"
+        except Exception:
+            latest = "?"
+        cpi_status = "stale"
+        cpi_note = f"latest row: {latest}, current month: {today.strftime('%Y-%m')}"
+    else:
+        cpi_status = "up_to_date"
+        cpi_note = ""
+    statuses.append(SourceStatus("CPI", "data/cpi.csv", cpi_status, cpi_note))
+
+    # UBDC ---------------------------------------------------------------
+    statuses.append(
+        SourceStatus(
+            "UBDC",
+            "cache/ubdc_slim.parquet",
+            "static",
+            "coverage ends Jan 2022",
+        )
+    )
+
+    # LSOA ---------------------------------------------------------------
+    statuses.append(
+        SourceStatus(
+            "LSOA",
+            "data/lsoa_boundaries.gpkg",
+            "static",
+            "2021 vintage",
+        )
+    )
+
+    return statuses
+
+
+def print_status_table(statuses: list[SourceStatus]) -> bool:
+    """Print a Rich staleness table and return True if any dynamic source is stale.
+
+    "stale" and "not_downloaded" both count as requiring action.
+    "unknown" does not count as stale (network may be temporarily down).
+    "static" sources are excluded from the stale check.
+    """
+    _STATUS_ICON = {
+        "up_to_date": "[green]✓[/green]",
+        "stale": "[cyan]↻[/cyan]",
+        "not_downloaded": "[red]✗[/red]",
+        "unknown": "[yellow]?[/yellow]",
+        "static": "[dim]—[/dim]",
+    }
+    _STATUS_LABEL = {
+        "up_to_date": "up to date",
+        "stale": "stale",
+        "not_downloaded": "not downloaded",
+        "unknown": "unknown",
+        "static": "static",
+    }
+
+    _console.print()
+    _console.print("  [bold]Data source freshness[/bold]")
+    _console.print()
+    for s in statuses:
+        icon = _STATUS_ICON.get(s.status, "?")
+        label = _STATUS_LABEL.get(s.status, s.status)
+        note = f"  ({s.note})" if s.note else ""
+        _console.print(f"  {s.name:<8}  {s.file:<30}  {icon}  {label:<15}{note}")
+    _console.print()
+
+    return any(
+        s.status in ("stale", "not_downloaded")
+        for s in statuses
+        if s.status != "static"
+    )
+
+
 if __name__ == "__main__":  # pragma: no cover
     import argparse
+    import sys
 
     from houseprices.pipeline import (  # noqa: E402
         prepare_epc,
@@ -654,6 +874,14 @@ if __name__ == "__main__":  # pragma: no cover
     _STEP_NAMES = ("ppd", "epc", "ubdc", "uprn", "lsoa", "cpi", "geolytix")
 
     parser = argparse.ArgumentParser(description="Download raw data files.")
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help=(
+            "Print a staleness report for all data sources and exit. "
+            "Exits non-zero if any dynamic source is stale or not downloaded."
+        ),
+    )
     parser.add_argument(
         "--skip",
         metavar="STEP",
@@ -667,6 +895,13 @@ if __name__ == "__main__":  # pragma: no cover
         ),
     )
     args = parser.parse_args()
+
+    if args.status:
+        _bearer = os.environ.get("EPC_BEARER_TOKEN", "")
+        _statuses = check_status(bearer_token=_bearer)
+        _any_stale = print_status_table(_statuses)
+        sys.exit(1 if _any_stale else 0)
+
     skip: set[str] = set(args.skip)
 
     def _maybe_skip(step: str, outputs: list[pathlib.Path]) -> bool:

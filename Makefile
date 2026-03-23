@@ -8,10 +8,21 @@ install:  ## Install all dependencies (dev + notebook extras)
 
 # ── Data ───────────────────────────────────────────────────────────────────
 
+.PHONY: status
+status:  ## Check data source freshness without downloading (exits non-zero if stale)
+	uv run python src/houseprices/download.py --status
+
 # Pass ARGS="--skip step1 step2 ..." to skip steps, e.g. make download ARGS="--skip ppd epc ubdc uprn lsoa"
 .PHONY: download
 download:  ## Download and extract all raw data (~25 GB). Requires .env credentials. Pass ARGS="--skip ..." to skip steps.
 	uv run python src/houseprices/download.py $(ARGS)
+
+.PHONY: update
+update:  ## Print staleness report then re-download stale sources, wipe join cache, and re-run pipeline
+	-uv run python src/houseprices/download.py --status
+	$(MAKE) download
+	$(MAKE) clean-cache
+	$(MAKE) run
 
 .PHONY: clean-data
 clean-data:  ## Remove downloaded data files from data/ (preserves committed files and dotfiles)
