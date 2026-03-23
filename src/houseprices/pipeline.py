@@ -75,6 +75,7 @@ def normalise_address(saon: str, paon: str, street: str) -> str:
     """Normalise address components into a single uppercase string for matching."""
     parts = " ".join(filter(None, [saon, paon, street]))
     parts = parts.upper()
+    parts = re.sub(r"-", " ", parts)
     parts = re.sub(r"[^\w\s]", "", parts)
     parts = re.sub(r"\s+", " ", parts).strip()
     for pattern, replacement in _ABBREVIATIONS:
@@ -332,7 +333,10 @@ _NORMALISE_MACRO = r"""
                                         regexp_replace(
                                             regexp_replace(
                                                 regexp_replace(
-                                                    upper(s),
+                                                    regexp_replace(
+                                                        upper(s),
+                                                        '-', ' ', 'g'
+                                                    ),
                                                     '[^\w\s]', '', 'g'
                                                 ),
                                                 '\s+', ' ', 'g'
