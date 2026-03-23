@@ -189,55 +189,18 @@ database right 2012."
 
 **Note on E20 (Olympic Park):** E20 was created in late 2012, after this
 dataset was compiled. It is absent from `PostalDistrict.shp` (0 features).
-At build time, `build_page.py` detects any districts with price data but no
-Geolytix geometry and attempts to retrieve the boundary from the ONS Geography
-Portal (see §8 below).  If the ONS fetch succeeds the district appears on the
-map; if it fails the district is listed in `output/missing_districts.txt` and
-the page explains why it is absent.
+`build_page.py` detects districts with price data but no Geolytix geometry
+and writes them to `output/missing_districts.txt`; the page explains why
+they are absent from the map. The ONS ArcGIS FeatureServer that was intended
+as a boundary fallback for E20 was confirmed retired in March 2026 — see
+`research/ons-postcode-boundary-service-retired.md` and issue [#81][i81]
+for options. The E20 → E15 remap (issue [#80][i80]) remains under consideration.
+
+[i80]: https://github.com/huwd/houseprices/issues/80
+[i81]: https://github.com/huwd/houseprices/issues/81
 
 This replaces the previous boundary source (`scripts/fetch_boundaries.py`)
 which scraped Anna Powell-Smith's Mapbox tileset and is no longer maintained.
-
----
-
-## 8. ONS Postcode District Boundaries (build-time fallback)
-
-| | |
-|---|---|
-| **API** | ONS Open Geography Portal — ArcGIS FeatureServer |
-| **Licence** | Open Government Licence v3.0 |
-| **Provider** | Office for National Statistics / Ordnance Survey |
-| **URL** | https://geoportal.statistics.gov.uk/ |
-| **Coverage** | Great Britain — current postcode districts (updated annually) |
-| **Format** | GeoJSON via ArcGIS REST query (`f=geojson&outSR=4326`) |
-| **Key field** | `PostDist` (4-char string, e.g. `E20`) — matches Geolytix field name |
-| **Queried by** | `scripts/prepare_boundaries.py --augment-ons <DISTRICT>` (one-off, baked into `postcode_districts.geojson`) |
-
-Used to permanently bake geometry for postcode districts absent from the
-Geolytix 2012 dataset (e.g. E20, created late 2012) into
-`data/postcode_districts.geojson`.  The `--augment-ons` flag fetches the whole
-postcode area (e.g. all `E*` districts) from ONS, runs mapshaper on them
-together for topology-consistent shared borders, then patches the GeoJSON in
-place.  This is a one-time operation — the result is committed so every build
-uses the pre-baked geometry with no network calls.
-
-At build time `build_page.py` still checks for districts with price data but no
-geometry and writes any to `output/missing_districts.txt` as a safety net.
-
-The ArcGIS FeatureServer endpoint queried is:
-```
-https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/
-  Postcode_Districts_December_2023_Boundaries_UK_BGC/FeatureServer/0/query
-```
-
-Attribution: Source: Office for National Statistics licensed under the Open
-Government Licence v.3.0.  Contains OS data © Crown copyright and database
-right 2023.  Contains Royal Mail data © Royal Mail copyright and database
-right 2023.
-
-**Note on vintage:** The December 2023 layer is the latest available postcode
-district BGC boundary product as of March 2026 — ONS have released December 2024
-updates for LADs and Counties but not yet for postcode districts.
 
 ---
 
