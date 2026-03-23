@@ -198,16 +198,20 @@ def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
             }
             break
 
-    # London districts in the top 100
+    # Greater London districts in the top 100 (traditional prefixes + fringe areas)
     london_in_top_100 = sum(
-        1 for r in ranked_desc[:100] if _postcode_area(r["district"]) in LONDON_AREAS
+        1
+        for r in ranked_desc[:100]
+        if _postcode_area(r["district"]) in LONDON_AREAS
+        or _postcode_area(r["district"]) in GREATER_LONDON_FRINGE
     )
 
-    # Non-London districts in the top 100 (traditional London prefix areas only)
+    # Districts in the top 100 that are genuinely outside Greater London
     non_london_top_100 = [
         {"district": r["district"], "rank": i + 1}
         for i, r in enumerate(ranked_desc[:100])
         if _postcode_area(r["district"]) not in LONDON_AREAS
+        and _postcode_area(r["district"]) not in GREATER_LONDON_FRINGE
     ]
 
     return {
