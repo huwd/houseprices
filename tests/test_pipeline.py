@@ -101,7 +101,8 @@ def test_normalise_address_unit_mid_string() -> None:
 def test_normalise_address_hyphen_in_street_becomes_space() -> None:
     # Hyphens are word separators — replace with space so that
     # "CROSS-O-THE-HANDS" matches "CROSS O THE HANDS"
-    assert normalise_address("", "HILLSIDE", "CROSS-O-THE-HANDS") == "HILLSIDE CROSS O THE HANDS"
+    result = normalise_address("", "HILLSIDE", "CROSS-O-THE-HANDS")
+    assert result == "HILLSIDE CROSS O THE HANDS"
 
 
 def test_normalise_address_hyphenated_property_name_becomes_space() -> None:
