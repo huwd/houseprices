@@ -68,9 +68,7 @@ serve:  ## Serve output/ on http://localhost:8000 for local preview
 
 .PHONY: dev
 dev:  ## Watch scripts/ and rebuild page on change; live-reloads browser on http://localhost:8000
-	@trap 'kill 0' INT; \
-		uv run livereload output/ --port 8000 & \
-		uv run watchfiles "make page" scripts/page.js scripts/page.css scripts/page_template.html
+	uv run python scripts/dev_server.py
 
 # ── Notebook ───────────────────────────────────────────────────────────────
 
