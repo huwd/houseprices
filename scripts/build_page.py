@@ -203,6 +203,13 @@ def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
         1 for r in ranked_desc[:100] if _postcode_area(r["district"]) in LONDON_AREAS
     )
 
+    # Non-London districts in the top 100 (traditional London prefix areas only)
+    non_london_top_100 = [
+        {"district": r["district"], "rank": i + 1}
+        for i, r in enumerate(ranked_desc[:100])
+        if _postcode_area(r["district"]) not in LONDON_AREAS
+    ]
+
     return {
         "median_price_per_sqm": median,
         "num_districts": len(price_data),
@@ -221,6 +228,7 @@ def compute_stats(price_data: dict[str, dict], data_date: str) -> dict:
         "facts": {
             "london_streak": london_streak,
             "london_in_top_100": london_in_top_100,
+            "non_london_top_100": non_london_top_100,
             "first_non_london": first_non_london,
         },
     }
