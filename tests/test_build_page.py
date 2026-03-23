@@ -301,3 +301,92 @@ def test_compute_stats_date_range_fallback_when_no_metadata(
     }
     stats = build_page.compute_stats(price_data, {})
     assert stats["date_range"] == ""
+
+
+# ---------------------------------------------------------------------------
+# load_price_data — property_type filtering (issue #69)
+# ---------------------------------------------------------------------------
+
+
+def test_load_price_data_returns_only_all_rows(tmp_path: pathlib.Path) -> None:
+    """load_price_data must return only ALL rollup rows, not per-type rows."""
+    csv_path = tmp_path / "price_per_sqm_postcode_district.csv"
+    _write_csv(
+        csv_path,
+        [
+            {
+                "postcode_district": "SW1A",
+                "property_type": "ALL",
+                "num_sales": 100,
+                "total_price": 50000000,
+                "total_floor_area": 10000,
+                "price_per_sqm": 5000,
+                "adj_price_per_sqm": 5200,
+            },
+            {
+                "postcode_district": "SW1A",
+                "property_type": "F",
+                "num_sales": 60,
+                "total_price": 30000000,
+                "total_floor_area": 5000,
+                "price_per_sqm": 6000,
+                "adj_price_per_sqm": 6240,
+            },
+            {
+                "postcode_district": "SW1A",
+                "property_type": "T",
+                "num_sales": 40,
+                "total_price": 20000000,
+                "total_floor_area": 5000,
+                "price_per_sqm": 4000,
+                "adj_price_per_sqm": 4160,
+            },
+        ],
+    )
+
+    import unittest.mock as mock
+
+    with mock.patch.object(build_page, "CSV_PATH", csv_path):
+        data = build_page.load_price_data()
+
+    assert set(data.keys()) == {"SW1A"}
+    assert data["SW1A"]["num_sales"] == 100
+    assert data["SW1A"]["price_per_sqm"] == 5000
+
+
+def test_load_price_data_no_duplicate_keys_from_type_rows(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Per-type rows must not overwrite ALL row in the returned dict."""
+    csv_path = tmp_path / "price_per_sqm_postcode_district.csv"
+    _write_csv(
+        csv_path,
+        [
+            {
+                "postcode_district": "E1",
+                "property_type": "ALL",
+                "num_sales": 200,
+                "total_price": 80000000,
+                "total_floor_area": 20000,
+                "price_per_sqm": 4000,
+                "adj_price_per_sqm": 4200,
+            },
+            {
+                "postcode_district": "E1",
+                "property_type": "F",
+                "num_sales": 150,
+                "total_price": 65000000,
+                "total_floor_area": 13000,
+                "price_per_sqm": 5000,
+                "adj_price_per_sqm": 5250,
+            },
+        ],
+    )
+
+    import unittest.mock as mock
+
+    with mock.patch.object(build_page, "CSV_PATH", csv_path):
+        data = build_page.load_price_data()
+
+    assert data["E1"]["num_sales"] == 200
+    assert data["E1"]["price_per_sqm"] == 4000

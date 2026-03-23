@@ -1319,6 +1319,99 @@ def test_run_aggregations_adj_price_per_sqm_above_nominal(
 
 
 # ---------------------------------------------------------------------------
+# property_type segmentation in district CSV (issue #69)
+# ---------------------------------------------------------------------------
+
+
+def test_run_aggregations_district_csv_has_property_type_column(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """District CSV must contain a property_type column."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1,
+        console=Console(quiet=True)
+    )
+    df = pd.read_csv(output_dir / "price_per_sqm_postcode_district.csv")
+    assert "property_type" in df.columns
+
+
+def test_run_aggregations_district_csv_has_all_rows(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """District CSV must include ALL rollup rows for each district."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1,
+        console=Console(quiet=True)
+    )
+    df = pd.read_csv(output_dir / "price_per_sqm_postcode_district.csv")
+    assert "ALL" in df["property_type"].values
+
+
+def test_run_aggregations_district_csv_has_per_type_rows(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """District CSV must include per-type rows (T and F present in fixtures)."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1,
+        console=Console(quiet=True)
+    )
+    df = pd.read_csv(output_dir / "price_per_sqm_postcode_district.csv")
+    types = set(df["property_type"].values)
+    # Fixtures have T (terraced) and F (flat) in SD1
+    assert "T" in types
+    assert "F" in types
+
+
+def test_run_aggregations_all_row_num_sales_equals_sum_of_type_rows(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """ALL row num_sales must equal the sum of per-type num_sales for same district."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1,
+        console=Console(quiet=True)
+    )
+    df = pd.read_csv(output_dir / "price_per_sqm_postcode_district.csv")
+    sd1_all = df[(df["postcode_district"] == "SD1") & (df["property_type"] == "ALL")]
+    sd1_types = df[(df["postcode_district"] == "SD1") & (df["property_type"] != "ALL")]
+    assert sd1_all.iloc[0]["num_sales"] == sd1_types["num_sales"].sum()
+
+
+def test_run_aggregations_min_sales_type_filters_sparse_type_rows(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """Per-type rows below min_sales_type are excluded; ALL rows use min_sales."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    # SD1/F has 1 sale; with min_sales_type=2 it should be excluded
+    _run_aggregations(
+        matched,
+        uprn_lsoa,
+        ppd_slim,
+        output_dir,
+        min_sales=1,
+        min_sales_type=2,
+        console=Console(quiet=True),
+    )
+    df = pd.read_csv(output_dir / "price_per_sqm_postcode_district.csv")
+    sd1_types = df[(df["postcode_district"] == "SD1") & (df["property_type"] != "ALL")]
+    assert "F" not in sd1_types["property_type"].values
+    assert "T" in sd1_types["property_type"].values  # 2 sales → kept
+
+
+# ---------------------------------------------------------------------------
 # adjusted_price column in join output (issue #67)
 # ---------------------------------------------------------------------------
 
