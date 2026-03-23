@@ -106,7 +106,8 @@
     <div class="download-cards">
       <div class="download-card">
         <h4>By postcode district</h4>
-        <p>One row per postcode district (e.g. SW1A). 2,277 districts.</p>
+        <p>One row per postcode district × property type, plus an <code>ALL</code> rollup row per
+          district. 2,277 districts.</p>
         <a class="download-btn" href="price_per_sqm_postcode_district.csv"
           download="price_per_sqm_postcode_district.csv">Download CSV</a>
         <table class="schema-table">
@@ -122,6 +123,13 @@
               <td><code>postcode_district</code></td>
               <td>string</td>
               <td>UK postcode district (e.g. SW1A)</td>
+            </tr>
+            <tr>
+              <td><code>property_type</code></td>
+              <td>string</td>
+              <td>Property type: <code>ALL</code> (rollup), <code>D</code> detached,
+                <code>F</code> flat/maisonette, <code>S</code> semi-detached,
+                <code>T</code> terraced, <code>O</code> other</td>
             </tr>
             <tr>
               <td><code>num_sales</code></td>
