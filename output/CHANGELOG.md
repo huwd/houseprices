@@ -62,6 +62,38 @@ across all property types.
 
 - Issue: [#115](https://github.com/huwd/houseprices/issues/115)
 
+#### Matching: tier 4 — ADDRESS1-only join for named properties
+
+A new fourth matching tier recovers rural named properties that
+tier 2/3 cannot reach due to a structural mismatch between PPD and EPC
+address fields.
+
+**The gap:** where PPD has no `street` field, the tier-2/3 normalised
+key equals the property name alone (`"ROSE COTTAGE"`). The EPC key is
+`ADDRESS1 + ADDRESS2`, and `ADDRESS2` often contains a village name
+(`"Rose Cottage Testvillage"`). These keys never match even when
+`ADDRESS1` exactly equals the PPD property name.
+
+Sampling (March 2026): **35.7% of unmatched named-paon detached
+records** (210,285 of 589,685) have a null `street` in PPD. 21.8% of
+unmatched `ROSE COTTAGE` PPD transactions have an EPC at the same
+postcode with `ADDRESS1 = "ROSE COTTAGE"` exactly — a real match that
+was unreachable.
+
+**Tier 4 approach:**
+- Only PPD records where `paon` contains no digits are considered.
+- PPD key: `(postcode, normalise_addr(paon))`.
+- EPC key: `(postcode, normalise_addr(ADDRESS1))` — ADDRESS2 is ignored.
+- Only **1:1 matches** are accepted on both sides, limiting false
+  positives at postcode granularity.
+
+The tier benefits automatically from the normaliser improvements in
+#113, #114, and #115 (THE-stripping, hyphen→space, compound words).
+
+Yield to be measured on next full pipeline run.
+
+- Issue: [#116](https://github.com/huwd/houseprices/issues/116)
+
 ### Workarounds
 
 #### E20 postcode district remapped to E15
