@@ -21,6 +21,24 @@ across all property types.
 
 - Issue: [#114](https://github.com/huwd/houseprices/issues/114)
 
+#### Address normalisation: article "THE" removed before matching
+
+The word "THE" is now stripped from both PPD and EPC addresses before
+the normalised match key is computed. "THE OLD RECTORY" and
+"OLD RECTORY" — the same property in different sources — previously
+produced different keys and went unmatched.
+
+The removal uses a whole-word match (`\bTHE\b`) so property names that
+contain "THE" as a substring (e.g. `THETFORD`, `THEYDON`) are
+unaffected. Both sides receive the same transformation, so false
+positives require two distinct properties to have the same name
+minus the article at the same postcode — structurally very unlikely.
+
+Measured gain on the March 2026 dataset: **+4,995 matched records**
+across all property types.
+
+- Issue: [#113](https://github.com/huwd/houseprices/issues/113)
+
 ### Workarounds
 
 #### E20 postcode district remapped to E15
