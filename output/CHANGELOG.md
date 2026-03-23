@@ -39,6 +39,29 @@ across all property types.
 
 - Issue: [#113](https://github.com/huwd/houseprices/issues/113)
 
+#### Address normalisation: compound property-name words canonicalised
+
+EPC assessors inconsistently split or join compound words in property
+names. The following pairs are now collapsed to a single canonical
+one-word form before matching:
+
+| Two-word form | One-word canonical |
+|---|---|
+| FARM HOUSE | FARMHOUSE |
+| GATE HOUSE | GATEHOUSE |
+| SCHOOL HOUSE | SCHOOLHOUSE |
+| MILL HOUSE | MILLHOUSE |
+| ALMS HOUSE | ALMSHOUSE |
+
+Unmatched detached counts in the March 2026 data show significant
+splits: SCHOOL HOUSE vs SCHOOLHOUSE (3,947 vs 130), MILL HOUSE vs
+MILLHOUSE (2,218 vs 54), FARM HOUSE vs FARMHOUSE (3,364 vs 4,048).
+
+Measured gain on the March 2026 dataset: **+342 matched records**
+across all property types.
+
+- Issue: [#115](https://github.com/huwd/houseprices/issues/115)
+
 ### Workarounds
 
 #### E20 postcode district remapped to E15
