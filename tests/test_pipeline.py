@@ -9,6 +9,7 @@ import pytest
 from rich.console import Console
 
 from houseprices.pipeline import (
+    POSTCODE_DISTRICT_OVERRIDES,
     Geography,
     _configure_duckdb,
     _fmt_elapsed,
@@ -295,6 +296,62 @@ def test_aggregate_output_columns(
         "total_price",
         "total_floor_area",
     }
+
+
+# ---------------------------------------------------------------------------
+# POSTCODE_DISTRICT_OVERRIDES / E20 → E15 remapping
+# ---------------------------------------------------------------------------
+
+
+def test_postcode_district_overrides_maps_e20_to_e15() -> None:
+    """POSTCODE_DISTRICT_OVERRIDES must remap E20 to E15."""
+    assert POSTCODE_DISTRICT_OVERRIDES.get("E20") == "E15"
+
+
+def test_aggregate_e20_remapped_to_e15() -> None:
+    """E20 records must be folded into E15 after district override is applied."""
+    df = pd.DataFrame(
+        {
+            "postcode": ["E15 1AA", "E15 2BB", "E20 1AA"],
+            "price": [300_000, 200_000, 400_000],
+            "TOTAL_FLOOR_AREA": [75.0, 50.0, 100.0],
+        }
+    )
+    result = aggregate_by_geography(df, Geography.POSTCODE_DISTRICT, min_sales=1)
+    districts = set(result["postcode_district"])
+    assert "E15" in districts
+    assert "E20" not in districts
+
+
+def test_aggregate_e20_sales_count_merged_into_e15() -> None:
+    """E15 num_sales must include E20 records after remapping."""
+    df = pd.DataFrame(
+        {
+            "postcode": ["E15 1AA", "E15 2BB", "E20 1AA"],
+            "price": [300_000, 200_000, 400_000],
+            "TOTAL_FLOOR_AREA": [75.0, 50.0, 100.0],
+        }
+    )
+    result = aggregate_by_geography(df, Geography.POSTCODE_DISTRICT, min_sales=1)
+    e15 = result[result["postcode_district"] == "E15"]
+    assert e15.iloc[0]["num_sales"] == 3
+
+
+def test_aggregate_e20_price_per_sqm_merged() -> None:
+    """price_per_sqm for merged E15 must be total/total across all three records."""
+    # 300000 + 200000 + 400000 = 900000
+    # 75 + 50 + 100 = 225
+    # 900000 / 225 = 4000
+    df = pd.DataFrame(
+        {
+            "postcode": ["E15 1AA", "E15 2BB", "E20 1AA"],
+            "price": [300_000, 200_000, 400_000],
+            "TOTAL_FLOOR_AREA": [75.0, 50.0, 100.0],
+        }
+    )
+    result = aggregate_by_geography(df, Geography.POSTCODE_DISTRICT, min_sales=1)
+    e15 = result[result["postcode_district"] == "E15"]
+    assert e15.iloc[0]["price_per_sqm"] == 4000
 
 
 # ---------------------------------------------------------------------------
