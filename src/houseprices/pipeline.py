@@ -78,6 +78,8 @@ def normalise_address(saon: str, paon: str, street: str) -> str:
     parts = re.sub(r"-", " ", parts)
     parts = re.sub(r"[^\w\s]", "", parts)
     parts = re.sub(r"\s+", " ", parts).strip()
+    parts = re.sub(r"\bTHE\b", "", parts)
+    parts = re.sub(r"\s+", " ", parts).strip()
     for pattern, replacement in _ABBREVIATIONS:
         parts = re.sub(pattern, replacement, parts)
     return parts
@@ -334,10 +336,16 @@ _NORMALISE_MACRO = r"""
                                             regexp_replace(
                                                 regexp_replace(
                                                     regexp_replace(
-                                                        upper(s),
-                                                        '-', ' ', 'g'
+                                                        regexp_replace(
+                                                            regexp_replace(
+                                                                upper(s),
+                                                                '-', ' ', 'g'
+                                                            ),
+                                                            '[^\w\s]', '', 'g'
+                                                        ),
+                                                        '\s+', ' ', 'g'
                                                     ),
-                                                    '[^\w\s]', '', 'g'
+                                                    '\bTHE\b', '', 'g'
                                                 ),
                                                 '\s+', ' ', 'g'
                                             ),
