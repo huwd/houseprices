@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Methodology improvements
+
+#### Address normalisation: hyphens treated as word separators
+
+Hyphens in PPD and EPC address fields are now replaced with a space
+before matching, rather than silently removed. Previously, a hyphenated
+address such as `CROSS-O-THE-HANDS` was collapsed to
+`CROSSOTHEHANDS`, which no longer matched the same address written with
+spaces in the other source.
+
+The fix applies to both the Python normaliser and the DuckDB macro used
+in tier-2 and tier-3 joins. Non-hyphen punctuation (apostrophes,
+periods) is still stripped without adding a space.
+
+Measured gain on the March 2026 dataset: **+2,428 matched records**
+across all property types.
+
+- Issue: [#114](https://github.com/huwd/houseprices/issues/114)
+
 ### Workarounds
 
 #### E20 postcode district remapped to E15
