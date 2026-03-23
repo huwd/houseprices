@@ -452,12 +452,16 @@ async function init() {
   const f = STATS.facts;
   if (f && f.first_non_london) {
     const fnl = f.first_non_london;
+    const nonLon = f.non_london_top_100 || [];
+    const nonLonFmt = nonLon.map(d => `${dLink(d.district)} (${d.rank}${ordinal(d.rank)})`);
+    const nonLonStr = nonLon.length === 0 ? '' :
+      nonLon.length === 1
+        ? ` — the only exception is ${nonLonFmt[0]}`
+        : ` — the only exceptions are ${nonLonFmt.slice(0, -1).join(', ')} and ${nonLonFmt[nonLonFmt.length - 1]}`;
     const p1 =
       `Out of ${STATS.num_districts.toLocaleString()} postcode districts analysed, ` +
-      `the top ${f.london_streak.toLocaleString()} are all London postcodes and ` +
-      `${f.london_in_top_100} of the top 100 are in the capital. ` +
-      `The first district outside Greater London is ${dLink(fnl.district)} (Cambridge), ` +
-      `ranked ${fnl.rank}${ordinal(fnl.rank)} at £${fnl.price_per_sqm.toLocaleString()}/m².`;
+      `the top ${f.london_streak.toLocaleString()} are all in London. ` +
+      `London accounts for ${f.london_in_top_100} of the top 100${nonLonStr}.`;
 
     const p2 =
       `Grey districts have no matched sales data. Most of the ${f.no_data_count.toLocaleString()} grey areas ` +
