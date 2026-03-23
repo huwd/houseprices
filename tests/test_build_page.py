@@ -257,7 +257,6 @@ def test_build_data_json_version_included(tmp_path: pathlib.Path) -> None:
     assert result.get("version") == "v1.2.3"
 
 
-
 # ---------------------------------------------------------------------------
 # load_metadata (issue #89)
 # ---------------------------------------------------------------------------
