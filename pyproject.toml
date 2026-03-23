@@ -69,6 +69,7 @@ fail_under = 80
 [dependency-groups]
 dev = [
     "jsonschema>=4.26.0",
+    "livereload>=2.7.1",
     "pytest-cov>=7.0.0",
 ]
 
