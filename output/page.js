@@ -364,10 +364,12 @@ async function init() {
             const msg =
               err.code === 1
                 ? "Location access denied"
-                : "Location unavailable";
+                : err.code === 3
+                  ? "Location timed out — try again"
+                  : "Location unavailable";
             locateError(msg);
           },
-          { timeout: 10000 },
+          { timeout: 30000, maximumAge: 300000 },
         );
       });
 
