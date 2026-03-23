@@ -132,6 +132,37 @@ def test_normalise_address_the_only_stripped_as_whole_word() -> None:
     assert normalise_address("", "THETFORD HOUSE", "") == "THETFORD HOUSE"
 
 
+def test_normalise_address_farm_house_canonicalised() -> None:
+    # "FARM HOUSE" and "FARMHOUSE" must produce the same key
+    assert normalise_address("", "FARM HOUSE", "LONG LANE") == normalise_address(
+        "", "FARMHOUSE", "LONG LANE"
+    )
+
+
+def test_normalise_address_gate_house_canonicalised() -> None:
+    assert normalise_address("", "GATE HOUSE", "MILL ROAD") == normalise_address(
+        "", "GATEHOUSE", "MILL ROAD"
+    )
+
+
+def test_normalise_address_school_house_canonicalised() -> None:
+    assert normalise_address("", "SCHOOL HOUSE", "CHURCH STREET") == normalise_address(
+        "", "SCHOOLHOUSE", "CHURCH STREET"
+    )
+
+
+def test_normalise_address_mill_house_canonicalised() -> None:
+    assert normalise_address("", "MILL HOUSE", "RIVER LANE") == normalise_address(
+        "", "MILLHOUSE", "RIVER LANE"
+    )
+
+
+def test_normalise_address_alms_house_canonicalised() -> None:
+    assert normalise_address("", "ALMS HOUSE", "HIGH STREET") == normalise_address(
+        "", "ALMSHOUSE", "HIGH STREET"
+    )
+
+
 # ---------------------------------------------------------------------------
 # aggregate
 # ---------------------------------------------------------------------------
