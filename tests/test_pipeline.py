@@ -98,6 +98,23 @@ def test_normalise_address_unit_mid_string() -> None:
     assert result == "FLAT 4B 22 MILL LANE"
 
 
+def test_normalise_address_hyphen_in_street_becomes_space() -> None:
+    # Hyphens are word separators — replace with space so that
+    # "CROSS-O-THE-HANDS" matches "CROSS O THE HANDS"
+    assert normalise_address("", "HILLSIDE", "CROSS-O-THE-HANDS") == "HILLSIDE CROSS O THE HANDS"
+
+
+def test_normalise_address_hyphenated_property_name_becomes_space() -> None:
+    # Hyphenated property names (EPC style) normalise to space-separated
+    assert normalise_address("", "ROSE-COTTAGE", "") == "ROSE COTTAGE"
+
+
+def test_normalise_address_apostrophe_still_stripped() -> None:
+    # Apostrophes (possessives) are stripped without adding a space —
+    # existing behaviour must be preserved alongside the hyphen change
+    assert normalise_address("", "12A", "ST. JOHN'S ROAD") == "12A ST JOHNS ROAD"
+
+
 # ---------------------------------------------------------------------------
 # aggregate
 # ---------------------------------------------------------------------------
