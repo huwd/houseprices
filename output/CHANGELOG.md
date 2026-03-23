@@ -1,5 +1,24 @@
 # Analysis Changelog
 
+## [Unreleased]
+
+### Workarounds
+
+#### E20 postcode district remapped to E15
+
+E20 (Queen Elizabeth Olympic Park / East Village, Stratford) was created by
+Royal Mail circa 2012 — after our Geolytix boundary snapshot — by carving it
+out of E15. Because no polygon exists for E20 in our boundary file, any PPD or
+EPC record with an E20 postcode was previously silently dropped at aggregation.
+
+As an interim fix, all E20 records are now folded into E15 before aggregation.
+E20 and E15 are geographically contiguous and were administered as a single
+district before 2012, so this is a reasonable approximation. The workaround
+will be removed once a proper E20 polygon is available (issue #81).
+
+Affected output: `price_per_sqm_postcode_district.csv` — E15 figures now
+include 884 previously lost E20 sales.
+
 ## [0.2.0] — 2026-03-19
 
 ### Data vintages
