@@ -10,7 +10,7 @@ install:  ## Install all dependencies (dev + notebook extras)
 
 .PHONY: status
 status:  ## Check data source freshness without downloading
-	-uv run python src/houseprices/download.py --status
+	uv run python src/houseprices/download.py --status || true
 
 # Pass ARGS="--skip step1 step2 ..." to skip steps, e.g. make download ARGS="--skip ppd epc ubdc uprn lsoa"
 .PHONY: download
