@@ -68,6 +68,11 @@ _ABBREVIATIONS: list[tuple[str, str]] = [
     (r"\bCT\b", "COURT"),
     (r"\bGDNS\b", "GARDENS"),
     (r"\bHSE\b", "HOUSE"),
+    (r"\bFARM HOUSE\b", "FARMHOUSE"),
+    (r"\bGATE HOUSE\b", "GATEHOUSE"),
+    (r"\bSCHOOL HOUSE\b", "SCHOOLHOUSE"),
+    (r"\bMILL HOUSE\b", "MILLHOUSE"),
+    (r"\bALMS HOUSE\b", "ALMSHOUSE"),
 ]
 
 
@@ -323,51 +328,66 @@ def load_epc(epc_path: str | pathlib.Path) -> pd.DataFrame:
 
 
 _NORMALISE_MACRO = r"""
-    CREATE OR REPLACE MACRO normalise_addr(s) AS (
-        trim(regexp_replace(
+  CREATE OR REPLACE MACRO normalise_addr(s) AS (
+    trim(regexp_replace(
+      regexp_replace(
+        regexp_replace(
+          regexp_replace(
             regexp_replace(
+              regexp_replace(
                 regexp_replace(
+                  regexp_replace(
                     regexp_replace(
+                      regexp_replace(
                         regexp_replace(
+                          regexp_replace(
                             regexp_replace(
+                              regexp_replace(
                                 regexp_replace(
+                                  regexp_replace(
                                     regexp_replace(
+                                      regexp_replace(
                                         regexp_replace(
-                                            regexp_replace(
-                                                regexp_replace(
-                                                    regexp_replace(
-                                                        regexp_replace(
-                                                            regexp_replace(
-                                                                upper(s),
-                                                                '-', ' ', 'g'
-                                                            ),
-                                                            '[^\w\s]', '', 'g'
-                                                        ),
-                                                        '\s+', ' ', 'g'
-                                                    ),
-                                                    '\bTHE\b', '', 'g'
-                                                ),
-                                                '\s+', ' ', 'g'
-                                            ),
-                                            '\bAPARTMENT\b', 'FLAT', 'g'
+                                          upper(s),
+                                          '-', ' ', 'g'
                                         ),
-                                        '\bUNIT\b', 'FLAT', 'g'
+                                        '[^\w\s]', '', 'g'
+                                      ),
+                                      '\s+', ' ', 'g'
                                     ),
-                                    '\bRD\b', 'ROAD', 'g'
+                                    '\bTHE\b', '', 'g'
+                                  ),
+                                  '\s+', ' ', 'g'
                                 ),
-                                '\bAVE?\b', 'AVENUE', 'g'
+                                '\bAPARTMENT\b', 'FLAT', 'g'
+                              ),
+                              '\bUNIT\b', 'FLAT', 'g'
                             ),
-                            '\bDR\b', 'DRIVE', 'g'
+                            '\bRD\b', 'ROAD', 'g'
+                          ),
+                          '\bAVE?\b', 'AVENUE', 'g'
                         ),
-                        '\bCL\b', 'CLOSE', 'g'
+                        '\bDR\b', 'DRIVE', 'g'
+                      ),
+                      '\bCL\b', 'CLOSE', 'g'
                     ),
                     '\bCT\b', 'COURT', 'g'
+                  ),
+                  '\bGDNS\b', 'GARDENS', 'g'
                 ),
-                '\bGDNS\b', 'GARDENS', 'g'
+                '\bHSE\b', 'HOUSE', 'g'
+              ),
+              '\bFARM HOUSE\b', 'FARMHOUSE', 'g'
             ),
-            '\bHSE\b', 'HOUSE', 'g'
-        ))
-    )
+            '\bGATE HOUSE\b', 'GATEHOUSE', 'g'
+          ),
+          '\bSCHOOL HOUSE\b', 'SCHOOLHOUSE', 'g'
+        ),
+        '\bMILL HOUSE\b', 'MILLHOUSE', 'g'
+      ),
+      '\bALMS HOUSE\b', 'ALMSHOUSE', 'g'
+    ))
+  )
 """
 
 
