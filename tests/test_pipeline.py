@@ -17,6 +17,7 @@ from houseprices.pipeline import (
     _join_tier1,
     _join_tier2,
     _join_tier3,
+    _join_tier4,
     _rss_mb,
     _run_aggregations,
     aggregate,
@@ -1266,6 +1267,124 @@ def test_join_tier3_returns_row_count(
     """_join_tier3 return value must equal the number of rows written."""
     dst = tmp_path / "tier3_count.parquet"
     n = _join_tier3(FIXTURES / "ppd_tier3.csv", epc_tier3_slim, existing_matched, dst)
+    assert n == len(pd.read_parquet(dst))
+
+
+# ---------------------------------------------------------------------------
+# _join_tier4
+#
+# Fixture data (ppd_tier4.csv / epc_tier4.csv):
+#
+#   TXN-T4-1: paon="ROSE COTTAGE", no street → matches EPC ADDRESS1 (1:1)
+#   TXN-T4-2: paon="THE BARN"     → THE stripped → "BARN" matches EPC "The Barn"
+#   TXN-T4-3: paon="OAK HOUSE"    → EPC has two "Oak House" at TF1 3AA → no match
+#   TXN-T4-4/5: paon="ROSE COTTAGE" at TF1 4AA (×2) → PPD not 1:1 → no match
+#   TXN-T4-6: paon="12A" (digit)  → numeric paon excluded from tier 4
+#   TXN-T4-7: paon="SUNNYVIEW"    → no EPC at TF1 6AA → unmatched
+# ---------------------------------------------------------------------------
+
+TXN_T4_1 = "{T4000001-0000-0000-0000-000000000000}"
+TXN_T4_2 = "{T4000002-0000-0000-0000-000000000000}"
+TXN_T4_3 = "{T4000003-0000-0000-0000-000000000000}"
+TXN_T4_4 = "{T4000004-0000-0000-0000-000000000000}"
+TXN_T4_5 = "{T4000005-0000-0000-0000-000000000000}"
+TXN_T4_6 = "{T4000006-0000-0000-0000-000000000000}"
+TXN_T4_7 = "{T4000007-0000-0000-0000-000000000000}"
+
+
+@pytest.fixture
+def epc_tier4_slim(tmp_path: pathlib.Path) -> pathlib.Path:
+    dst = tmp_path / "epc_tier4_slim.parquet"
+    prepare_epc(FIXTURES / "epc_tier4.csv", dst)
+    return dst
+
+
+@pytest.fixture
+def tier4(
+    epc_tier4_slim: pathlib.Path,
+    existing_matched: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> pathlib.Path:
+    dst = tmp_path / "tier4.parquet"
+    _join_tier4(FIXTURES / "ppd_tier4.csv", epc_tier4_slim, existing_matched, dst)
+    return dst
+
+
+def test_join_tier4_row_count(tier4: pathlib.Path) -> None:
+    """T4-1 (direct name match) and T4-2 (THE stripped) match; others don't — 2 rows."""
+    assert len(pd.read_parquet(tier4)) == 2
+
+
+def test_join_tier4_match_tier_column(tier4: pathlib.Path) -> None:
+    """All tier-4 rows must have match_tier = 4."""
+    assert (pd.read_parquet(tier4)["match_tier"] == 4).all()
+
+
+def test_join_tier4_named_property_match(tier4: pathlib.Path) -> None:
+    """TXN-T4-1: ROSE COTTAGE (no street) must match EPC ADDRESS1='Rose Cottage'."""
+    assert TXN_T4_1 in pd.read_parquet(tier4)["transaction_unique_identifier"].values
+
+
+def test_join_tier4_the_stripped_match(tier4: pathlib.Path) -> None:
+    """TXN-T4-2: THE BARN must match EPC 'The Barn' after THE is stripped from both."""
+    assert TXN_T4_2 in pd.read_parquet(tier4)["transaction_unique_identifier"].values
+
+
+def test_join_tier4_epc_ambiguity_excluded(tier4: pathlib.Path) -> None:
+    """TXN-T4-3: two EPC records with same ADDRESS1 at postcode — not 1:1."""
+    txns = pd.read_parquet(tier4)["transaction_unique_identifier"].values
+    assert TXN_T4_3 not in txns
+
+
+def test_join_tier4_ppd_ambiguity_excluded(tier4: pathlib.Path) -> None:
+    """TXN-T4-4/5: two PPD records share paon+postcode — not 1:1, neither matches."""
+    txns = pd.read_parquet(tier4)["transaction_unique_identifier"].values
+    assert TXN_T4_4 not in txns
+    assert TXN_T4_5 not in txns
+
+
+def test_join_tier4_numeric_paon_excluded(tier4: pathlib.Path) -> None:
+    """TXN-T4-6: paon '12A' contains a digit — excluded from tier-4."""
+    txns = pd.read_parquet(tier4)["transaction_unique_identifier"].values
+    assert TXN_T4_6 not in txns
+
+
+def test_join_tier4_no_epc_unmatched(tier4: pathlib.Path) -> None:
+    """TXN-T4-7: SUNNYVIEW has no EPC at its postcode — unmatched."""
+    txns = pd.read_parquet(tier4)["transaction_unique_identifier"].values
+    assert TXN_T4_7 not in txns
+
+
+def test_join_tier4_excludes_already_matched(
+    epc_tier4_slim: pathlib.Path,
+    existing_matched: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Records already in existing_matched must not appear in tier-4 output."""
+    dst = tmp_path / "tier4.parquet"
+    _join_tier4(FIXTURES / "ppd_tier4.csv", epc_tier4_slim, existing_matched, dst)
+    tier4_txns = set(pd.read_parquet(dst)["transaction_unique_identifier"])
+    existing_txns = set(
+        pd.read_parquet(existing_matched)["transaction_unique_identifier"]
+    )
+    assert tier4_txns.isdisjoint(existing_txns)
+
+
+def test_join_tier4_floor_area_populated(tier4: pathlib.Path) -> None:
+    """Matched tier-4 rows must carry TOTAL_FLOOR_AREA from the EPC."""
+    df = pd.read_parquet(tier4)
+    row = df[df["transaction_unique_identifier"] == TXN_T4_1]
+    assert row.iloc[0]["TOTAL_FLOOR_AREA"] == 95.0
+
+
+def test_join_tier4_returns_row_count(
+    epc_tier4_slim: pathlib.Path,
+    existing_matched: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> None:
+    """_join_tier4 return value must equal the number of rows written."""
+    dst = tmp_path / "tier4_count.parquet"
+    n = _join_tier4(FIXTURES / "ppd_tier4.csv", epc_tier4_slim, existing_matched, dst)
     assert n == len(pd.read_parquet(dst))
 
 
