@@ -1065,6 +1065,7 @@ def _run_aggregations(
     output_dir: pathlib.Path,
     min_sales: int,
     console: Console,
+    min_sales_type: int = 5,
 ) -> None:
     """Emit match report, district CSV, and LSOA CSV from existing Parquet files.
 
@@ -1126,8 +1127,31 @@ def _run_aggregations(
         )
 
     district_df = con.execute(f"""
+        -- Per-type rows
         SELECT
             {_district_expr} AS postcode_district,
+            property_type,
+            COUNT(*) AS num_sales,
+            SUM(TOTAL_FLOOR_AREA) AS total_floor_area,
+            SUM(price) AS total_price,
+            CAST(ROUND(SUM(price) / SUM(TOTAL_FLOOR_AREA)) AS INTEGER)
+                AS price_per_sqm,
+            CAST(ROUND(SUM(adjusted_price) / SUM(TOTAL_FLOOR_AREA)) AS INTEGER)
+                AS adj_price_per_sqm
+        FROM read_parquet('{matched_parquet}')
+        WHERE TOTAL_FLOOR_AREA IS NOT NULL
+          AND TOTAL_FLOOR_AREA > 0
+          AND postcode IS NOT NULL
+          AND property_type IS NOT NULL
+        GROUP BY postcode_district, property_type
+        HAVING COUNT(*) >= {min_sales_type}
+
+        UNION ALL
+
+        -- ALL rollup
+        SELECT
+            {_district_expr} AS postcode_district,
+            'ALL' AS property_type,
             COUNT(*) AS num_sales,
             SUM(TOTAL_FLOOR_AREA) AS total_floor_area,
             SUM(price) AS total_price,
@@ -1141,7 +1165,8 @@ def _run_aggregations(
           AND postcode IS NOT NULL
         GROUP BY postcode_district
         HAVING COUNT(*) >= {min_sales}
-        ORDER BY adj_price_per_sqm DESC
+
+        ORDER BY postcode_district, property_type
     """).df()
     district_path = output_dir / "price_per_sqm_postcode_district.csv"
     district_df.to_csv(district_path, index=False)

@@ -153,6 +153,8 @@ def load_price_data() -> dict[str, dict]:
     data: dict[str, dict] = {}
     with open(CSV_PATH) as f:
         for row in csv.DictReader(f):
+            if row.get("property_type", "ALL") != "ALL":
+                continue
             data[row["postcode_district"]] = {
                 "price_per_sqm": int(row["price_per_sqm"]),
                 "adj_price_per_sqm": int(row["adj_price_per_sqm"]),
