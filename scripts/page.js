@@ -1,6 +1,6 @@
 // ── Feature flags ─────────────────────────────────────────────────────────────
 const FEATURES = {
-  gpsLocate: false, // #93 — locate button broken; hidden until fixed
+  gpsLocate: true,
 };
 
 // ── Stats strip ───────────────────────────────────────────────────────────────
@@ -367,7 +367,7 @@ async function init() {
                 : "Location unavailable";
             locateError(msg);
           },
-          { timeout: 10000, enableHighAccuracy: true },
+          { timeout: 10000 },
         );
       });
 
