@@ -576,7 +576,7 @@ async function init() {
             `(inflation-adjusted £${missing[0].adj_price_per_sqm.toLocaleString()}/m²) but does not appear on the map. ` +
             `The postcode district was created after our boundary source was last updated in 2012 and no polygon exists for it yet. ` +
             `I've tried, but I cannot find a legal way to add the boundary from publicly available data without violating Royal Mail's licensing terms. ` +
-            `If you also find that frustrating, <a href="https://takes.jamesomalley.co.uk/p/heres-the-plan-to-actually-liberate">Free the PAF</a>!`
+            `If you also find that frustrating, <a href="https://takes.jamesomalley.co.uk/p/heres-the-plan-to-actually-liberate?ref=houseprices.huwdiprose.co.uk">Free the PAF</a>!`
           : `${missing.length} districts have matched sales data but no boundary geometry and do not appear on the map: ` +
             missing
               .map(
