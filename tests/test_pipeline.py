@@ -59,7 +59,7 @@ def test_normalise_address_empty_saon() -> None:
 def test_normalise_address_apartment_to_flat() -> None:
     assert (
         normalise_address("APARTMENT 4B", "THE GABLES", "GROVE AVE")
-        == "FLAT 4B THE GABLES GROVE AVENUE"
+        == "FLAT 4B GABLES GROVE AVENUE"
     )
 
 
@@ -100,9 +100,9 @@ def test_normalise_address_unit_mid_string() -> None:
 
 def test_normalise_address_hyphen_in_street_becomes_space() -> None:
     # Hyphens are word separators — replace with space so that
-    # "CROSS-O-THE-HANDS" matches "CROSS O THE HANDS"
+    # "CROSS-O-THE-HANDS" matches "CROSS O THE HANDS" (THE also stripped)
     result = normalise_address("", "HILLSIDE", "CROSS-O-THE-HANDS")
-    assert result == "HILLSIDE CROSS O THE HANDS"
+    assert result == "HILLSIDE CROSS O HANDS"
 
 
 def test_normalise_address_hyphenated_property_name_becomes_space() -> None:
@@ -114,6 +114,22 @@ def test_normalise_address_apostrophe_still_stripped() -> None:
     # Apostrophes (possessives) are stripped without adding a space —
     # existing behaviour must be preserved alongside the hyphen change
     assert normalise_address("", "12A", "ST. JOHN'S ROAD") == "12A ST JOHNS ROAD"
+
+
+def test_normalise_address_strips_the_from_property_name() -> None:
+    # "THE OLD RECTORY" and "OLD RECTORY" are the same property in different
+    # sources — strip THE so they produce the same normalised key
+    assert normalise_address("", "THE OLD RECTORY", "") == "OLD RECTORY"
+
+
+def test_normalise_address_strips_the_from_street() -> None:
+    # "THE AVENUE" and "AVENUE" (where a source omits the article) must match
+    assert normalise_address("", "ROSE COTTAGE", "THE AVENUE") == "ROSE COTTAGE AVENUE"
+
+
+def test_normalise_address_the_only_stripped_as_whole_word() -> None:
+    # "THETFORD" must not be altered — THE only removed at word boundaries
+    assert normalise_address("", "THETFORD HOUSE", "") == "THETFORD HOUSE"
 
 
 # ---------------------------------------------------------------------------
