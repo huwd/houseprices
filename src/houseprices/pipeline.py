@@ -47,6 +47,17 @@ class Geography(Enum):
     LSOA = "LSOA21CD"
 
 
+# Postcode districts that have no boundary polygon in our boundary file and
+# must be folded into a neighbouring district before aggregation.
+#
+# E20 (Queen Elizabeth Olympic Park / East Village) was carved out of E15 by
+# Royal Mail circa 2012 — after our Geolytix boundary snapshot.  Remapping to
+# E15 is a reasonable interim approximation; remove once issue #81 (a proper
+# E20 polygon) is resolved.
+POSTCODE_DISTRICT_OVERRIDES: dict[str, str] = {
+    "E20": "E15",  # Olympic Park — carved out of E15 circa 2012; no boundary polygon
+}
+
 _ABBREVIATIONS: list[tuple[str, str]] = [
     (r"\bAPARTMENT\b", "FLAT"),
     (r"\bUNIT\b", "FLAT"),
@@ -824,6 +835,7 @@ def aggregate_by_geography(
     if geography is Geography.POSTCODE_DISTRICT:
         df = matched[["postcode", price_col, "TOTAL_FLOOR_AREA"]].copy()
         df[col] = df["postcode"].str[:-3].str.strip()
+        df[col] = df[col].replace(POSTCODE_DISTRICT_OVERRIDES)
         df.drop(columns=["postcode"], inplace=True)
     else:
         df = matched[[col, price_col, "TOTAL_FLOOR_AREA"]].copy()
@@ -1101,9 +1113,21 @@ def _run_aggregations(
     # matching the Python logic: postcode.str[:-3].str.strip().
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Build a SQL CASE expression that applies POSTCODE_DISTRICT_OVERRIDES so
+    # the DuckDB aggregation and the Python aggregate_by_geography path stay in sync.
+    _district_expr = "TRIM(LEFT(postcode, LENGTH(postcode) - 3))"
+    if POSTCODE_DISTRICT_OVERRIDES:
+        _when_clauses = " ".join(
+            f"WHEN '{src}' THEN '{dst}'"
+            for src, dst in POSTCODE_DISTRICT_OVERRIDES.items()
+        )
+        _district_expr = (
+            f"CASE {_district_expr} {_when_clauses} ELSE {_district_expr} END"
+        )
+
     district_df = con.execute(f"""
         SELECT
-            TRIM(LEFT(postcode, LENGTH(postcode) - 3)) AS postcode_district,
+            {_district_expr} AS postcode_district,
             COUNT(*) AS num_sales,
             SUM(TOTAL_FLOOR_AREA) AS total_floor_area,
             SUM(price) AS total_price,
