@@ -693,6 +693,132 @@ def _join_tier3(
     return result
 
 
+def _join_tier4(
+    ppd_path: str | pathlib.Path,
+    epc_path: str | pathlib.Path,
+    existing_matched_path: pathlib.Path,
+    dst: pathlib.Path,
+) -> int:
+    """ADDRESS1-only join for named/unnumbered properties unmatched in prior tiers.
+
+    Targets the structural gap where PPD ``paon`` is a property name with no
+    house number and PPD ``street`` is null.  In this case the tier-2/3 key
+    (``paon + street``) equals just the property name, while the EPC key
+    (``ADDRESS1 + ADDRESS2``) includes a locality in ADDRESS2 that has no
+    PPD counterpart — causing a mismatch even when ADDRESS1 exactly matches
+    the property name.
+
+    Matching rules:
+    - Only PPD records where ``paon`` contains no digits (purely named
+      properties) are considered.
+    - PPD key: ``(postcode_norm, paon_norm)`` where ``paon_norm`` is the
+      normalised ``paon`` field alone.
+    - EPC key: ``(postcode_norm, ADDRESS1_norm)`` where ``ADDRESS1_norm`` is
+      the normalised ``ADDRESS1`` field alone (ADDRESS2 is ignored).
+    - Only **1:1 matches** are accepted: both the PPD and EPC sides must
+      uniquely identify a single record at their ``(postcode, name)`` key.
+      This limits false positives at the cost of some recall.
+
+    Records already in *existing_matched_path* are excluded.  Uses DuckDB
+    COPY to stream directly to Parquet.  Returns the number of rows written.
+    """
+    con = duckdb.connect()
+    _configure_duckdb(con)
+    con.execute(_NORMALISE_MACRO)
+    ppd_src = _ppd_source(ppd_path)
+    epc_src = _sql_source(epc_path)
+    excluded_ids_path = dst.with_suffix(".excluded_ids.parquet")
+    try:
+        con.execute(f"""
+            COPY (
+                SELECT transaction_unique_identifier
+                FROM read_parquet('{existing_matched_path}')
+            ) TO '{excluded_ids_path}' (FORMAT PARQUET, COMPRESSION ZSTD)
+        """)
+        excluded_expr = f"read_parquet('{excluded_ids_path}')"
+        con.execute(f"""
+            COPY (
+                WITH
+                epc AS (SELECT * FROM {epc_src}),
+                ppd AS (
+                    SELECT * FROM {ppd_src}
+                    WHERE ppd_category_type = 'A'
+                ),
+                ppd_remaining AS (
+                    SELECT * FROM ppd
+                    WHERE transaction_unique_identifier NOT IN (
+                        SELECT transaction_unique_identifier FROM {excluded_expr}
+                    )
+                    AND NOT regexp_matches(
+                        coalesce(cast(paon AS VARCHAR), ''), '\\d'
+                    )
+                    AND coalesce(cast(paon AS VARCHAR), '') != ''
+                ),
+                ppd_norm AS (
+                    SELECT *,
+                        normalise_addr(
+                            coalesce(cast(paon AS VARCHAR), '')
+                        ) AS paon_norm,
+                        upper(trim(postcode)) AS postcode_norm
+                    FROM ppd_remaining
+                    WHERE normalise_addr(
+                        coalesce(cast(paon AS VARCHAR), '')
+                    ) != ''
+                ),
+                ppd_unique AS (
+                    SELECT * FROM ppd_norm
+                    WHERE (postcode_norm, paon_norm) IN (
+                        SELECT postcode_norm, paon_norm
+                        FROM ppd_norm
+                        GROUP BY postcode_norm, paon_norm
+                        HAVING COUNT(*) = 1
+                    )
+                ),
+                epc_norm AS (
+                    SELECT *,
+                        normalise_addr(coalesce(ADDRESS1, '')) AS addr1_norm,
+                        upper(trim(POSTCODE)) AS postcode_norm
+                    FROM epc
+                    WHERE upper(trim(POSTCODE)) IN (
+                        SELECT DISTINCT postcode_norm FROM ppd_norm
+                    )
+                    AND normalise_addr(coalesce(ADDRESS1, '')) != ''
+                ),
+                epc_unique AS (
+                    SELECT * FROM epc_norm
+                    WHERE (postcode_norm, addr1_norm) IN (
+                        SELECT postcode_norm, addr1_norm
+                        FROM epc_norm
+                        GROUP BY postcode_norm, addr1_norm
+                        HAVING COUNT(*) = 1
+                    )
+                )
+                SELECT
+                    p.transaction_unique_identifier,
+                    p.price, p.date_of_transfer, p.postcode,
+                    p.property_type, p.new_build_flag, p.tenure_type,
+                    p.paon, p.saon, p.street, p.locality, p.town_city,
+                    p.district, p.county, p.ppd_category_type, p.record_status,
+                    NULL::BIGINT AS uprn,
+                    e.TOTAL_FLOOR_AREA, e.LODGEMENT_DATETIME,
+                    e.ADDRESS1, e.ADDRESS2,
+                    e.BUILT_FORM, e.CONSTRUCTION_AGE_BAND, e.CURRENT_ENERGY_RATING,
+                    NULL::INT AS gap_days,
+                    NULL::BOOLEAN AS is_post_sale,
+                    4 AS match_tier
+                FROM ppd_unique AS p
+                JOIN epc_unique AS e
+                    ON p.postcode_norm = e.postcode_norm
+                   AND p.paon_norm = e.addr1_norm
+            ) TO '{dst}' (FORMAT PARQUET, COMPRESSION ZSTD)
+        """)
+    finally:
+        excluded_ids_path.unlink(missing_ok=True)
+    row = con.execute(f"SELECT COUNT(*) FROM read_parquet('{dst}')").fetchone()
+    result: int = row[0]  # type: ignore[index]
+    return result
+
+
 def _cpi_ctes(cpi_path: pathlib.Path) -> str:
     """Return SQL CTE block for CPI deflation.
 
@@ -1260,14 +1386,19 @@ def rematch(
     min_sales: int = 10,
     cpi_path: pathlib.Path = DATA / "cpi.csv",
 ) -> None:
-    """Extend existing matches with tier-3 normalisation, then re-aggregate.
+    """Extend existing matches with tier-3 and tier-4 normalisation, then re-aggregate.
 
     Requires ``cache/matched.parquet`` from a prior ``run()``.  Finds all
-    unmatched category-A PPD records and applies enhanced address normalisation
-    (bare numeric SAON prepend).  New matches are appended to
-    ``matched.parquet`` in place; output CSVs are regenerated.
+    unmatched category-A PPD records and applies two additional join strategies:
 
-    The ``uprn_lsoa.parquet`` spatial checkpoint is not rebuilt — tier-3
+    - Tier 3: enhanced flat normalisation (bare numeric SAON prepend).
+    - Tier 4: ADDRESS1-only match for named/unnumbered properties (paon with no
+      digits matched against EPC ADDRESS1, 1:1 constraint per postcode).
+
+    New matches from both tiers are appended to ``matched.parquet`` in place;
+    output CSVs are regenerated.
+
+    The ``uprn_lsoa.parquet`` spatial checkpoint is not rebuilt — tier-3/4
     matches carry no UPRN so the LSOA aggregation is unchanged.
 
     Memory-safe: all heavy steps use DuckDB COPY to Parquet; the matched
@@ -1299,6 +1430,7 @@ def rematch(
     with tempfile.TemporaryDirectory() as _tmp:
         tmp = pathlib.Path(_tmp)
         tier3_path = tmp / "tier3.parquet"
+        tier4_path = tmp / "tier4.parquet"
 
         t0 = time.monotonic()
         with console.status("  [yellow]⏳  tier3 normalisation…[/yellow]"):
@@ -1310,24 +1442,38 @@ def rematch(
             f"  [dim]RSS {rss} MB[/dim]"
         )
 
-        if n_tier3 == 0:
+        t0 = time.monotonic()
+        with console.status("  [yellow]⏳  tier4 named-property…[/yellow]"):
+            n_tier4 = _join_tier4(ppd_path, epc_path, matched_parquet, tier4_path)
+        elapsed = _fmt_elapsed(time.monotonic() - t0)
+        rss = _rss_mb()
+        console.print(
+            f"  [green]✓[/green]  tier4               {elapsed:<8} {n_tier4:>14,} rows"
+            f"  [dim]RSS {rss} MB[/dim]"
+        )
+
+        if n_tier3 == 0 and n_tier4 == 0:
             console.print(
                 "  [dim]No new matches found — matched.parquet unchanged.[/dim]"
             )
             console.print()
             return
 
-        # Append tier-3 results to matched.parquet atomically.
-        # Deflate tier-3 prices before appending so adjusted_price is
-        # consistent with the tier-1/2 rows already in matched.parquet.
-        # DuckDB reads both files without loading either into Python heap.
+        # Append tier-3 and tier-4 results to matched.parquet atomically.
+        # Deflate prices before appending so adjusted_price is consistent
+        # with the tier-1/2 rows already in matched.parquet.
+        # DuckDB reads all files without loading any into Python heap.
         tmp_merged = matched_parquet.with_suffix(".tmp.parquet")
         try:
             duckdb.execute(f"""
                 COPY (
                     WITH
                     {_cpi_ctes(cpi_path)},
-                    tier3 AS (SELECT * FROM read_parquet('{tier3_path}'))
+                    new_rows AS (
+                        SELECT * FROM read_parquet('{tier3_path}')
+                        UNION ALL
+                        SELECT * FROM read_parquet('{tier4_path}')
+                    )
                     SELECT * FROM read_parquet('{matched_parquet}')
                     UNION ALL
                     SELECT
@@ -1335,7 +1481,7 @@ def rematch(
                         t.price * (
                             (SELECT idx FROM base_cpi) / cpi.idx
                         ) AS adjusted_price
-                    FROM tier3 AS t
+                    FROM new_rows AS t
                     JOIN cpi
                       ON cpi.yr = YEAR(t.date_of_transfer)
                      AND cpi.mo = MONTH(t.date_of_transfer)
