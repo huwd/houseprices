@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import pathlib
 import zipfile
 from unittest.mock import MagicMock, patch
@@ -1186,3 +1187,238 @@ def test_extract_epc_both_formats_produce_same_schema(
     yr_header = yr_result.read_text().splitlines()[0]
 
     assert la_header == yr_header
+
+
+# ---------------------------------------------------------------------------
+# check_status / _cpi_is_stale
+# ---------------------------------------------------------------------------
+
+
+def test_check_status_importable() -> None:
+    """check_status and SourceStatus must be importable from download."""
+    from houseprices.download import SourceStatus, check_status  # noqa: F401
+
+    assert callable(check_status)
+
+
+def test_source_status_has_expected_fields() -> None:
+    """SourceStatus must expose name, file, status, and note fields."""
+    from houseprices.download import SourceStatus
+
+    s = SourceStatus(name="PPD", file="ppd_slim.parquet", status="up_to_date", note="")
+    assert s.name == "PPD"
+    assert s.file == "ppd_slim.parquet"
+    assert s.status == "up_to_date"
+
+
+def test_cpi_is_stale_when_latest_row_older_than_current_month(
+    tmp_path: pathlib.Path,
+) -> None:
+    """_cpi_is_stale returns True when latest CSV row predates the reference date."""
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-01,139.5\n")
+    now = datetime.date(2026, 3, 1)
+    assert dl._cpi_is_stale(cpi, now) is True
+
+
+def test_cpi_is_fresh_when_latest_row_matches_current_month(
+    tmp_path: pathlib.Path,
+) -> None:
+    """_cpi_is_stale returns False when latest CSV row matches the reference month."""
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-01,139.5\n2026-03,140.0\n")
+    now = datetime.date(2026, 3, 1)
+    assert dl._cpi_is_stale(cpi, now) is False
+
+
+def test_cpi_is_fresh_one_month_behind(tmp_path: pathlib.Path) -> None:
+    """ONS lags by ~6 weeks: latest row one month behind current is still fresh."""
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-01,139.5\n2026-02,140.0\n")
+    now = datetime.date(2026, 3, 1)
+    # One month lag is acceptable — not stale until 2+ months behind.
+    assert dl._cpi_is_stale(cpi, now) is False
+
+
+def test_cpi_stale_two_months_behind(tmp_path: pathlib.Path) -> None:
+    """_cpi_is_stale returns True when latest row is 2+ months behind."""
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-01,139.5\n")
+    now = datetime.date(2026, 3, 1)
+    assert dl._cpi_is_stale(cpi, now) is True
+
+
+def test_cpi_is_stale_file_missing(tmp_path: pathlib.Path) -> None:
+    """_cpi_is_stale returns True when cpi.csv does not exist."""
+    assert dl._cpi_is_stale(tmp_path / "cpi.csv", datetime.date(2026, 3, 1)) is True
+
+
+def test_check_status_ppd_fresh(tmp_path: pathlib.Path) -> None:
+    """check_status marks PPD as up_to_date when ETag matches."""
+    from houseprices.download import check_status
+
+    ppd_slim = tmp_path / "ppd_slim.parquet"
+    ppd_slim.write_bytes(b"data")
+    dl._save_meta(ppd_slim, {"ETag": '"abc"'})
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-02,140.0\n")
+
+    with (
+        patch("houseprices.download._http_meta", return_value={"ETag": '"abc"'}),
+        patch("houseprices.download._epc_last_updated", return_value=""),
+    ):
+        statuses = check_status(cache_dir=tmp_path, data_dir=tmp_path, bearer_token="")
+
+    ppd = next(s for s in statuses if s.name == "PPD")
+    assert ppd.status == "up_to_date"
+
+
+def test_check_status_ppd_stale(tmp_path: pathlib.Path) -> None:
+    """check_status marks PPD as stale when ETag has changed."""
+    from houseprices.download import check_status
+
+    ppd_slim = tmp_path / "ppd_slim.parquet"
+    ppd_slim.write_bytes(b"data")
+    dl._save_meta(ppd_slim, {"ETag": '"old"'})
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-02,140.0\n")
+
+    with (
+        patch("houseprices.download._http_meta", return_value={"ETag": '"new"'}),
+        patch("houseprices.download._epc_last_updated", return_value=""),
+    ):
+        statuses = check_status(cache_dir=tmp_path, data_dir=tmp_path, bearer_token="")
+
+    ppd = next(s for s in statuses if s.name == "PPD")
+    assert ppd.status == "stale"
+
+
+def test_check_status_ppd_not_downloaded(tmp_path: pathlib.Path) -> None:
+    """check_status marks PPD as not_downloaded when slim Parquet is absent."""
+    from houseprices.download import check_status
+
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-02,140.0\n")
+
+    with (
+        patch("houseprices.download._http_meta", return_value={"ETag": '"abc"'}),
+        patch("houseprices.download._epc_last_updated", return_value=""),
+    ):
+        statuses = check_status(cache_dir=tmp_path, data_dir=tmp_path, bearer_token="")
+
+    ppd = next(s for s in statuses if s.name == "PPD")
+    assert ppd.status == "not_downloaded"
+
+
+def test_check_status_network_failure_returns_unknown(tmp_path: pathlib.Path) -> None:
+    """Network failure (HEAD returns {}) yields unknown, not stale."""
+    from houseprices.download import check_status
+
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-02,140.0\n")
+    # Parquet exists but no meta stored.
+    ppd_slim = tmp_path / "ppd_slim.parquet"
+    ppd_slim.write_bytes(b"data")
+    dl._save_meta(ppd_slim, {"ETag": '"abc"'})
+
+    with (
+        patch("houseprices.download._http_meta", return_value={}),
+        patch("houseprices.download._epc_last_updated", return_value=""),
+    ):
+        statuses = check_status(cache_dir=tmp_path, data_dir=tmp_path, bearer_token="")
+
+    ppd = next(s for s in statuses if s.name == "PPD")
+    assert ppd.status == "unknown"
+
+
+def test_check_status_ubdc_is_static(tmp_path: pathlib.Path) -> None:
+    """UBDC is always reported as static — no network check performed."""
+    from houseprices.download import check_status
+
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-02,140.0\n")
+
+    with (
+        patch("houseprices.download._http_meta", return_value={}),
+        patch("houseprices.download._epc_last_updated", return_value=""),
+    ):
+        statuses = check_status(cache_dir=tmp_path, data_dir=tmp_path, bearer_token="")
+
+    ubdc = next(s for s in statuses if s.name == "UBDC")
+    assert ubdc.status == "static"
+
+
+def test_check_status_lsoa_is_static(tmp_path: pathlib.Path) -> None:
+    """LSOA is always reported as static — no network check performed."""
+    from houseprices.download import check_status
+
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-02,140.0\n")
+
+    with (
+        patch("houseprices.download._http_meta", return_value={}),
+        patch("houseprices.download._epc_last_updated", return_value=""),
+    ):
+        statuses = check_status(cache_dir=tmp_path, data_dir=tmp_path, bearer_token="")
+
+    lsoa = next(s for s in statuses if s.name == "LSOA")
+    assert lsoa.status == "static"
+
+
+def test_check_status_epc_no_credentials_returns_unknown(
+    tmp_path: pathlib.Path,
+) -> None:
+    """EPC with no bearer token yields unknown, not stale."""
+    from houseprices.download import check_status
+
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-02,140.0\n")
+
+    with patch("houseprices.download._http_meta", return_value={}):
+        statuses = check_status(cache_dir=tmp_path, data_dir=tmp_path, bearer_token="")
+
+    epc = next(s for s in statuses if s.name == "EPC")
+    assert epc.status == "unknown"
+
+
+def test_check_status_any_stale_returns_true_exit_code(
+    tmp_path: pathlib.Path,
+) -> None:
+    """check_status must signal staleness so callers can exit non-zero."""
+    from houseprices.download import check_status
+
+    ppd_slim = tmp_path / "ppd_slim.parquet"
+    ppd_slim.write_bytes(b"data")
+    dl._save_meta(ppd_slim, {"ETag": '"old"'})
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-02,140.0\n")
+
+    with (
+        patch("houseprices.download._http_meta", return_value={"ETag": '"new"'}),
+        patch("houseprices.download._epc_last_updated", return_value=""),
+    ):
+        statuses = check_status(cache_dir=tmp_path, data_dir=tmp_path, bearer_token="")
+
+    any_stale = any(
+        s.status in ("stale", "not_downloaded")
+        for s in statuses
+        if s.status != "static"
+    )
+    assert any_stale is True
+
+
+def test_check_status_returns_all_six_sources(tmp_path: pathlib.Path) -> None:
+    """check_status must return exactly six source entries."""
+    from houseprices.download import check_status
+
+    cpi = tmp_path / "cpi.csv"
+    cpi.write_text("date,cpi\n2026-02,140.0\n")
+
+    with (
+        patch("houseprices.download._http_meta", return_value={}),
+        patch("houseprices.download._epc_last_updated", return_value=""),
+    ):
+        statuses = check_status(cache_dir=tmp_path, data_dir=tmp_path, bearer_token="")
+
+    names = {s.name for s in statuses}
+    assert names == {"PPD", "EPC", "UPRN", "CPI", "UBDC", "LSOA"}
