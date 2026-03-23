@@ -1,0 +1,2 @@
+Districts with price data but no boundary geometry (excluded from map):
+E20
