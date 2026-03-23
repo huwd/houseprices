@@ -19,9 +19,6 @@ import re
 import shutil
 import statistics
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 
 ROOT = pathlib.Path(__file__).parent.parent
 OUTPUT = ROOT / "output"
@@ -44,15 +41,6 @@ OUT_JS = OUTPUT / "page.js"
 OUT_DATA_JSON = OUTPUT / "data.json"
 
 MIN_SALES_FOR_RANKING = 20  # exclude very thin districts from top/bottom tables
-
-# ONS Open Geography Portal — postcode district boundary layer (BGC, WGS84).
-# Published under OGL: https://geoportal.statistics.gov.uk/
-# Queried at build time to fill in geometry for districts absent from Geolytix
-# (e.g. E20 — created after the 2012 Geolytix vintage).
-ONS_POSTCODE_DISTRICT_URL = (
-    "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services"
-    "/Postcode_Districts_December_2023_Boundaries_UK_BGC/FeatureServer/0/query"
-)
 
 # ---------------------------------------------------------------------------
 # CSV schema definitions — used in data.json and the Download section
@@ -255,37 +243,6 @@ def compute_stats(price_data: dict[str, dict], metadata: dict[str, str]) -> dict
             "first_non_london": first_non_london,
         },
     }
-
-
-def fetch_ons_geometry(district: str, timeout: int = 30) -> dict[str, object] | None:
-    """Fetch boundary geometry for *district* from the ONS Geography Portal.
-
-    Queries the ArcGIS FeatureServer for the postcode district BGC layer.
-    Returns a GeoJSON Feature dict with ``PostDist`` set, or ``None`` if the
-    district is not found or if the request fails (network error, bad JSON, etc.).
-    """
-    params = urllib.parse.urlencode(
-        {
-            "where": f"PostDist='{district}'",
-            "outFields": "PostDist",
-            "f": "geojson",
-            "outSR": "4326",
-        }
-    )
-    url = f"{ONS_POSTCODE_DISTRICT_URL}?{params}"
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            data: dict[str, object] = json.loads(resp.read())
-        features = data.get("features", [])
-        if not isinstance(features, list) or not features:
-            return None
-        feature: dict[str, object] = features[0]
-        props = feature.get("properties")
-        if isinstance(props, dict):
-            props["PostDist"] = district
-        return feature
-    except Exception:
-        return None
 
 
 def _strip_points(geometry: dict) -> dict:

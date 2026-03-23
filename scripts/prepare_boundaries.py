@@ -24,24 +24,14 @@ Usage:
 import argparse
 import json
 import pathlib
-import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import urllib.parse
-import urllib.request
 import zipfile
 
 ROOT = pathlib.Path(__file__).parent.parent
 DATA = ROOT / "data"
-
-# ONS Open Geography Portal — postcode district boundary layer (BGC, WGS84).
-# Queried to fill in geometry for districts absent from the Geolytix 2012 vintage.
-_ONS_POSTCODE_DISTRICT_URL = (
-    "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services"
-    "/Postcode_Districts_December_2023_Boundaries_UK_BGC/FeatureServer/0/query"
-)
 
 _OUTER_ZIP = DATA / "geolytix_postal_boundaries.zip"
 _INNER_ZIP_NAME = "PostalBoundariesSHP.zip"
@@ -205,118 +195,6 @@ def _mapshaper_geojson(
         largest.replace(dst_path)
 
 
-def _postcode_area(district: str) -> str:
-    """Return the alphabetic area prefix of a postcode district ('E20' → 'E')."""
-    m = re.match(r"^([A-Z]+)", district)
-    return m.group(1) if m else ""
-
-
-def _fetch_ons_district_area(
-    area_prefix: str, timeout: int = 30
-) -> list[dict[str, object]]:
-    """Fetch all postcode district boundaries for *area_prefix* from the ONS portal.
-
-    Returns a list of GeoJSON Feature dicts.  Returns an empty list on any
-    failure (network error, bad JSON, empty response).
-    """
-    params = urllib.parse.urlencode(
-        {
-            "where": f"PostDist LIKE '{area_prefix}%'",
-            "outFields": "PostDist",
-            "f": "geojson",
-            "outSR": "4326",
-        }
-    )
-    url = f"{_ONS_POSTCODE_DISTRICT_URL}?{params}"
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            data: dict[str, object] = json.loads(resp.read())
-        features = data.get("features", [])
-        if not isinstance(features, list):
-            return []
-        return [f for f in features if isinstance(f, dict)]
-    except Exception:
-        return []
-
-
-def _augment_with_ons(
-    output_path: pathlib.Path,
-    missing_districts: list[str],
-    retain: str,
-) -> None:
-    """Fetch *missing_districts* and their area siblings from ONS; patch *output_path*.
-
-    For each missing district the function derives its postcode area prefix (e.g.
-    ``E`` for ``E20``) and fetches **all** districts in that area from ONS.
-    The fetched features are run through mapshaper together — this preserves
-    shared borders between, e.g., E15 and E20 — then the area's districts are
-    replaced wholesale in *output_path* and the new districts are added.
-
-    This is intentional: replacing the whole area ensures the E15/E20 shared
-    boundary is topologically consistent (both come from the same ONS source,
-    simplified together) even though it changes E15's non-E20 borders slightly.
-    """
-    areas: set[str] = {_postcode_area(d) for d in missing_districts if d}
-
-    all_ons_features: list[dict[str, object]] = []
-    for area in sorted(areas):
-        print(f"  Fetching ONS boundaries for area {area}*…")
-        features = _fetch_ons_district_area(area)
-        if features:
-            print(f"    {len(features)} districts returned")
-            all_ons_features.extend(features)
-        else:
-            print(f"    No features returned for {area}* — check network / ONS URL")
-
-    if not all_ons_features:
-        print("  Nothing fetched — augmentation skipped", file=sys.stderr)
-        return
-
-    # Run mapshaper on the ONS area features so they share the same simplification
-    # as the surrounding Geolytix districts and their mutual borders are preserved.
-    print(
-        f"  Running mapshaper on {len(all_ons_features)} ONS features "
-        f"(retain={retain})…"
-    )
-
-    def _post_dist(feat: dict[str, object]) -> str:
-        props = feat.get("properties")
-        if isinstance(props, dict):
-            return str(props.get("PostDist", ""))
-        return ""
-
-    ons_districts = {_post_dist(f) for f in all_ons_features}
-    with tempfile.TemporaryDirectory() as tmp_dir_str:
-        tmp_dir = pathlib.Path(tmp_dir_str)
-        ons_raw = tmp_dir / "ons_raw.geojson"
-        ons_simplified = tmp_dir / "ons_simplified.geojson"
-        ons_raw.write_text(
-            json.dumps({"type": "FeatureCollection", "features": all_ons_features})
-        )
-        _mapshaper_geojson(ons_raw, ons_simplified, retain)
-        ons_out: dict[str, object] = json.loads(ons_simplified.read_text())
-        simplified: list[dict[str, object]] = ons_out.get("features", [])  # type: ignore[assignment]
-
-    # Patch: remove old area districts, add ONS-simplified versions (incl. new ones).
-    main_data: dict[str, object] = json.loads(output_path.read_text())
-    features_list = main_data.get("features", [])
-    assert isinstance(features_list, list)
-    kept = [
-        f for f in features_list if f["properties"].get("PostDist") not in ons_districts
-    ]
-    main_data["features"] = kept + simplified
-    output_path.write_text(json.dumps(main_data, separators=(",", ":")))
-
-    added = sorted(d for d in missing_districts if d in ons_districts)
-    replaced_count = len(ons_districts) - len(added)
-    print(
-        f"  Added:    {', '.join(added)}\n"
-        f"  Replaced: {replaced_count} existing {'/'.join(sorted(areas))}* "
-        "districts (topology alignment)"
-    )
-    print(f"  Written → {output_path} ({output_path.stat().st_size // 1024:,} KB)")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -345,18 +223,6 @@ def main() -> None:
         help=(
             "For --engine ogr2ogr, simplify in source CRS metres before reprojection "
             f"(default: {_OGR2OGR_DEFAULT_SIMPLIFY_M})."
-        ),
-    )
-    parser.add_argument(
-        "--augment-ons",
-        metavar="DISTRICT",
-        nargs="+",
-        help=(
-            "Fetch the listed district(s) from the ONS Geography Portal and patch "
-            "them into the output GeoJSON. All districts in the same postcode area "
-            "are also re-fetched so shared borders align (e.g. --augment-ons E20 "
-            "also replaces the full E* area for topology consistency). "
-            "Can be used without --force to augment an already-built file."
         ),
     )
     args = parser.parse_args()
@@ -391,16 +257,8 @@ def main() -> None:
 
         data = json.loads(_OUTPUT.read_text())
         print(f"  ✓  {len(data['features'])} districts written to {_OUTPUT.name}")
-    elif not args.augment_ons:
+    else:
         print(f"  ⊘  {_OUTPUT.name} already exists (use --force to overwrite)")
-        return
-
-    # Augment with ONS data if requested.
-    if args.augment_ons:
-        print("Augmenting with ONS boundary data…")
-        _augment_with_ons(_OUTPUT, args.augment_ons, args.retain)
-        data = json.loads(_OUTPUT.read_text())
-        print(f"  ✓  {len(data['features'])} districts in {_OUTPUT.name}")
 
 
 if __name__ == "__main__":
