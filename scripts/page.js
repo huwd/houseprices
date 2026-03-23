@@ -454,8 +454,8 @@ async function init() {
     const fnl = f.first_non_london;
     const p1 =
       `Out of ${STATS.num_districts.toLocaleString()} postcode districts analysed, ` +
-      `the top ${f.london_streak.toLocaleString()} are all London postcodes and ` +
-      `${f.london_in_top_100} of the top 100 are in the capital. ` +
+      `the top ${f.london_streak.toLocaleString()} are an unbroken run of London postcodes — ` +
+      `and London accounts for ${f.london_in_top_100} of the top 100. ` +
       `The first district outside Greater London is ${dLink(fnl.district)} (Cambridge), ` +
       `ranked ${fnl.rank}${ordinal(fnl.rank)} at £${fnl.price_per_sqm.toLocaleString()}/m².`;
 
