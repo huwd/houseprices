@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UK House Prices per m² by MSOA — Huw Diprose</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="page.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+
+<body>
+
+  <header>
+    <ul>
+      <li><a href="https://www.huwdiprose.co.uk/">Huw Diprose</a></li>
+      <li><a href="index.html">Postcode districts</a></li>
+      <li><a href="msoa.html" class="nav-active">MSOAs</a></li>
+    </ul>
+  </header>
+
+  <div class="page-title">
+    <h1>House Prices per Metre² by MSOA in England &amp; Wales</h1>
+    <h2>An analysis of government open data, mapped by <a href="https://www.huwdiprose.co.uk/">Huw Diprose</a><span
+        class="analysis-version" title="Analysis version">v0.2.0</span></h2>
+    <p class="intro-text">This map shows the average price per m² of houses in each Middle layer Super Output
+      Area (MSOA) in England &amp; Wales — a finer geography than postcode districts, with
+      6,856 areas shown.
+    </p>
+    <p class="intro-text">Data is aggregated from LSOA-level records matched to Energy Performance Certificates
+      via UPRN. This tier covers transactions up to January 2022 (~60% of all sales).
+      All prices are adjusted to Mar 2026 pounds using the ONS CPI index.
+    </p>
+    <p id="price-range-text" class="intro-text"></p>
+  </div>
+
+  <div id="map">
+    <div id="map-loading" class="map-loading">
+      <div class="spinner"></div>
+      <span>Loading map data…</span>
+    </div>
+  </div>
+
+  <div class="stats-strip">
+    <div class="stat">
+      <span class="stat-value" id="stat-median">—</span>
+      <span class="stat-label">Median MSOA £/m²</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-areas">—</span>
+      <span class="stat-label">MSOAs</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-sales">—</span>
+      <span class="stat-label">Sales matched</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-range">—</span>
+      <span class="stat-label">Data range</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-cpi-base">—</span>
+      <span class="stat-label">Prices adjusted to</span>
+    </div>
+  </div>
+
+  <div class="tables-row">
+    <div>
+      <h2>Most expensive</h2>
+      <table id="tbl-top">
+        <thead>
+          <tr>
+            <th>MSOA</th>
+            <th>£/m²</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div>
+      <h2>Least expensive</h2>
+      <table id="tbl-bottom">
+        <thead>
+          <tr>
+            <th>MSOA</th>
+            <th>£/m²</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="methodology">
+    <h3>Methodology</h3>
+    <p>Sale prices are taken from
+      <a href="https://www.gov.uk/government/collections/price-paid-data">HM Land Registry's
+        Price Paid dataset</a> (standard residential sales to individuals, Jan 1995–Mar 2026).
+      Floor area per property is taken from
+      <a href="https://epc.opendatacommunities.org/">Energy Performance Certificates</a>.
+    </p>
+    <p>Each sale is matched to its EPC via the Unique Property Reference Number (UPRN) using the
+      <a href="https://doi.org/10.20394/agu7hprj">UBDC Price Paid–UPRN lookup table</a>,
+      which covers transactions up to January 2022. Post-2022 sales are not included in this
+      MSOA view. The price per m² for each MSOA is the total transaction value of all matched
+      LSOA-level sales divided by their total floor area — not a mean of per-property ratios.
+      MSOAs with fewer than 10 matched sales are excluded.
+    </p>
+    <p>MSOA boundaries are the December 2021 boundaries for England and Wales, sourced from the
+      <a href="https://geoportal.statistics.gov.uk/">ONS Open Geography Portal</a>.
+      LSOA→MSOA lookup is the ONS LSOA21→MSOA21 lookup table.
+    </p>
+    <p>The map uses the same hybrid colour scale as the postcode district view. The first seven
+      colour bands use quantile breaks, dividing the 6,856 MSOAs into roughly equal
+      groups. The top two bands use fixed thresholds: £5,000/m² and £10,000/m².
+    </p>
+    <details class="changelog">
+      <summary>Changelog</summary>
+      <div class="changelog-body">
+        <h4>[Unreleased]</h4>
+        <h4>Methodology improvements</h4>
+        <h4>Address normalisation: hyphens treated as word separators</h4>
+        <p>Hyphens in PPD and EPC address fields are now replaced with a space before matching, rather than silently removed. Previously, a hyphenated address such as <code>CROSS-O-THE-HANDS</code> was collapsed to <code>CROSSOTHEHANDS</code>, which no longer matched the same address written with spaces in the other source.</p>
+        <p>The fix applies to both the Python normaliser and the DuckDB macro used in tier-2 and tier-3 joins. Non-hyphen punctuation (apostrophes, periods) is still stripped without adding a space.</p>
+        <p>Measured gain on the March 2026 dataset: <strong>+2,428 matched records</strong> across all property types.</p>
+        <ul>
+        <li>Issue: <a href="https://github.com/huwd/houseprices/issues/114">#114</a></li>
+        </ul>
+        <h4>Address normalisation: article &quot;THE&quot; removed before matching</h4>
+        <p>The word &quot;THE&quot; is now stripped from both PPD and EPC addresses before the normalised match key is computed. &quot;THE OLD RECTORY&quot; and &quot;OLD RECTORY&quot; — the same property in different sources — previously produced different keys and went unmatched.</p>
+        <p>The removal uses a whole-word match (<code>\bTHE\b</code>) so property names that contain &quot;THE&quot; as a substring (e.g. <code>THETFORD</code>, <code>THEYDON</code>) are unaffected. Both sides receive the same transformation, so false positives require two distinct properties to have the same name minus the article at the same postcode — structurally very unlikely.</p>
+        <p>Measured gain on the March 2026 dataset: <strong>+4,995 matched records</strong> across all property types.</p>
+        <ul>
+        <li>Issue: <a href="https://github.com/huwd/houseprices/issues/113">#113</a></li>
+        </ul>
+        <h4>Address normalisation: compound property-name words canonicalised</h4>
+        <p>EPC assessors inconsistently split or join compound words in property names. The following pairs are now collapsed to a single canonical one-word form before matching:</p>
+        <table><thead><tr>
+        <th>Two-word form</th>
+        <th>One-word canonical</th>
+        </tr></thead><tbody>
+        <tr>
+        <td>FARM HOUSE</td>
+        <td>FARMHOUSE</td>
+        </tr>
+        <tr>
+        <td>GATE HOUSE</td>
+        <td>GATEHOUSE</td>
+        </tr>
+        <tr>
+        <td>SCHOOL HOUSE</td>
+        <td>SCHOOLHOUSE</td>
+        </tr>
+        <tr>
+        <td>MILL HOUSE</td>
+        <td>MILLHOUSE</td>
+        </tr>
+        <tr>
+        <td>ALMS HOUSE</td>
+        <td>ALMSHOUSE</td>
+        </tr>
+        </tbody></table>
+        <p>Unmatched detached counts in the March 2026 data show significant splits: SCHOOL HOUSE vs SCHOOLHOUSE (3,947 vs 130), MILL HOUSE vs MILLHOUSE (2,218 vs 54), FARM HOUSE vs FARMHOUSE (3,364 vs 4,048).</p>
+        <p>Measured gain on the March 2026 dataset: <strong>+342 matched records</strong> across all property types.</p>
+        <ul>
+        <li>Issue: <a href="https://github.com/huwd/houseprices/issues/115">#115</a></li>
+        </ul>
+        <h4>Matching: tier 4 — ADDRESS1-only join for named properties</h4>
+        <p>A new fourth matching tier recovers rural named properties that tier 2/3 cannot reach due to a structural mismatch between PPD and EPC address fields.</p>
+        <p><strong>The gap:</strong> where PPD has no <code>street</code> field, the tier-2/3 normalised key equals the property name alone (<code>&quot;ROSE COTTAGE&quot;</code>). The EPC key is <code>ADDRESS1 + ADDRESS2</code>, and <code>ADDRESS2</code> often contains a village name (<code>&quot;Rose Cottage Testvillage&quot;</code>). These keys never match even when <code>ADDRESS1</code> exactly equals the PPD property name.</p>
+        <p>Sampling (March 2026): **35.7% of unmatched named-paon detached records** (210,285 of 589,685) have a null <code>street</code> in PPD. 21.8% of unmatched <code>ROSE COTTAGE</code> PPD transactions have an EPC at the same postcode with <code>ADDRESS1 = &quot;ROSE COTTAGE&quot;</code> exactly — a real match that was unreachable.</p>
+        <p><strong>Tier 4 approach:</strong></p>
+        <ul>
+        <li>Only PPD records where <code>paon</code> contains no digits are considered.</li>
+        <li>PPD key: <code>(postcode, normalise_addr(paon))</code>.</li>
+        <li>EPC key: <code>(postcode, normalise_addr(ADDRESS1))</code> — ADDRESS2 is ignored.</li>
+        <li>Only <strong>1:1 matches</strong> are accepted on both sides, limiting false</li>
+        </ul>
+        <p>  positives at postcode granularity.</p>
+        <p>The tier benefits automatically from the normaliser improvements in #113, #114, and #115 (THE-stripping, hyphen→space, compound words).</p>
+        <p>Yield to be measured on next full pipeline run.</p>
+        <ul>
+        <li>Issue: <a href="https://github.com/huwd/houseprices/issues/116">#116</a></li>
+        </ul>
+        <h4>Workarounds</h4>
+        <h4>E20 postcode district remapped to E15</h4>
+        <p>E20 (Queen Elizabeth Olympic Park / East Village, Stratford) was created by Royal Mail circa 2012 — after our Geolytix boundary snapshot — by carving it out of E15. Because no polygon exists for E20 in our boundary file, any PPD or EPC record with an E20 postcode was previously silently dropped at aggregation.</p>
+        <p>As an interim fix, all E20 records are now folded into E15 before aggregation. E20 and E15 are geographically contiguous and were administered as a single district before 2012, so this is a reasonable approximation. The workaround will be removed once a proper E20 polygon is available (issue #81).</p>
+        <p>Affected output: <code>price_per_sqm_postcode_district.csv</code> — E15 figures now include 884 previously lost E20 sales.</p>
+        <h4>[0.2.0] — 2026-03-19</h4>
+        <h4>Data vintages</h4>
+        <table><thead><tr>
+        <th>Source</th>
+        <th>v0.1.0</th>
+        <th>v0.2.0</th>
+        </tr></thead><tbody>
+        <tr>
+        <td>HM Land Registry PPD</td>
+        <td>to Jan 2026 (~22.5M rows)</td>
+        <td>to March 2026 (~29.3M rows)</td>
+        </tr>
+        <tr>
+        <td>EPC bulk export</td>
+        <td>per-LA ZIPs, epc.opendatacommunities.org</td>
+        <td>single monolithic CSV, get-energy-performance-data.communities.gov.uk (March 2026)</td>
+        </tr>
+        <tr>
+        <td>UBDC PPD→UPRN lookup</td>
+        <td>unchanged — covers to Jan 2022</td>
+        <td>unchanged</td>
+        </tr>
+        <tr>
+        <td>ONS CPI</td>
+        <td>D7BT Jan 1988–Jan 2026</td>
+        <td>unchanged</td>
+        </tr>
+        </tbody></table>
+        <p>The EPC source changed to the new MHCLG GOV.UK One Login API which delivers a single 5.7 GB CSV assembled from all local authority feeds. Four CSV parsing issues were encountered and fixed; see <a href="../research/epc-csv-data-quality.md"><code>research/epc-csv-data-quality.md</code></a>.</p>
+        <h4>Methodology changes</h4>
+        <h4>CPI price deflation — real Jan-2026 £/m²</h4>
+        <p>All sale prices are now inflation-adjusted to January 2026 pounds before aggregation, using the ONS CPI All Items monthly series (series ID: D7BT, Jan 1988–Jan 2026, OGL v3.0). The adjustment converts each transaction price to real terms: <code>adjusted_price = price × CPI[Jan-2026] / CPI[sale_month]</code>.</p>
+        <p>This avoids mixing 1995 pounds with 2024 pounds in the same aggregate. Postcode districts where most sales occurred before 2010 were systematically understated in nominal terms; the real-terms figure makes districts comparable regardless of when their housing stock turned over.</p>
+        <p>The headline column in both output CSVs is now <code>adj_price_per_sqm</code> (real Jan-2026 £/m²). The nominal <code>price_per_sqm</code> is retained as a reference column.</p>
+        <ul>
+        <li>Research note: <a href="../research/cpi-deflator-choice.md"><code>research/cpi-deflator-choice.md</code></a></li>
+        <li>Issue: <a href="https://github.com/huwd/houseprices/issues/67">#67</a> | PR: <a href="https://github.com/huwd/houseprices/pull/72">#72</a></li>
+        </ul>
+        <h4>New and changed output columns</h4>
+        <table><thead><tr>
+        <th>Column</th>
+        <th>Type</th>
+        <th>Description</th>
+        </tr></thead><tbody>
+        <tr>
+        <td><code>adj_price_per_sqm</code></td>
+        <td>int</td>
+        <td><strong>Headline.</strong> Real Jan-2026 £/m² (CPI-adjusted)</td>
+        </tr>
+        <tr>
+        <td><code>price_per_sqm</code></td>
+        <td>int</td>
+        <td>Nominal £/m² at time of sale — retained for reference</td>
+        </tr>
+        </tbody></table>
+        <h4>Match statistics</h4>
+        <table><thead><tr>
+        <th>Tier</th>
+        <th>Count</th>
+        <th>Share</th>
+        </tr></thead><tbody>
+        <tr>
+        <td>Tier 1 — UPRN exact match</td>
+        <td>9,255,768</td>
+        <td>31.6%</td>
+        </tr>
+        <tr>
+        <td>Tier 2 — address normalisation</td>
+        <td>7,321,554</td>
+        <td>25.0%</td>
+        </tr>
+        <tr>
+        <td>Unmatched</td>
+        <td>12,705,953</td>
+        <td>43.4%</td>
+        </tr>
+        <tr>
+        <td><strong>Total PPD sales</strong></td>
+        <td><strong>29,283,275</strong></td>
+        <td></td>
+        </tr>
+        </tbody></table>
+        <p>The match rate dropped from 76.9% (v0.1.0) to 56.6%. This is structural: the PPD gained ~6.8M rows (all post-Jan 2022 transactions) that fall outside the UBDC UPRN lookup&#x27;s coverage window. The absolute number of matched records is broadly unchanged (~16.6M vs ~17.3M). See <a href="../research/uprn-coverage-in-epc-data.md"><code>research/uprn-coverage-in-epc-data.md</code></a> for a detailed breakdown.</p>
+        <h4>Summary statistics (postcode district, 2,277 districts)</h4>
+        <table><thead><tr>
+        <th>Metric</th>
+        <th>Value</th>
+        </tr></thead><tbody>
+        <tr>
+        <td>Districts included</td>
+        <td>2,277</td>
+        </tr>
+        <tr>
+        <td>Total matched sales</td>
+        <td>16,577,322</td>
+        </tr>
+        <tr>
+        <td>Median real adj price</td>
+        <td>£3,058/m²</td>
+        </tr>
+        <tr>
+        <td>Most expensive district</td>
+        <td>W1S — £35,462/m² (real Jan-2026)</td>
+        </tr>
+        <tr>
+        <td>Least expensive district</td>
+        <td>TS2 — £733/m² (real Jan-2026)</td>
+        </tr>
+        <tr>
+        <td>Top 5 district rankings</td>
+        <td>W1S, WC2A, WC2R, W1B, W1K — stable vs v0.1.0</td>
+        </tr>
+        <tr>
+        <td>Bottom 5 district rankings</td>
+        <td>TS2, TS1, BD3, CF43, DN31 — stable vs v0.1.0</td>
+        </tr>
+        </tbody></table>
+        <h4>Key commits and PRs</h4>
+        <table><thead><tr>
+        <th>Commit / PR</th>
+        <th>Description</th>
+        </tr></thead><tbody>
+        <tr>
+        <td>PR <a href="https://github.com/huwd/houseprices/pull/72">#72</a> <code>ebe8619</code></td>
+        <td>CPI inflation adjustment</td>
+        </tr>
+        <tr>
+        <td>PR <a href="https://github.com/huwd/houseprices/pull/78">#78</a></td>
+        <td>EPC download: migrate to new MHCLG API</td>
+        </tr>
+        <tr>
+        <td><code>4e09bf1</code></td>
+        <td>fix: atomic download — no partial file on interrupt</td>
+        </tr>
+        <tr>
+        <td><code>bc2e1a5</code></td>
+        <td>fix: strict_mode=false — handle backslash-escaped JSON in EPC CSV</td>
+        </tr>
+        <tr>
+        <td><code>943efbe</code></td>
+        <td>fix: pin quote/escape — prevent single-quote column misdetection</td>
+        </tr>
+        <tr>
+        <td><code>6630a73</code></td>
+        <td>fix: null_padding=true — handle short/stub rows</td>
+        </tr>
+        <tr>
+        <td><code>fed70dd</code></td>
+        <td>fix: parallel=false — allow null_padding with quoted newlines</td>
+        </tr>
+        <tr>
+        <td><code>f6ff4ab</code></td>
+        <td>perf: two-pass EPC dedup to stay within 2 GB memory limit</td>
+        </tr>
+        </tbody></table>
+        <p>---</p>
+        <h4>[0.1.0] — 2026-03-19</h4>
+        <p><strong>First versioned release of the UK house price per m² analysis.</strong></p>
+        <h4>Data sources</h4>
+        <table><thead><tr>
+        <th>Source</th>
+        <th>Coverage</th>
+        <th>Licence</th>
+        </tr></thead><tbody>
+        <tr>
+        <td>HM Land Registry Price Paid Data</td>
+        <td>Standard residential sales to individuals, Aug 2007–Jan 2026</td>
+        <td>OGL v3.0</td>
+        </tr>
+        <tr>
+        <td>DLUHC Energy Performance Certificates</td>
+        <td>All domestic lodgements, England &amp; Wales</td>
+        <td>OGL v3.0</td>
+        </tr>
+        <tr>
+        <td>UBDC PPD–UPRN lookup</td>
+        <td>Transactions up to Jan 2022</td>
+        <td>Open data, University of Glasgow</td>
+        </tr>
+        <tr>
+        <td>GeoLytix postcode district boundaries</td>
+        <td>—</td>
+        <td>OGL v3.0</td>
+        </tr>
+        </tbody></table>
+        <h4>Methodology</h4>
+        <h4>1. Sale selection</h4>
+        <p>Transactions are filtered to standard residential sales to private individuals (<code>transaction_category = &#x27;A&#x27;</code>). New-build and established property are both included. Leasehold and freehold are both included.</p>
+        <h4>2. EPC–sale matching (three tiers)</h4>
+        <p><strong>Tier 1 — UPRN exact match</strong> Each sale is joined to the UBDC Price Paid–UPRN lookup table (<a href="https://doi.org/10.20394/agu7hprj">doi:10.20394/agu7hprj</a>), which provides a Unique Property Reference Number for transactions up to January 2022. That UPRN is then joined to the EPC register to retrieve the most recent certificate lodged _before or on the sale date_. This is the highest-confidence tier.</p>
+        <p><strong>Tier 2 — Address normalisation match</strong> For sales after January 2022 (where no UPRN link exists) and for any earlier sales that failed tier 1, the sale address is normalised: sub-address, building name/number, and street name are concatenated and lowercased, punctuation stripped. The normalised string is matched against the same normalised form in the EPC register, restricted to the same postcode. The most recent EPC before the sale date is selected.</p>
+        <p><strong>Tier 3 — Postcode fallback</strong> Remaining unmatched sales are assigned the median floor area of all EPCs within the same postcode. This tier is lower confidence and flagged in the data.</p>
+        <p>_Temporal selection note:_ in all tiers, the EPC selected is the most recent certificate lodged on or before the sale date. This avoids using post-sale improvements to infer the floor area at the time of sale.</p>
+        <h4>3. Aggregation</h4>
+        <p>Price per m² for each postcode district is computed as:</p>
+        <pre><code>price_per_sqm = Σ(sale_price) / Σ(floor_area_m²)</code></pre>
+        <p>This is a value-weighted aggregate — not a mean of per-property ratios — so that large properties contribute proportionally to the result.</p>
+        <p>Districts with fewer than 10 matched sales are excluded from the output.</p>
+        <h4>4. Output</h4>
+        <ul>
+        <li><code>price_per_sqm_postcode_district.csv</code> — primary output: one row per postcode district</li>
+        <li><code>price_per_sqm_lsoa.csv</code> — LSOA-level aggregation (experimental)</li>
+        <li><code>postcode_districts.geojson</code> — boundary-joined GeoJSON for the web map</li>
+        </ul>
+        <h4>Key commits (reproducibility)</h4>
+        <p>To reproduce this analysis, check out commit <code>da82e13</code> (the HEAD at time of release) and follow the pipeline instructions in <code>PLAN.md</code> and <code>CLAUDE.md</code>.</p>
+        <table><thead><tr>
+        <th>Commit</th>
+        <th>Description</th>
+        </tr></thead><tbody>
+        <tr>
+        <td><code>91920ab</code></td>
+        <td>Initial pipeline setup</td>
+        </tr>
+        <tr>
+        <td><code>31aeb42</code></td>
+        <td>First full pipeline run — outputs committed</td>
+        </tr>
+        <tr>
+        <td><code>cee3740</code></td>
+        <td>Add tier-3 normalisation (address-string matching)</td>
+        </tr>
+        <tr>
+        <td><code>8929d3b</code></td>
+        <td>Regenerate CSVs incorporating tier-3 matches</td>
+        </tr>
+        <tr>
+        <td><code>30ef34a</code></td>
+        <td>Confirm UBDC lookup coverage ends at Jan 2022</td>
+        </tr>
+        <tr>
+        <td><code>049aa57</code></td>
+        <td>Add output page with choropleth map</td>
+        </tr>
+        <tr>
+        <td><code>da82e13</code></td>
+        <td>Temporal EPC selection in tier-1 join (HEAD at v0.1.0)</td>
+        </tr>
+        </tbody></table>
+        <h4>Summary statistics (at release)</h4>
+        <table><thead><tr>
+        <th>Metric</th>
+        <th>Value</th>
+        </tr></thead><tbody>
+        <tr>
+        <td>Total sales</td>
+        <td>22,503,694</td>
+        </tr>
+        <tr>
+        <td>Matched with floor area</td>
+        <td>~77%</td>
+        </tr>
+        <tr>
+        <td>Districts included</td>
+        <td>2,279</td>
+        </tr>
+        <tr>
+        <td>Median price per m²</td>
+        <td>£1,986</td>
+        </tr>
+        <tr>
+        <td>Data range</td>
+        <td>Aug 2007–Jan 2026</td>
+        </tr>
+        <tr>
+        <td>Most expensive district</td>
+        <td>W1S — £24,184/m²</td>
+        </tr>
+        <tr>
+        <td>Least expensive district</td>
+        <td>TS2 — £504/m²</td>
+        </tr>
+        </tbody></table>
+      </div>
+    </details>
+
+    <h3>Attribution</h3>
+    <p class="attribution">Price Paid data produced by HM Land Registry © Crown copyright 2026, licensed under the
+      <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence
+        v3.0</a>.
+      EPC data © Crown copyright DLUHC, licensed under the Open Government Licence v3.0.
+      <a href="https://doi.org/10.20394/agu7hprj">UBDC PPD–UPRN lookup</a> published as open data
+      by the Urban Big Data Centre, University of Glasgow.
+      Contains Ordnance Survey data © Crown copyright and database right 2026.
+      MSOA boundaries © Office for National Statistics, licensed under the Open Government Licence v3.0.
+      Contains National Statistics data © Crown copyright and database right 2026.
+      Map tiles © <a href="https://carto.com/attributions">CARTO</a>,
+      data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.
+    </p>
+  </div>
+
+  <script>const STATS = {"median_price_per_sqm":3347,"num_areas":6856,"total_sales":8810698,"date_range":"Jan 1995\u2013Jan 2026","cpi_base":"January 2026","top10":[{"msoa":"E02000977","adj_price_per_sqm":27714},{"msoa":"E02000970","adj_price_per_sqm":26207},{"msoa":"E02000584","adj_price_per_sqm":26104},{"msoa":"E02000978","adj_price_per_sqm":25511},{"msoa":"E02000588","adj_price_per_sqm":25382},{"msoa":"E02000583","adj_price_per_sqm":25026},{"msoa":"E02000972","adj_price_per_sqm":23919},{"msoa":"E02000594","adj_price_per_sqm":23094},{"msoa":"E02000595","adj_price_per_sqm":23014},{"msoa":"E02000590","adj_price_per_sqm":22429}],"bottom10":[{"msoa":"E02005178","adj_price_per_sqm":860},{"msoa":"E02002681","adj_price_per_sqm":918},{"msoa":"E02002727","adj_price_per_sqm":930},{"msoa":"E02005249","adj_price_per_sqm":952},{"msoa":"E02005248","adj_price_per_sqm":958},{"msoa":"E02002731","adj_price_per_sqm":981},{"msoa":"E02004327","adj_price_per_sqm":1002},{"msoa":"E02002736","adj_price_per_sqm":1052},{"msoa":"E02005250","adj_price_per_sqm":1056},{"msoa":"E02002498","adj_price_per_sqm":1069}]};</script>
+  <script src="shared.js"></script>
+  <script src="msoa.js"></script>
+</body>
+
+</html>
