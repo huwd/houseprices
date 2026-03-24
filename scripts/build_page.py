@@ -29,6 +29,7 @@ BOUNDARIES_PATH = DATA / "postcode_districts.geojson"
 CSV_PATH = OUTPUT / "price_per_sqm_postcode_district.csv"
 TEMPLATE_PATH = SCRIPTS / "page_template.html"
 CSS_PATH = SCRIPTS / "page.css"
+SHARED_JS_PATH = SCRIPTS / "shared.js"
 JS_PATH = SCRIPTS / "page.js"
 VERSION_PATH = OUTPUT / "VERSION.txt"
 CHANGELOG_PATH = OUTPUT / "CHANGELOG.md"
@@ -37,6 +38,7 @@ OUT_HTML = OUTPUT / "index.html"
 # Serving separately enables browser caching and CDN gzip compression.
 OUT_GEOJSON = OUTPUT / "postcode_districts.geojson"
 OUT_CSS = OUTPUT / "page.css"
+OUT_SHARED_JS = OUTPUT / "shared.js"
 OUT_JS = OUTPUT / "page.js"
 OUT_DATA_JSON = OUTPUT / "data.json"
 OUT_YEARLY_JSON = OUTPUT / "yearly_totals.json"
@@ -614,8 +616,10 @@ def main() -> None:
     print(f"  Written → {OUT_HTML} ({size_kb:,} KB)")
 
     shutil.copy2(CSS_PATH, OUT_CSS)
+    shutil.copy2(SHARED_JS_PATH, OUT_SHARED_JS)
     shutil.copy2(JS_PATH, OUT_JS)
     print(f"  Copied  → {OUT_CSS}")
+    print(f"  Copied  → {OUT_SHARED_JS}")
     print(f"  Copied  → {OUT_JS}")
 
     print("Writing data.json…")
