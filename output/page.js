@@ -55,7 +55,7 @@ async function init() {
   ];
 
   const allPrices = GEOJSON.features
-    .map((f) => f.properties.price_per_sqm)
+    .map((f) => f.properties.adj_price_per_sqm)
     .filter((v) => v != null)
     .sort((a, b) => a - b);
 
@@ -198,15 +198,15 @@ async function init() {
       return;
     }
     const yearlyPrice = computeYearlyPrice(props.PostDist);
-    const displayPrice = yearlyPrice !== null ? yearlyPrice : props.price_per_sqm;
+    const displayPrice = yearlyPrice !== null ? yearlyPrice : props.adj_price_per_sqm;
     const priceStr =
       displayPrice != null
         ? "£" + displayPrice.toLocaleString() + "/m²"
         : "No data";
     const rangeNote =
       yearlyPrice !== null
-        ? `<br><span class="muted">${yearStart}–${yearEnd} avg (real Jan-2026 £)</span>`
-        : "";
+        ? `<br><span class="muted">${yearStart}–${yearEnd} avg</span>`
+        : `<br><span class="muted">All years (real Jan-2026 £)</span>`;
     const sales =
       !yearlyPrice && props.num_sales != null
         ? props.num_sales.toLocaleString() + " sales"
@@ -226,7 +226,7 @@ async function init() {
     const district = feature.properties.PostDist;
     const price = isYearFiltered()
       ? computeYearlyPrice(district)
-      : feature.properties.price_per_sqm;
+      : feature.properties.adj_price_per_sqm;
     const active = (filterLo === 0 && filterHi === 100) || inFilter(price);
     return {
       fillColor: active ? getColour(price) : "#bbbbbb",
@@ -726,7 +726,7 @@ async function init() {
                 Math.round(allPrices[allPrices.length - 1]).toLocaleString();
 
           const matching = GEOJSON.features.filter((f) => {
-            const p = f.properties.price_per_sqm;
+            const p = f.properties.adj_price_per_sqm;
             return (
               p != null &&
               p >= activeBandLo &&
