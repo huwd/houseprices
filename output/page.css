@@ -208,22 +208,79 @@ header a:hover {
 
 /* ── Year range filter ── */
 .year-filter {
-  display: flex;
-  align-items: center;
-  gap: 1.2rem;
-  padding: 0.4rem 1.5rem;
+  padding: 0.5rem 1.5rem;
   background: var(--color-card-bg);
   border-bottom: 1px solid var(--color-border);
-  flex-wrap: wrap;
   max-width: var(--content-width);
   margin: 0 auto;
 }
 
-.year-filter-title {
-  font-size: 0.78rem;
-  color: var(--color-muted);
-  white-space: nowrap;
+/* ── All-time toggle switch ── */
+.yr-alltime-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  padding: 0.2rem 0;
+  user-select: none;
+}
+
+.yr-alltime-toggle input {
+  display: none;
+}
+
+.yr-alltime-switch {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 21px;
+  background: var(--color-muted);
+  border-radius: 11px;
+  transition: background 0.2s;
   flex-shrink: 0;
+}
+
+.yr-alltime-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 15px;
+  height: 15px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.yr-alltime-toggle input:checked + .yr-alltime-switch {
+  background: var(--color-accent);
+}
+
+.yr-alltime-toggle input:checked + .yr-alltime-switch::after {
+  transform: translateX(17px);
+}
+
+.yr-alltime-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* ── Collapsible year-range controls ── */
+.yr-range-wrap {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.3s ease, opacity 0.25s ease;
+}
+
+.yr-range-wrap--open {
+  max-height: 120px;
+  opacity: 1;
 }
 
 .year-slider-row {
@@ -795,7 +852,6 @@ th:last-child {
     gap: 1rem;
   }
 
-  .year-filter-title,
   .year-slider-row {
     flex: 0 0 100%;
     max-width: 100%;
