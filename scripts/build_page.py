@@ -88,6 +88,58 @@ _DISTRICT_SCHEMA = [
     },
 ]
 
+_YEARLY_DISTRICT_SCHEMA = [
+    {
+        "name": "postcode_district",
+        "type": "string",
+        "description": "UK postcode district (e.g. SW1A)",
+    },
+    {
+        "name": "property_type",
+        "type": "string",
+        "description": (
+            "Property type: ALL (rollup), D detached, F flat/maisonette, "
+            "S semi-detached, T terraced, O other"
+        ),
+    },
+    {
+        "name": "year",
+        "type": "integer",
+        "description": "Calendar year of sale",
+    },
+    {
+        "name": "num_sales",
+        "type": "integer",
+        "description": "Number of residential sales matched to an EPC record",
+    },
+    {
+        "name": "total_floor_area",
+        "type": "float",
+        "description": "Total floor area of matched properties (m²)",
+    },
+    {
+        "name": "total_price",
+        "type": "float",
+        "description": "Total transaction value of matched sales (£)",
+    },
+    {
+        "name": "price_per_sqm",
+        "type": "integer",
+        "description": (
+            "Nominal price per m² = total_price / total_floor_area (£). "
+            "Not a mean of per-property ratios."
+        ),
+    },
+    {
+        "name": "adj_price_per_sqm",
+        "type": "integer",
+        "description": (
+            "CPI-adjusted price per m², base January 2026 (£). "
+            "Deflated using ONS CPI series D7BT."
+        ),
+    },
+]
+
 _MSOA_SCHEMA = [
     {
         "name": "msoa21cd",
@@ -515,6 +567,17 @@ def build_data_json(output_dir: pathlib.Path, version: str) -> dict:
                 "joined to EPC floor areas."
             ),
             _LSOA_SCHEMA,
+        ),
+        (
+            "price_per_sqm_yearly_postcode_district.csv",
+            (
+                "Inflation-adjusted price per m² by postcode district and year "
+                "(England & Wales, Jan 1995–present). "
+                "Powers the year-range slider on the map. "
+                "Districts with fewer than 10 matched sales in a given year "
+                "are excluded."
+            ),
+            _YEARLY_DISTRICT_SCHEMA,
         ),
         (
             "price_per_sqm_msoa.csv",
