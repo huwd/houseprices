@@ -244,6 +244,118 @@ def test_compute_msoa_stats_top10_has_adj_key() -> None:
 
 
 # ---------------------------------------------------------------------------
+# write_msoa_csv
+# ---------------------------------------------------------------------------
+
+
+def test_write_msoa_csv_creates_file(tmp_path: pathlib.Path) -> None:
+    msoa_data = {
+        "E02000001": {
+            "num_sales": 50,
+            "total_floor_area": 5000.0,
+            "total_price": 18000000.0,
+            "price_per_sqm": 3600,
+            "adj_price_per_sqm": 3960,
+        },
+    }
+    msoa_names = {"E02000001": "City of London 001"}
+    out = tmp_path / "price_per_sqm_msoa.csv"
+    build_msoa_page.write_msoa_csv(msoa_data, msoa_names, out)
+    assert out.exists()
+
+
+def test_write_msoa_csv_headers(tmp_path: pathlib.Path) -> None:
+    msoa_data = {
+        "E02000001": {
+            "num_sales": 50,
+            "total_floor_area": 5000.0,
+            "total_price": 18000000.0,
+            "price_per_sqm": 3600,
+            "adj_price_per_sqm": 3960,
+        },
+    }
+    out = tmp_path / "price_per_sqm_msoa.csv"
+    build_msoa_page.write_msoa_csv(msoa_data, {}, out)
+    with open(out) as f:
+        headers = csv.DictReader(f).fieldnames
+    assert headers == [
+        "msoa21cd",
+        "msoa21nm",
+        "num_sales",
+        "total_floor_area",
+        "total_price",
+        "price_per_sqm",
+        "adj_price_per_sqm",
+    ]
+
+
+def test_write_msoa_csv_row_values(tmp_path: pathlib.Path) -> None:
+    msoa_data = {
+        "E02000001": {
+            "num_sales": 50,
+            "total_floor_area": 5000.0,
+            "total_price": 18000000.0,
+            "price_per_sqm": 3600,
+            "adj_price_per_sqm": 3960,
+        },
+    }
+    msoa_names = {"E02000001": "City of London 001"}
+    out = tmp_path / "price_per_sqm_msoa.csv"
+    build_msoa_page.write_msoa_csv(msoa_data, msoa_names, out)
+    with open(out) as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["msoa21cd"] == "E02000001"
+    assert row["msoa21nm"] == "City of London 001"
+    assert int(row["num_sales"]) == 50
+    assert int(row["price_per_sqm"]) == 3600
+    assert int(row["adj_price_per_sqm"]) == 3960
+
+
+def test_write_msoa_csv_missing_name_falls_back_to_code(tmp_path: pathlib.Path) -> None:
+    msoa_data = {
+        "E02000001": {
+            "num_sales": 50,
+            "total_floor_area": 5000.0,
+            "total_price": 18000000.0,
+            "price_per_sqm": 3600,
+            "adj_price_per_sqm": 3960,
+        },
+    }
+    out = tmp_path / "price_per_sqm_msoa.csv"
+    build_msoa_page.write_msoa_csv(msoa_data, {}, out)
+    with open(out) as f:
+        rows = list(csv.DictReader(f))
+    assert rows[0]["msoa21nm"] == "E02000001"
+
+
+def test_write_msoa_csv_sorted_by_code(tmp_path: pathlib.Path) -> None:
+    msoa_data = {
+        "E02000002": {
+            "num_sales": 10,
+            "total_floor_area": 1000.0,
+            "total_price": 5000000.0,
+            "price_per_sqm": 5000,
+            "adj_price_per_sqm": 5500,
+        },
+        "E02000001": {
+            "num_sales": 50,
+            "total_floor_area": 5000.0,
+            "total_price": 18000000.0,
+            "price_per_sqm": 3600,
+            "adj_price_per_sqm": 3960,
+        },
+    }
+    out = tmp_path / "price_per_sqm_msoa.csv"
+    build_msoa_page.write_msoa_csv(msoa_data, {}, out)
+    with open(out) as f:
+        rows = list(csv.DictReader(f))
+    assert rows[0]["msoa21cd"] == "E02000001"
+    assert rows[1]["msoa21cd"] == "E02000002"
+
+
+# ---------------------------------------------------------------------------
 # Helpers for tests above
 # ---------------------------------------------------------------------------
 
