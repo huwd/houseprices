@@ -20,7 +20,7 @@ function populateTable(id, rows) {
     const tr = document.createElement("tr");
     tr.innerHTML =
       `<td><a href="#" class="map-link" data-district="${r.district}">${r.district}</a></td>` +
-      `<td>£${r.price_per_sqm.toLocaleString()}</td>`;
+      `<td>£${r.adj_price_per_sqm.toLocaleString()}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -561,9 +561,9 @@ async function init() {
   const top2 = STATS.top10.slice(0, 2);
   const bot2 = STATS.bottom10.slice(0, 2);
   document.getElementById("price-range-text").innerHTML =
-    `Sale prices range from more than £${top2[0].price_per_sqm.toLocaleString()}/m² in ` +
+    `Sale prices range from more than £${top2[0].adj_price_per_sqm.toLocaleString()}/m² in ` +
     `${dLink(top2[0].district)} and ${dLink(top2[1].district)}, ` +
-    `to under £${bot2[1].price_per_sqm.toLocaleString()}/m² in postcodes like ` +
+    `to under £${bot2[1].adj_price_per_sqm.toLocaleString()}/m² in postcodes like ` +
     `${dLink(bot2[0].district)} and ${dLink(bot2[1].district)}. ` +
     `Zoom to ${cLink("London", 51.51, -0.13, 10)}, ` +
     `${cLink("Birmingham", 52.48, -1.9, 11)}, ` +
@@ -592,7 +592,7 @@ async function init() {
       `Out of ${STATS.num_districts.toLocaleString()} postcode districts analysed, ` +
       `the top ${f.london_streak.toLocaleString()} are all London postcodes and ${lonTop100Str}. ` +
       `The first district outside Greater London is ${dLink(fnl.district)} (Cambridge), ` +
-      `ranked ${fnl.rank}${ordinal(fnl.rank)} at £${fnl.price_per_sqm.toLocaleString()}/m².`;
+      `ranked ${fnl.rank}${ordinal(fnl.rank)} at £${fnl.adj_price_per_sqm.toLocaleString()}/m².`;
 
     const p2 =
       `Grey districts have no matched sales data. Most of the ${f.no_data_count.toLocaleString()} grey areas ` +
