@@ -233,7 +233,7 @@ def fetch_msoa_boundaries(cache_path: pathlib.Path) -> dict:
     records = _fetch_paginated(
         _MSOA_BOUNDARY_SERVICE,
         ["MSOA21CD", "MSOA21NM", "LAT", "LONG"],
-        extra_params=["f=geojson", "outSR=4326", "geometryPrecision=5"],
+        extra_params=["f=geojson", "outSR=4326", "geometryPrecision=4"],
     )
     features = [
         {
