@@ -514,3 +514,101 @@ def test_build_yearly_totals_missing_file_returns_empty(tmp_path: pathlib.Path) 
     """build_yearly_totals must return {} when the CSV does not exist."""
     result = build_page.build_yearly_totals(tmp_path)
     assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# compute_stats — adj_price_per_sqm alignment (issue #122)
+# ---------------------------------------------------------------------------
+
+
+def _price_data_two_districts() -> dict[str, dict]:
+    """Two districts where nominal and adj rankings diverge.
+
+    District A: nominal=3000, adj=6000 (high adj — old sale, big CPI lift)
+    District B: nominal=5000, adj=2000 (low adj — recent sale, low CPI lift)
+    By nominal: B > A.  By adj: A > B.
+    """
+    return {
+        "SW1A": {
+            "price_per_sqm": 3000,
+            "adj_price_per_sqm": 6000,
+            "num_sales": 50,
+        },
+        "E1": {
+            "price_per_sqm": 5000,
+            "adj_price_per_sqm": 2000,
+            "num_sales": 50,
+        },
+    }
+
+
+def test_compute_stats_median_uses_adj_price_per_sqm() -> None:
+    """median_price_per_sqm must use adj_price_per_sqm, not price_per_sqm."""
+    price_data = _price_data_two_districts()
+    # Add a third district so adj and nominal medians diverge
+    price_data["N1"] = {
+        "price_per_sqm": 4000,
+        "adj_price_per_sqm": 1000,
+        "num_sales": 50,
+    }
+    stats = build_page.compute_stats(price_data, {})
+    # adj values sorted: [1000, 2000, 6000] → median = 2000
+    # nominal values sorted: [3000, 4000, 5000] → median = 4000
+    assert stats["median_price_per_sqm"] == 2000
+
+
+def test_compute_stats_top10_has_adj_price_per_sqm_key() -> None:
+    """top10 entries must expose 'adj_price_per_sqm', not 'price_per_sqm'."""
+    price_data = _price_data_two_districts()
+    stats = build_page.compute_stats(price_data, {})
+    for entry in stats["top10"]:
+        assert "adj_price_per_sqm" in entry, (
+            f"top10 entry for {entry['district']} missing adj_price_per_sqm"
+        )
+        assert "price_per_sqm" not in entry, (
+            f"top10 entry for {entry['district']} should not have price_per_sqm"
+        )
+
+
+def test_compute_stats_bottom10_has_adj_price_per_sqm_key() -> None:
+    """bottom10 entries must expose 'adj_price_per_sqm', not 'price_per_sqm'."""
+    price_data = _price_data_two_districts()
+    stats = build_page.compute_stats(price_data, {})
+    for entry in stats["bottom10"]:
+        assert "adj_price_per_sqm" in entry, (
+            f"bottom10 entry for {entry['district']} missing adj_price_per_sqm"
+        )
+        assert "price_per_sqm" not in entry, (
+            f"bottom10 entry for {entry['district']} should not have price_per_sqm"
+        )
+
+
+def test_compute_stats_ranking_order_uses_adj_price_per_sqm() -> None:
+    """top10 must be ranked by adj_price_per_sqm descending (not nominal)."""
+    price_data = _price_data_two_districts()
+    stats = build_page.compute_stats(price_data, {})
+    # By adj: SW1A (6000) > E1 (2000) → SW1A should be first in top10
+    assert stats["top10"][0]["district"] == "SW1A"
+    assert stats["bottom10"][0]["district"] == "E1"
+
+
+def test_compute_stats_first_non_london_has_adj_price_per_sqm_key() -> None:
+    """first_non_london fact must expose 'adj_price_per_sqm', not 'price_per_sqm'."""
+    # Need enough districts and a non-London one ranked highly
+    price_data = {
+        "SW1A": {
+            "price_per_sqm": 10000,
+            "adj_price_per_sqm": 10000,
+            "num_sales": 50,
+        },
+        "OX1": {
+            "price_per_sqm": 8000,
+            "adj_price_per_sqm": 8000,
+            "num_sales": 50,
+        },
+    }
+    stats = build_page.compute_stats(price_data, {})
+    fnl = stats["facts"]["first_non_london"]
+    assert fnl is not None
+    assert "adj_price_per_sqm" in fnl, "first_non_london missing adj_price_per_sqm"
+    assert "price_per_sqm" not in fnl, "first_non_london should not have price_per_sqm"
