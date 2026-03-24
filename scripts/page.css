@@ -180,6 +180,11 @@ header a:hover {
   font-size: 0.95rem;
 }
 
+.info-area-name {
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
 .info .muted {
   color: var(--color-muted);
   font-size: 0.8rem;
