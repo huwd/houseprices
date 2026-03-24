@@ -70,8 +70,9 @@ boundaries:  ## Convert Geolytix PostalBoundariesOpen SHP → WGS84 GeoJSON (run
 	uv run scripts/prepare_boundaries.py
 
 .PHONY: page
-page:  ## Build output/index.html from pipeline outputs (run boundaries + pipeline first)
+page:  ## Build output/index.html and output/msoa.html from pipeline outputs
 	uv run python scripts/build_page.py
+	uv run python scripts/build_msoa_page.py
 
 .PHONY: serve
 serve:  ## Serve output/ on http://localhost:8000 for local preview
