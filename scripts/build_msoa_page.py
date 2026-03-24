@@ -44,6 +44,7 @@ CHANGELOG_PATH = OUTPUT / "CHANGELOG.md"
 
 OUT_HTML = OUTPUT / "msoa.html"
 OUT_GEOJSON = OUTPUT / "msoa_areas.geojson"
+OUT_MSOA_CSV = OUTPUT / "price_per_sqm_msoa.csv"
 OUT_CSS = OUTPUT / "page.css"
 OUT_SHARED_JS = OUTPUT / "shared.js"
 OUT_MSOA_JS = OUTPUT / "msoa.js"
@@ -287,6 +288,39 @@ def build_msoa_geojson(
     return boundaries
 
 
+def write_msoa_csv(
+    msoa_data: dict[str, dict],
+    msoa_names: dict[str, str],
+    out_path: pathlib.Path,
+) -> None:
+    """Write price_per_sqm_msoa.csv sorted by MSOA code."""
+    fieldnames = [
+        "msoa21cd",
+        "msoa21nm",
+        "num_sales",
+        "total_floor_area",
+        "total_price",
+        "price_per_sqm",
+        "adj_price_per_sqm",
+    ]
+    with open(out_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for code in sorted(msoa_data):
+            row = msoa_data[code]
+            writer.writerow(
+                {
+                    "msoa21cd": code,
+                    "msoa21nm": msoa_names.get(code, code),
+                    "num_sales": row["num_sales"],
+                    "total_floor_area": row["total_floor_area"],
+                    "total_price": row["total_price"],
+                    "price_per_sqm": row["price_per_sqm"],
+                    "adj_price_per_sqm": row["adj_price_per_sqm"],
+                }
+            )
+
+
 def load_version() -> str:
     if not VERSION_PATH.exists():
         return ""
@@ -346,6 +380,11 @@ def main() -> None:
     print("Joining…")
     geojson = build_msoa_geojson(boundaries, msoa_data, msoa_names)
     stats = compute_msoa_stats(msoa_data, metadata, msoa_names)
+
+    print("Writing CSV…")
+    write_msoa_csv(msoa_data, msoa_names, OUT_MSOA_CSV)
+    csv_kb = OUT_MSOA_CSV.stat().st_size // 1024
+    print(f"  Written → {OUT_MSOA_CSV} ({csv_kb:,} KB)")
 
     print("Writing GeoJSON…")
     OUT_GEOJSON.write_text(json.dumps(geojson, separators=(",", ":")))

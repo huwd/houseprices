@@ -107,6 +107,74 @@
     </div>
   </div>
 
+  <div class="download-data">
+    <h3>Download the data</h3>
+    <p>The underlying dataset is available as a CSV file, licensed under the
+      <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence
+        v3.0</a>.
+      A machine-readable index with row counts and file sizes is available as
+      <a href="data.json"><code>data.json</code></a>.
+    </p>
+    <p class="intro-text"><strong>Coverage caveat:</strong> This dataset is derived from UPRN
+      tier-1 matches only, covering transactions from January 1995 to January 2022
+      (~60% of all sales). Post-2022 sales are not included in this MSOA view.
+    </p>
+    <div class="download-cards">
+      <div class="download-card">
+        <h4>By MSOA</h4>
+        <p>One row per MSOA. 6,856 areas.</p>
+        <a class="download-btn" href="price_per_sqm_msoa.csv"
+          download="price_per_sqm_msoa.csv">Download CSV</a>
+        <table class="schema-table">
+          <thead>
+            <tr>
+              <th>Column</th>
+              <th>Type</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>msoa21cd</code></td>
+              <td>string</td>
+              <td>ONS 2021 MSOA code (e.g. E02000001)</td>
+            </tr>
+            <tr>
+              <td><code>msoa21nm</code></td>
+              <td>string</td>
+              <td>ONS 2021 MSOA name (e.g. City of London 001)</td>
+            </tr>
+            <tr>
+              <td><code>num_sales</code></td>
+              <td>integer</td>
+              <td>Number of residential sales matched to an EPC record</td>
+            </tr>
+            <tr>
+              <td><code>total_floor_area</code></td>
+              <td>float</td>
+              <td>Total floor area of matched properties (m²)</td>
+            </tr>
+            <tr>
+              <td><code>total_price</code></td>
+              <td>float</td>
+              <td>Total transaction value of matched sales (£)</td>
+            </tr>
+            <tr>
+              <td><code>price_per_sqm</code></td>
+              <td>integer</td>
+              <td>Nominal price per m² = total_price / total_floor_area (£)</td>
+            </tr>
+            <tr>
+              <td><code>adj_price_per_sqm</code></td>
+              <td>integer</td>
+              <td>CPI-adjusted price per m², base January 2026 (£), using ONS CPI series D7BT</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div class="methodology">
     <h3>Methodology</h3>
     <p>Sale prices are taken from
