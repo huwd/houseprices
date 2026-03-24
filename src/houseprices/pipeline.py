@@ -58,12 +58,6 @@ POSTCODE_DISTRICT_OVERRIDES: dict[str, str] = {
     "E20": "E15",  # Olympic Park — carved out of E15 circa 2012; no boundary polygon
 }
 
-# Earliest year included in the yearly district CSV used by the time-range slider.
-# Pre-2010 matches are almost exclusively tier 2+ (address normalisation) and represent
-# only the non-random sub-sample of properties that later received an EPC — unreliable
-# for time-series use.  See issue #61.
-SLIDER_MIN_YEAR: int = 2010
-
 _ABBREVIATIONS: list[tuple[str, str]] = [
     (r"\bAPARTMENT\b", "FLAT"),
     (r"\bUNIT\b", "FLAT"),
@@ -1230,7 +1224,6 @@ def _run_aggregations(
     min_sales: int,
     console: Console,
     min_sales_type: int = 5,
-    slider_min_year: int = SLIDER_MIN_YEAR,
 ) -> None:
     """Emit match report, district CSV, and LSOA CSV from existing Parquet files.
 
@@ -1384,7 +1377,9 @@ def _run_aggregations(
     console.print(f"  [green]✓[/green]  metadata  →  {metadata_path}")
 
     # Yearly postcode-district aggregation for the time-range slider (issue #61).
-    # Only years >= slider_min_year are included; see SLIDER_MIN_YEAR for rationale.
+    # No year floor — all years with sufficient matched sales are included.
+    # Sparse early years (pre-EPC rollout, ~pre-2008) appear only where
+    # at least min_sales matched records exist for a district-year.
     yearly_df = con.execute(f"""
         SELECT
             YEAR(date_of_transfer) AS year,
@@ -1397,7 +1392,6 @@ def _run_aggregations(
         WHERE TOTAL_FLOOR_AREA IS NOT NULL
           AND TOTAL_FLOOR_AREA > 0
           AND postcode IS NOT NULL
-          AND YEAR(date_of_transfer) >= {slider_min_year}
         GROUP BY year, postcode_district
         HAVING COUNT(*) >= {min_sales}
         ORDER BY year, postcode_district
