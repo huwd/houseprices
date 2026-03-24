@@ -54,10 +54,30 @@ async function init() {
     "#49006a",
   ];
 
-  const allPrices = GEOJSON.features
-    .map((f) => f.properties.adj_price_per_sqm)
-    .filter((v) => v != null)
-    .sort((a, b) => a - b);
+  // When yearly data is available, calibrate the colour scale from the full-range
+  // (2010–yrMaxYear) yearly values so quantile breaks match what the slider shows.
+  // Falling back to GeoJSON adj_price_per_sqm (1995–present) would mis-calibrate
+  // the scale relative to the values the slider actually displays.
+  const allPrices = (() => {
+    if (YEARLY) {
+      return Object.values(YEARLY.districts)
+        .map((data) => {
+          let totalW = 0,
+            totalFA = 0;
+          for (const d of Object.values(data)) {
+            totalW += d.p * d.fa;
+            totalFA += d.fa;
+          }
+          return totalFA > 0 ? Math.round(totalW / totalFA) : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => a - b);
+    }
+    return GEOJSON.features
+      .map((f) => f.properties.adj_price_per_sqm)
+      .filter((v) => v != null)
+      .sort((a, b) => a - b);
+  })();
 
   // 7 quantile lower-bounds, then manual purple thresholds
   const quantileBreaks = [0, 1 / 7, 2 / 7, 3 / 7, 4 / 7, 5 / 7, 6 / 7].map(
@@ -89,16 +109,8 @@ async function init() {
   let yearStart = YEARLY ? YEARLY.min_year : null;
   let yearEnd = YEARLY ? yrMaxYear : null;
 
-  function isYearFiltered() {
-    return (
-      YEARLY !== null &&
-      yearStart !== null &&
-      !(yearStart === YEARLY.min_year && yearEnd === yrMaxYear)
-    );
-  }
-
   function computeYearlyPrice(district) {
-    if (!YEARLY || !isYearFiltered()) return null;
+    if (!YEARLY) return null;
     const data = YEARLY.districts[district];
     if (!data) return null;
     let totalW = 0,
@@ -204,7 +216,7 @@ async function init() {
         ? "£" + displayPrice.toLocaleString() + "/m²"
         : "No data";
     const rangeNote =
-      yearlyPrice !== null
+      YEARLY !== null
         ? `<br><span class="muted">${yearStart}–${yearEnd} · real Jan-2026 £</span>`
         : `<br><span class="muted">All years · real Jan-2026 £</span>`;
     const sales =
@@ -224,7 +236,7 @@ async function init() {
 
   function districtStyle(feature) {
     const district = feature.properties.PostDist;
-    const price = isYearFiltered()
+    const price = YEARLY
       ? computeYearlyPrice(district)
       : feature.properties.adj_price_per_sqm;
     const active = (filterLo === 0 && filterHi === 100) || inFilter(price);
