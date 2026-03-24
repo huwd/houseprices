@@ -390,3 +390,127 @@ def test_load_price_data_no_duplicate_keys_from_type_rows(
 
     assert data["E1"]["num_sales"] == 200
     assert data["E1"]["price_per_sqm"] == 4000
+
+
+# ---------------------------------------------------------------------------
+# build_yearly_totals (issue #61)
+# ---------------------------------------------------------------------------
+
+
+def test_build_yearly_totals_returns_dict(tmp_path: pathlib.Path) -> None:
+    """build_yearly_totals must return a dict with 'min_year' and 'districts' keys."""
+    yearly_csv = tmp_path / "price_per_sqm_yearly_postcode_district.csv"
+    _write_csv(
+        yearly_csv,
+        [
+            {
+                "year": 2020,
+                "postcode_district": "SW1A",
+                "num_sales": 15,
+                "total_floor_area": 1500,
+                "adj_price_per_sqm": 5000,
+            }
+        ],
+    )
+    result = build_page.build_yearly_totals(tmp_path)
+    assert isinstance(result, dict)
+    assert "min_year" in result
+    assert "districts" in result
+
+
+def test_build_yearly_totals_min_year_from_data(tmp_path: pathlib.Path) -> None:
+    """min_year must equal the earliest year present in the CSV."""
+    yearly_csv = tmp_path / "price_per_sqm_yearly_postcode_district.csv"
+    _write_csv(
+        yearly_csv,
+        [
+            {
+                "year": 2012,
+                "postcode_district": "E1",
+                "num_sales": 10,
+                "total_floor_area": 800,
+                "adj_price_per_sqm": 3000,
+            },
+            {
+                "year": 2020,
+                "postcode_district": "E1",
+                "num_sales": 20,
+                "total_floor_area": 1600,
+                "adj_price_per_sqm": 4000,
+            },
+        ],
+    )
+    result = build_page.build_yearly_totals(tmp_path)
+    assert result["min_year"] == 2012
+
+
+def test_build_yearly_totals_district_keyed(tmp_path: pathlib.Path) -> None:
+    """districts must be keyed by postcode district string."""
+    yearly_csv = tmp_path / "price_per_sqm_yearly_postcode_district.csv"
+    _write_csv(
+        yearly_csv,
+        [
+            {
+                "year": 2020,
+                "postcode_district": "SW1A",
+                "num_sales": 15,
+                "total_floor_area": 1500,
+                "adj_price_per_sqm": 5000,
+            }
+        ],
+    )
+    result = build_page.build_yearly_totals(tmp_path)
+    assert "SW1A" in result["districts"]
+
+
+def test_build_yearly_totals_year_keyed_within_district(tmp_path: pathlib.Path) -> None:
+    """Each district must contain integer-year-keyed entries."""
+    yearly_csv = tmp_path / "price_per_sqm_yearly_postcode_district.csv"
+    _write_csv(
+        yearly_csv,
+        [
+            {
+                "year": 2020,
+                "postcode_district": "SW1A",
+                "num_sales": 15,
+                "total_floor_area": 1500,
+                "adj_price_per_sqm": 5000,
+            },
+            {
+                "year": 2021,
+                "postcode_district": "SW1A",
+                "num_sales": 20,
+                "total_floor_area": 2000,
+                "adj_price_per_sqm": 5200,
+            },
+        ],
+    )
+    result = build_page.build_yearly_totals(tmp_path)
+    assert 2020 in result["districts"]["SW1A"]
+    assert 2021 in result["districts"]["SW1A"]
+
+
+def test_build_yearly_totals_entry_has_compact_keys(tmp_path: pathlib.Path) -> None:
+    """Each year entry must have exactly 'p', 'fa', and 'n' compact keys."""
+    yearly_csv = tmp_path / "price_per_sqm_yearly_postcode_district.csv"
+    _write_csv(
+        yearly_csv,
+        [
+            {
+                "year": 2020,
+                "postcode_district": "SW1A",
+                "num_sales": 15,
+                "total_floor_area": 1500,
+                "adj_price_per_sqm": 5000,
+            }
+        ],
+    )
+    result = build_page.build_yearly_totals(tmp_path)
+    entry = result["districts"]["SW1A"][2020]
+    assert entry == {"p": 5000, "fa": 1500, "n": 15}
+
+
+def test_build_yearly_totals_missing_file_returns_empty(tmp_path: pathlib.Path) -> None:
+    """build_yearly_totals must return {} when the CSV does not exist."""
+    result = build_page.build_yearly_totals(tmp_path)
+    assert result == {}
