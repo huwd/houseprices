@@ -167,7 +167,7 @@ def load_price_data() -> dict[str, dict]:
 def compute_stats(price_data: dict[str, dict], metadata: dict[str, str]) -> dict:
     import datetime
 
-    prices = sorted(r["price_per_sqm"] for r in price_data.values())
+    prices = sorted(r["adj_price_per_sqm"] for r in price_data.values())
     median = int(statistics.median(prices))
     total_sales = sum(r["num_sales"] for r in price_data.values())
 
@@ -176,7 +176,7 @@ def compute_stats(price_data: dict[str, dict], metadata: dict[str, str]) -> dict
         for d, v in price_data.items()
         if v["num_sales"] >= MIN_SALES_FOR_RANKING
     ]
-    ranked.sort(key=lambda r: r["price_per_sqm"])
+    ranked.sort(key=lambda r: r["adj_price_per_sqm"])
     ranked_desc = ranked[::-1]
 
     if metadata.get("min_sale_date") and metadata.get("max_sale_date"):
@@ -204,7 +204,7 @@ def compute_stats(price_data: dict[str, dict], metadata: dict[str, str]) -> dict
             first_non_london = {
                 "district": r["district"],
                 "rank": i + 1,
-                "price_per_sqm": r["price_per_sqm"],
+                "adj_price_per_sqm": r["adj_price_per_sqm"],
             }
             break
 
@@ -232,11 +232,11 @@ def compute_stats(price_data: dict[str, dict], metadata: dict[str, str]) -> dict
         # ONS CPI D7BT base month — update if methodology changes
         "cpi_base": "January 2026",
         "top10": [
-            {"district": r["district"], "price_per_sqm": r["price_per_sqm"]}
+            {"district": r["district"], "adj_price_per_sqm": r["adj_price_per_sqm"]}
             for r in ranked_desc[:10]
         ],
         "bottom10": [
-            {"district": r["district"], "price_per_sqm": r["price_per_sqm"]}
+            {"district": r["district"], "adj_price_per_sqm": r["adj_price_per_sqm"]}
             for r in ranked[:10]
         ],
         "facts": {
