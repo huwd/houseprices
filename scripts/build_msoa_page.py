@@ -126,7 +126,11 @@ def aggregate_to_msoa(
     return result
 
 
-def compute_msoa_stats(msoa_data: dict[str, dict], metadata: dict[str, str]) -> dict:
+def compute_msoa_stats(
+    msoa_data: dict[str, dict],
+    metadata: dict[str, str],
+    msoa_names: dict[str, str] | None = None,
+) -> dict:
     """Compute summary statistics for the MSOA page STATS object."""
     import datetime
 
@@ -156,11 +160,19 @@ def compute_msoa_stats(msoa_data: dict[str, dict], metadata: dict[str, str]) -> 
         "date_range": date_range,
         "cpi_base": "January 2026",
         "top10": [
-            {"msoa": r["msoa"], "adj_price_per_sqm": r["adj_price_per_sqm"]}
+            {
+                "msoa": r["msoa"],
+                "name": (msoa_names or {}).get(r["msoa"], r["msoa"]),
+                "adj_price_per_sqm": r["adj_price_per_sqm"],
+            }
             for r in ranked_desc[:10]
         ],
         "bottom10": [
-            {"msoa": r["msoa"], "adj_price_per_sqm": r["adj_price_per_sqm"]}
+            {
+                "msoa": r["msoa"],
+                "name": (msoa_names or {}).get(r["msoa"], r["msoa"]),
+                "adj_price_per_sqm": r["adj_price_per_sqm"],
+            }
             for r in ranked[:10]
         ],
     }
@@ -331,7 +343,7 @@ def main() -> None:
 
     print("Joining…")
     geojson = build_msoa_geojson(boundaries, msoa_data, msoa_names)
-    stats = compute_msoa_stats(msoa_data, metadata)
+    stats = compute_msoa_stats(msoa_data, metadata, msoa_names)
 
     print("Writing GeoJSON…")
     OUT_GEOJSON.write_text(json.dumps(geojson, separators=(",", ":")))

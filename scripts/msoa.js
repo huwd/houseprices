@@ -13,8 +13,8 @@ document.getElementById("stat-range").textContent = STATS.date_range;
 document.getElementById("stat-cpi-base").textContent = STATS.cpi_base;
 
 // ── Tables ────────────────────────────────────────────────────────────────────
-populateTable("tbl-top", STATS.top10, "msoa", "data-msoa");
-populateTable("tbl-bottom", STATS.bottom10, "msoa", "data-msoa");
+populateTable("tbl-top", STATS.top10, "msoa", "data-msoa", "name");
+populateTable("tbl-bottom", STATS.bottom10, "msoa", "data-msoa", "name");
 
 // ── Map initialisation ────────────────────────────────────────────────────────
 async function init() {
@@ -57,7 +57,9 @@ async function init() {
     const price = props.adj_price_per_sqm;
     const priceStr =
       price != null ? "£" + price.toLocaleString() + "/m²" : "No data";
-    const name = props.MSOA21NM ? `<br><span class="muted">${props.MSOA21NM}</span>` : "";
+    const name = props.MSOA21NM
+      ? `<div class="info-area-name">${props.MSOA21NM}</div>`
+      : "";
     const sales =
       props.num_sales != null
         ? `<br><span class="muted">Based on ${props.num_sales.toLocaleString()} sales</span>` +
@@ -174,13 +176,15 @@ async function init() {
   // ── Price range text ──────────────────────────────────────────────────────────
   const top2 = STATS.top10.slice(0, 2);
   const bot2 = STATS.bottom10.slice(0, 2);
+  function msoaLink(entry) {
+    const label = entry.name || entry.msoa;
+    return `<a href="#" class="map-link" data-msoa="${entry.msoa}">${label}</a>`;
+  }
   document.getElementById("price-range-text").innerHTML =
     `Sale prices range from more than £${top2[0].adj_price_per_sqm.toLocaleString()}/m² in ` +
-    `<a href="#" class="map-link" data-msoa="${top2[0].msoa}">${top2[0].msoa}</a> and ` +
-    `<a href="#" class="map-link" data-msoa="${top2[1].msoa}">${top2[1].msoa}</a>, ` +
+    `${msoaLink(top2[0])} and ${msoaLink(top2[1])}, ` +
     `to under £${bot2[1].adj_price_per_sqm.toLocaleString()}/m² in areas like ` +
-    `<a href="#" class="map-link" data-msoa="${bot2[0].msoa}">${bot2[0].msoa}</a> and ` +
-    `<a href="#" class="map-link" data-msoa="${bot2[1].msoa}">${bot2[1].msoa}</a>. ` +
+    `${msoaLink(bot2[0])} and ${msoaLink(bot2[1])}. ` +
     `All prices are adjusted to ${STATS.cpi_base} pounds using the ONS CPI index.`;
 
   // ── Legend (bottom-right) ─────────────────────────────────────────────────────

@@ -63,17 +63,19 @@ function ordinal(n) {
 /**
  * Populate a two-column ranked table.
  *
- * @param {string}   id        — id of the <table> element
- * @param {Array}    rows      — array of objects with adj_price_per_sqm and a code field
- * @param {string}   codeKey   — field name for the area code ("district" | "msoa")
- * @param {string}   dataAttr  — data-* attribute name for map links ("data-district" | "data-msoa")
+ * @param {string}      id        — id of the <table> element
+ * @param {Array}       rows      — array of objects with adj_price_per_sqm and a code field
+ * @param {string}      codeKey   — field name for the area code ("district" | "msoa")
+ * @param {string}      dataAttr  — data-* attribute name for map links ("data-district" | "data-msoa")
+ * @param {string|null} nameKey   — optional field name for human-readable label; falls back to codeKey
  */
-function populateTable(id, rows, codeKey, dataAttr) {
+function populateTable(id, rows, codeKey, dataAttr, nameKey = null) {
   const tbody = document.querySelector("#" + id + " tbody");
   rows.forEach((r) => {
+    const label = (nameKey && r[nameKey]) ? r[nameKey] : r[codeKey];
     const tr = document.createElement("tr");
     tr.innerHTML =
-      `<td><a href="#" class="map-link" ${dataAttr}="${r[codeKey]}">${r[codeKey]}</a></td>` +
+      `<td><a href="#" class="map-link" ${dataAttr}="${r[codeKey]}">${label}</a></td>` +
       `<td>£${r.adj_price_per_sqm.toLocaleString()}</td>`;
     tbody.appendChild(tr);
   });
