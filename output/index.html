@@ -28,10 +28,10 @@
 
     <p class="intro-text"> It extends the pioneering work of <a href="https://houseprices.anna.ps/">Anna
         Powell-Smith</a> from 2017.
-      I've re-run the analysis with data to Jan 1995–Mar 2026, matching records between the Price Paid dataset and floor
+      I've re-run the analysis with data to Jan 1995–Jan 2026, matching records between the Price Paid dataset and floor
       area
       from the Energy Performance Certificate dataset.
-      The result is a national dataset of price per m² for 2,277 postcode districts.
+      The result is a national dataset of price per m² for 2,276 postcode districts.
     </p>
     <p id="price-range-text" class="intro-text"></p>
   </div>
@@ -117,7 +117,7 @@
       <div class="download-card">
         <h4>By postcode district</h4>
         <p>One row per postcode district × property type, plus an <code>ALL</code> rollup row per
-          district. 2,277 districts.</p>
+          district. 2,276 districts.</p>
         <a class="download-btn" href="price_per_sqm_postcode_district.csv"
           download="price_per_sqm_postcode_district.csv">Download CSV</a>
         <table class="schema-table">
@@ -176,7 +176,7 @@
     <h3>Methodology</h3>
     <p>Sale prices are taken from
       <a href="https://www.gov.uk/government/collections/price-paid-data">HM Land Registry's
-        Price Paid dataset</a> (standard residential sales to individuals, Jan 1995–Jan 1995–Mar 2026).
+        Price Paid dataset</a> (standard residential sales to individuals, Jan 1995–Jan 1995–Jan 2026).
       Floor area per property is taken from
       <a href="https://epc.opendatacommunities.org/">Energy Performance Certificates</a>.
     </p>
@@ -207,7 +207,7 @@
       different years are directly comparable.
     </p>
     <p>The map uses a hybrid colour scale. The first seven colour bands use quantile breaks,
-      dividing the 2,277 districts into roughly equal groups — this maximises
+      dividing the 2,276 districts into roughly equal groups — this maximises
       visual contrast across the bulk of the distribution. The top two bands use fixed
       thresholds: £5,000/m² and £10,000/m². Districts above £5,000/m² are predominantly
       inner London; above £10,000/m² is almost exclusively central London (Mayfair,
@@ -579,7 +579,7 @@
     </p>
   </div>
 
-  <script>const STATS = {"median_price_per_sqm":2169,"num_districts":2277,"date_range":"Jan 1995\u2013Mar 2026","total_sales":16577000,"cpi_base":"January 2026","top10":[{"district":"W1S","price_per_sqm":26515},{"district":"WC2A","price_per_sqm":24208},{"district":"WC2R","price_per_sqm":20285},{"district":"W1B","price_per_sqm":18387},{"district":"W1K","price_per_sqm":16881},{"district":"EC3R","price_per_sqm":16497},{"district":"W1J","price_per_sqm":16174},{"district":"W1T","price_per_sqm":14672},{"district":"N1C","price_per_sqm":14584},{"district":"WC2E","price_per_sqm":14569}],"bottom10":[{"district":"TS2","price_per_sqm":458},{"district":"TS1","price_per_sqm":570},{"district":"BD3","price_per_sqm":630},{"district":"DN31","price_per_sqm":699},{"district":"CF43","price_per_sqm":702},{"district":"DN1","price_per_sqm":734},{"district":"BD8","price_per_sqm":738},{"district":"BD5","price_per_sqm":750},{"district":"S4","price_per_sqm":763},{"district":"FY1","price_per_sqm":769}],"facts":{"london_streak":72,"london_in_top_100":100,"non_london_top_100":[],"first_non_london":{"district":"CB2","rank":118,"price_per_sqm":4619},"no_data_count":460},"missing_geometry":[{"district":"E20","num_sales":884,"adj_price_per_sqm":8595}]};</script>
+  <script>const STATS = {"median_price_per_sqm":2167,"num_districts":2276,"date_range":"Jan 1995\u2013Jan 2026","total_sales":16577000,"cpi_base":"January 2026","top10":[{"district":"W1S","price_per_sqm":26515},{"district":"WC2A","price_per_sqm":24208},{"district":"WC2R","price_per_sqm":20285},{"district":"W1B","price_per_sqm":18387},{"district":"W1K","price_per_sqm":16881},{"district":"EC3R","price_per_sqm":16497},{"district":"W1J","price_per_sqm":16174},{"district":"W1T","price_per_sqm":14672},{"district":"N1C","price_per_sqm":14584},{"district":"WC2E","price_per_sqm":14569}],"bottom10":[{"district":"TS2","price_per_sqm":458},{"district":"TS1","price_per_sqm":570},{"district":"BD3","price_per_sqm":630},{"district":"DN31","price_per_sqm":699},{"district":"CF43","price_per_sqm":702},{"district":"DN1","price_per_sqm":734},{"district":"BD8","price_per_sqm":738},{"district":"BD5","price_per_sqm":750},{"district":"S4","price_per_sqm":763},{"district":"FY1","price_per_sqm":769}],"facts":{"london_streak":71,"london_in_top_100":100,"non_london_top_100":[],"first_non_london":{"district":"CB2","rank":117,"price_per_sqm":4619},"no_data_count":460},"missing_geometry":[]};</script>
   <script src="page.js"></script>
 </body>
 

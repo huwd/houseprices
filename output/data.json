@@ -5,8 +5,8 @@
       "name": "Price Per Sqm Postcode District",
       "filename": "price_per_sqm_postcode_district.csv",
       "description": "Inflation-adjusted price per m\u00b2 by postcode district (England & Wales, Jan 1995\u2013present). Derived from HM Land Registry Price Paid Data joined to EPC floor areas.",
-      "rows": 2277,
-      "size_bytes": 94383,
+      "rows": 11177,
+      "size_bytes": 470416,
       "schema": [
         {
           "name": "postcode_district",
