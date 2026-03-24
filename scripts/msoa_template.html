@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UK House Prices per m² by MSOA — Huw Diprose</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="page.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+
+<body>
+
+  <header>
+    <ul>
+      <li><a href="https://www.huwdiprose.co.uk/">Huw Diprose</a></li>
+      <li><a href="index.html">Postcode districts</a></li>
+      <li><a href="msoa.html" class="nav-active">MSOAs</a></li>
+    </ul>
+  </header>
+
+  <div class="page-title">
+    <h1>House Prices per Metre² by MSOA in England &amp; Wales</h1>
+    <h2>An analysis of government open data, mapped by <a href="https://www.huwdiprose.co.uk/">Huw Diprose</a><span
+        class="analysis-version" title="Analysis version">__VERSION__</span></h2>
+    <p class="intro-text">This map shows the average price per m² of houses in each Middle layer Super Output
+      Area (MSOA) in England &amp; Wales — a finer geography than postcode districts, with
+      __NUM_AREAS__ areas shown.
+    </p>
+    <p class="intro-text">Data is aggregated from LSOA-level records matched to Energy Performance Certificates
+      via UPRN. This tier covers transactions up to January 2022 (~60% of all sales).
+      All prices are adjusted to __DATA_DATE__ pounds using the ONS CPI index.
+    </p>
+    <p id="price-range-text" class="intro-text"></p>
+  </div>
+
+  <div id="map">
+    <div id="map-loading" class="map-loading">
+      <div class="spinner"></div>
+      <span>Loading map data…</span>
+    </div>
+  </div>
+
+  <div class="stats-strip">
+    <div class="stat">
+      <span class="stat-value" id="stat-median">—</span>
+      <span class="stat-label">Median MSOA £/m²</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-areas">—</span>
+      <span class="stat-label">MSOAs</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-sales">—</span>
+      <span class="stat-label">Sales matched</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-range">—</span>
+      <span class="stat-label">Data range</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-cpi-base">—</span>
+      <span class="stat-label">Prices adjusted to</span>
+    </div>
+  </div>
+
+  <div class="tables-row">
+    <div>
+      <h2>Most expensive</h2>
+      <table id="tbl-top">
+        <thead>
+          <tr>
+            <th>MSOA</th>
+            <th>£/m²</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div>
+      <h2>Least expensive</h2>
+      <table id="tbl-bottom">
+        <thead>
+          <tr>
+            <th>MSOA</th>
+            <th>£/m²</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="methodology">
+    <h3>Methodology</h3>
+    <p>Sale prices are taken from
+      <a href="https://www.gov.uk/government/collections/price-paid-data">HM Land Registry's
+        Price Paid dataset</a> (standard residential sales to individuals, Jan 1995–__DATA_DATE__).
+      Floor area per property is taken from
+      <a href="https://epc.opendatacommunities.org/">Energy Performance Certificates</a>.
+    </p>
+    <p>Each sale is matched to its EPC via the Unique Property Reference Number (UPRN) using the
+      <a href="https://doi.org/10.20394/agu7hprj">UBDC Price Paid–UPRN lookup table</a>,
+      which covers transactions up to January 2022. Post-2022 sales are not included in this
+      MSOA view. The price per m² for each MSOA is the total transaction value of all matched
+      LSOA-level sales divided by their total floor area — not a mean of per-property ratios.
+      MSOAs with fewer than 10 matched sales are excluded.
+    </p>
+    <p>MSOA boundaries are the December 2021 boundaries for England and Wales, sourced from the
+      <a href="https://geoportal.statistics.gov.uk/">ONS Open Geography Portal</a>.
+      LSOA→MSOA lookup is the ONS LSOA21→MSOA21 lookup table.
+    </p>
+    <p>The map uses the same hybrid colour scale as the postcode district view. The first seven
+      colour bands use quantile breaks, dividing the __NUM_AREAS__ MSOAs into roughly equal
+      groups. The top two bands use fixed thresholds: £5,000/m² and £10,000/m².
+    </p>
+    <details class="changelog">
+      <summary>Changelog</summary>
+      <div class="changelog-body">
+        __CHANGELOG_HTML__
+      </div>
+    </details>
+
+    <h3>Attribution</h3>
+    <p class="attribution">Price Paid data produced by HM Land Registry © Crown copyright 2026, licensed under the
+      <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/">Open Government Licence
+        v3.0</a>.
+      EPC data © Crown copyright DLUHC, licensed under the Open Government Licence v3.0.
+      <a href="https://doi.org/10.20394/agu7hprj">UBDC PPD–UPRN lookup</a> published as open data
+      by the Urban Big Data Centre, University of Glasgow.
+      Contains Ordnance Survey data © Crown copyright and database right 2026.
+      MSOA boundaries © Office for National Statistics, licensed under the Open Government Licence v3.0.
+      Contains National Statistics data © Crown copyright and database right 2026.
+      Map tiles © <a href="https://carto.com/attributions">CARTO</a>,
+      data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors.
+    </p>
+  </div>
+
+  <script>const STATS = __STATS__;</script>
+  <script src="shared.js"></script>
+  <script src="msoa.js"></script>
+</body>
+
+</html>
