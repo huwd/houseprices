@@ -57,12 +57,14 @@ _MSOA_BOUNDARY_SERVICE = (
     "Middle_layer_Super_Output_Areas_December_2021_Boundaries_EW_BGC_V3/"
     "FeatureServer/0"
 )
-# ONS LSOA21→MSOA21 lookup (England & Wales)
+# ONS LSOA21→MSOA21 lookup (England & Wales).
+# The standalone LSOA21_MSOA21_EW_LU_V2 service was retired; the lookup is
+# now part of the combined OA21/LAD22 geography lookup service.
 _LSOA_MSOA_LOOKUP_SERVICE = (
     "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/"
-    "LSOA21_MSOA21_EW_LU_V2/FeatureServer/0"
+    "OA21_LAD22_LSOA21_MSOA21_LEP22_EN_LU_V2/FeatureServer/0"
 )
-_PAGE_SIZE = 2000
+_PAGE_SIZE = 1000  # ONS services cap at maxRecordCount=1000
 
 
 def load_lsoa_data(csv_path: pathlib.Path) -> dict[str, dict]:
@@ -179,13 +181,13 @@ def _fetch_paginated(service_url: str, fields: list[str]) -> list[dict]:
             ]
         )
         url = f"{service_url}/query?{params}"
-        with urllib.request.urlopen(url, timeout=30) as resp:
+        with urllib.request.urlopen(url, timeout=60) as resp:
             data = json.loads(resp.read())
         batch = data.get("features", [])
         records.extend(batch)
-        if len(batch) < _PAGE_SIZE or not data.get("exceededTransferLimit", False):
+        if not batch:
             break
-        offset += _PAGE_SIZE
+        offset += len(batch)
     return records
 
 
