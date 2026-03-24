@@ -88,6 +88,51 @@ _DISTRICT_SCHEMA = [
     },
 ]
 
+_MSOA_SCHEMA = [
+    {
+        "name": "msoa21cd",
+        "type": "string",
+        "description": "ONS 2021 Middle Super Output Area code (e.g. E02000001)",
+    },
+    {
+        "name": "msoa21nm",
+        "type": "string",
+        "description": "ONS 2021 MSOA name (e.g. City of London 001)",
+    },
+    {
+        "name": "num_sales",
+        "type": "integer",
+        "description": "Number of residential sales matched to an EPC record",
+    },
+    {
+        "name": "total_floor_area",
+        "type": "float",
+        "description": "Total floor area of matched properties (m²)",
+    },
+    {
+        "name": "total_price",
+        "type": "float",
+        "description": "Total transaction value of matched sales (£)",
+    },
+    {
+        "name": "price_per_sqm",
+        "type": "integer",
+        "description": (
+            "Nominal price per m² = total_price / total_floor_area (£). "
+            "Not a mean of per-property ratios."
+        ),
+    },
+    {
+        "name": "adj_price_per_sqm",
+        "type": "integer",
+        "description": (
+            "CPI-adjusted price per m², base January 2026 (£). "
+            "Deflated using ONS CPI series D7BT. "
+            "Derived from UPRN tier-1 matches only (~60% of sales, 1995–Jan 2022)."
+        ),
+    },
+]
+
 _LSOA_SCHEMA = [
     {
         "name": "LSOA21CD",
@@ -471,8 +516,20 @@ def build_data_json(output_dir: pathlib.Path, version: str) -> dict:
             ),
             _LSOA_SCHEMA,
         ),
+        (
+            "price_per_sqm_msoa.csv",
+            (
+                "Inflation-adjusted price per m² by 2021 MSOA "
+                "(England & Wales, Jan 1995–Jan 2022). "
+                "Derived from UPRN tier-1 matched records only (~60% of sales). "
+                "Run build_msoa_page.py to generate."
+            ),
+            _MSOA_SCHEMA,
+        ),
     ):
         csv_path = output_dir / filename
+        if not csv_path.exists():
+            continue
         row_count = 0
         with open(csv_path) as f:
             reader = csv.DictReader(f)
