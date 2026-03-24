@@ -51,11 +51,13 @@ OUT_MSOA_JS = OUTPUT / "msoa.js"
 MIN_SALES = 10
 MIN_SALES_FOR_RANKING = 20
 
-# ONS Open Geography Portal — MSOA 2021 boundaries (England & Wales)
+# ONS Open Geography Portal — MSOA 2021 boundaries (England & Wales), BSC tier.
+# BSC (Super Generalised Clipped) is designed for display at scales above
+# 1:500,000 — appropriate for a national choropleth.  Produces a smaller file
+# than BGC (~8 MB vs ~19 MB) at the cost of less detail at high zoom levels.
 _MSOA_BOUNDARY_SERVICE = (
     "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/"
-    "Middle_layer_Super_Output_Areas_December_2021_Boundaries_EW_BGC_V3/"
-    "FeatureServer/0"
+    "MSOA_2021_EW_BSC_V3_RUC/FeatureServer/0"
 )
 # ONS LSOA21→MSOA21 lookup (England & Wales).
 # The standalone LSOA21_MSOA21_EW_LU_V2 service was retired; the lookup is
