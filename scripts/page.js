@@ -29,9 +29,12 @@ populateTable("tbl-bottom", STATS.bottom10);
 
 // ── Map initialisation (deferred until GeoJSON is fetched) ───────────────────
 async function init() {
-  const GEOJSON = await fetch("postcode_districts.geojson").then((r) =>
-    r.json(),
-  );
+  const [GEOJSON, YEARLY] = await Promise.all([
+    fetch("postcode_districts.geojson").then((r) => r.json()),
+    fetch("yearly_totals.json")
+      .then((r) => r.json())
+      .catch(() => null),
+  ]);
 
   // ── Colour scale (9-class hybrid, YlOrRd→purple) ─────────────────────────────
   // 7-class quantile breaks for the main distribution (~325 districts each),
@@ -79,6 +82,35 @@ async function init() {
       if (price >= breaks[i]) return PALETTE[i];
     }
     return PALETTE[0];
+  }
+
+  // ── Year range filter ─────────────────────────────────────────────────────────
+  const yrMaxYear = YEARLY ? Math.max(...Object.values(YEARLY.districts).flatMap((d) => Object.keys(d).map(Number))) : new Date().getFullYear();
+  let yearStart = YEARLY ? YEARLY.min_year : null;
+  let yearEnd = YEARLY ? yrMaxYear : null;
+
+  function isYearFiltered() {
+    return (
+      YEARLY !== null &&
+      yearStart !== null &&
+      !(yearStart === YEARLY.min_year && yearEnd === yrMaxYear)
+    );
+  }
+
+  function computeYearlyPrice(district) {
+    if (!YEARLY || !isYearFiltered()) return null;
+    const data = YEARLY.districts[district];
+    if (!data) return null;
+    let totalW = 0,
+      totalFA = 0;
+    for (let yr = yearStart; yr <= yearEnd; yr++) {
+      const d = data[yr];
+      if (d) {
+        totalW += d.p * d.fa;
+        totalFA += d.fa;
+      }
+    }
+    return totalFA > 0 ? Math.round(totalW / totalFA) : null;
   }
 
   // ── Price range filter ────────────────────────────────────────────────────────
@@ -165,18 +197,24 @@ async function init() {
       this._div.innerHTML = "<h4>UK House Prices</h4>Hover over a district";
       return;
     }
-    const price =
-      props.price_per_sqm != null
-        ? "£" + props.price_per_sqm.toLocaleString() + "/m²"
+    const yearlyPrice = computeYearlyPrice(props.PostDist);
+    const displayPrice = yearlyPrice !== null ? yearlyPrice : props.price_per_sqm;
+    const priceStr =
+      displayPrice != null
+        ? "£" + displayPrice.toLocaleString() + "/m²"
         : "No data";
+    const rangeNote =
+      yearlyPrice !== null
+        ? `<br><span class="muted">${yearStart}–${yearEnd} avg (real Jan-2026 £)</span>`
+        : "";
     const sales =
-      props.num_sales != null
+      !yearlyPrice && props.num_sales != null
         ? props.num_sales.toLocaleString() + " sales"
         : "";
     this._div.innerHTML =
-      `<h4>${props.PostDist}</h4>${price}` +
+      `<h4>${props.PostDist}</h4>${priceStr}${rangeNote}` +
       (sales
-        ? `<br><span class="muted">Based on ${sales}<span><br><span class="muted">${STATS.date_range}</span>`
+        ? `<br><span class="muted">Based on ${sales}</span><br><span class="muted">${STATS.date_range}</span>`
         : "");
   };
   infoCtrl.addTo(map);
@@ -185,7 +223,10 @@ async function init() {
   let activeLayer = null;
 
   function districtStyle(feature) {
-    const price = feature.properties.price_per_sqm;
+    const district = feature.properties.PostDist;
+    const price = isYearFiltered()
+      ? computeYearlyPrice(district)
+      : feature.properties.price_per_sqm;
     const active = (filterLo === 0 && filterHi === 100) || inFilter(price);
     return {
       fillColor: active ? getColour(price) : "#bbbbbb",
@@ -750,5 +791,48 @@ async function init() {
 
   rfLo.addEventListener("input", updateFilter);
   rfHi.addEventListener("input", updateFilter);
+
+  // ── Year range slider ─────────────────────────────────────────────────────────
+  if (YEARLY && YEARLY.min_year) {
+    const yrFilter = document.getElementById("year-filter");
+    const yrStartEl = document.getElementById("yr-start");
+    const yrEndEl = document.getElementById("yr-end");
+    const yrLabel = document.getElementById("yr-range-label");
+    const yrReset = document.getElementById("yr-reset");
+
+    yrStartEl.min = YEARLY.min_year;
+    yrStartEl.max = yrMaxYear;
+    yrStartEl.value = YEARLY.min_year;
+    yrEndEl.min = YEARLY.min_year;
+    yrEndEl.max = yrMaxYear;
+    yrEndEl.value = yrMaxYear;
+
+    function updateYearRange() {
+      let s = parseInt(yrStartEl.value);
+      let e = parseInt(yrEndEl.value);
+      if (s > e) {
+        if (document.activeElement === yrStartEl) yrStartEl.value = s = e;
+        else yrEndEl.value = e = s;
+      }
+      yearStart = s;
+      yearEnd = e;
+      const allTime = s === YEARLY.min_year && e === yrMaxYear;
+      yrLabel.textContent = allTime ? "All years" : `${s} – ${e}`;
+      yrReset.style.display = allTime ? "none" : "inline";
+      geoLayer.setStyle(districtStyle);
+      // refresh info panel if a district is selected
+      if (activeLayer) infoCtrl._render(activeLayer.feature.properties);
+    }
+
+    yrStartEl.addEventListener("input", updateYearRange);
+    yrEndEl.addEventListener("input", updateYearRange);
+    yrReset.addEventListener("click", () => {
+      yrStartEl.value = YEARLY.min_year;
+      yrEndEl.value = yrMaxYear;
+      updateYearRange();
+    });
+
+    yrFilter.style.display = "flex";
+  }
 } // end init()
 init();

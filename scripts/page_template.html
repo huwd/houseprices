@@ -43,6 +43,16 @@
     </div>
   </div>
 
+  <div id="year-filter" class="year-filter" style="display:none" aria-label="Filter by year range">
+    <span class="year-filter-label">Period:</span>
+    <div class="year-range-wrap">
+      <input type="range" id="yr-start" min="2010" max="2026" value="2010" step="1" aria-label="Start year">
+      <input type="range" id="yr-end" min="2010" max="2026" value="2026" step="1" aria-label="End year">
+    </div>
+    <span id="yr-range-label" class="year-filter-range">All years</span>
+    <button id="yr-reset" class="year-filter-reset" style="display:none">Reset</button>
+  </div>
+
   <div class="stats-strip">
     <div class="stat">
       <span class="stat-value" id="stat-median">—</span>
@@ -189,6 +199,12 @@
       of London (EC2R, EC3V, W1C) and TR23 (Bryher, Isles of Scilly), each with only
       2–5 recorded transactions. Other gaps are districts with no matching residential
       transactions at all, such as industrial estates.
+    </p>
+    <p>The time-range slider filters the map to sales within a chosen year window.
+      Data starts at 2010: earlier matches are predominantly properties that later
+      received an EPC — a non-random sample that would bias year-on-year comparisons.
+      Prices shown in the slider view are CPI-adjusted to January 2026 pounds so that
+      different years are directly comparable.
     </p>
     <p>The map uses a hybrid colour scale. The first seven colour bands use quantile breaks,
       dividing the __NUM_DISTRICTS__ districts into roughly equal groups — this maximises
