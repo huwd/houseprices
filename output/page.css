@@ -206,6 +206,58 @@ header a:hover {
   flex-shrink: 0;
 }
 
+/* ── Year range filter ── */
+.year-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1.5rem;
+  background: var(--color-bg-alt, #f7f7f7);
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+
+.year-filter-label {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.year-filter-range {
+  font-size: 0.9rem;
+  font-weight: 600;
+  min-width: 8rem;
+}
+
+.year-range-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+  min-width: 160px;
+  max-width: 400px;
+}
+
+.year-range-wrap input[type="range"] {
+  width: 100%;
+  cursor: pointer;
+  accent-color: var(--color-accent, #b10026);
+}
+
+.year-filter-reset {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+  color: var(--color-muted);
+}
+
+.year-filter-reset:hover {
+  background: var(--color-border);
+}
+
 /* ── Stats strip ── */
 .stats-strip {
   display: flex;
