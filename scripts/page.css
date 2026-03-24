@@ -794,4 +794,10 @@ th:last-child {
   .stats-strip {
     gap: 1rem;
   }
+
+  .year-filter-title,
+  .year-slider-row {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
 }
