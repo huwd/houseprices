@@ -54,30 +54,12 @@ async function init() {
     "#49006a",
   ];
 
-  // When yearly data is available, calibrate the colour scale from the full-range
-  // (2010–yrMaxYear) yearly values so quantile breaks match what the slider shows.
-  // Falling back to GeoJSON adj_price_per_sqm (1995–present) would mis-calibrate
-  // the scale relative to the values the slider actually displays.
-  const allPrices = (() => {
-    if (YEARLY) {
-      return Object.values(YEARLY.districts)
-        .map((data) => {
-          let totalW = 0,
-            totalFA = 0;
-          for (const d of Object.values(data)) {
-            totalW += d.p * d.fa;
-            totalFA += d.fa;
-          }
-          return totalFA > 0 ? Math.round(totalW / totalFA) : null;
-        })
-        .filter(Boolean)
-        .sort((a, b) => a - b);
-    }
-    return GEOJSON.features
-      .map((f) => f.properties.adj_price_per_sqm)
-      .filter((v) => v != null)
-      .sort((a, b) => a - b);
-  })();
+  // Colour scale calibrated on all-time adj_price_per_sqm from GeoJSON (1995–present).
+  // This is the stable reference distribution used in both all-time and year-range modes.
+  const allPrices = GEOJSON.features
+    .map((f) => f.properties.adj_price_per_sqm)
+    .filter((v) => v != null)
+    .sort((a, b) => a - b);
 
   // 7 quantile lower-bounds, then manual purple thresholds
   const quantileBreaks = [0, 1 / 7, 2 / 7, 3 / 7, 4 / 7, 5 / 7, 6 / 7].map(
@@ -105,12 +87,19 @@ async function init() {
   }
 
   // ── Year range filter ─────────────────────────────────────────────────────────
-  const yrMaxYear = YEARLY ? Math.max(...Object.values(YEARLY.districts).flatMap((d) => Object.keys(d).map(Number))) : new Date().getFullYear();
+  const yrMaxYear = YEARLY
+    ? Math.max(
+        ...Object.values(YEARLY.districts).flatMap((d) => Object.keys(d).map(Number)),
+      )
+    : new Date().getFullYear();
   let yearStart = YEARLY ? YEARLY.min_year : null;
   let yearEnd = YEARLY ? yrMaxYear : null;
+  // allTimeMode: true = show full 1995–present base map; false = show year-range view.
+  // Declared here so computeYearlyPrice and districtStyle can read it.
+  let allTimeMode = true;
 
   function computeYearlyPrice(district) {
-    if (!YEARLY) return null;
+    if (!YEARLY || allTimeMode) return null;
     const data = YEARLY.districts[district];
     if (!data) return null;
     let totalW = 0,
@@ -216,7 +205,7 @@ async function init() {
         ? "£" + displayPrice.toLocaleString() + "/m²"
         : "No data";
     const rangeNote =
-      YEARLY !== null
+      YEARLY !== null && !allTimeMode
         ? `<br><span class="muted">${yearStart}–${yearEnd} · real Jan-2026 £</span>`
         : `<br><span class="muted">All years · real Jan-2026 £</span>`;
     const sales =
@@ -236,9 +225,10 @@ async function init() {
 
   function districtStyle(feature) {
     const district = feature.properties.PostDist;
-    const price = YEARLY
-      ? computeYearlyPrice(district)
-      : feature.properties.adj_price_per_sqm;
+    const price =
+      YEARLY && !allTimeMode
+        ? computeYearlyPrice(district)
+        : feature.properties.adj_price_per_sqm;
     const active = (filterLo === 0 && filterHi === 100) || inFilter(price);
     return {
       fillColor: active ? getColour(price) : "#bbbbbb",
@@ -804,9 +794,11 @@ async function init() {
   rfLo.addEventListener("input", updateFilter);
   rfHi.addEventListener("input", updateFilter);
 
-  // ── Year range slider ─────────────────────────────────────────────────────────
+  // ── Year filter: all-time toggle + collapsible year-range sliders ────────────
   if (YEARLY && YEARLY.min_year) {
     const yrFilter = document.getElementById("year-filter");
+    const yrAlltimeEl = document.getElementById("yr-alltime");
+    const yrRangeWrap = document.getElementById("yr-range-wrap");
     const yrStartEl = document.getElementById("yr-start");
     const yrEndEl = document.getElementById("yr-end");
     const yrStartVal = document.getElementById("yr-start-val");
@@ -819,6 +811,8 @@ async function init() {
     yrEndEl.min = YEARLY.min_year;
     yrEndEl.max = yrMaxYear;
     yrEndEl.value = yrMaxYear;
+    yrStartVal.textContent = YEARLY.min_year;
+    yrEndVal.textContent = yrMaxYear;
 
     function updateYearRange() {
       let s = parseInt(yrStartEl.value);
@@ -831,13 +825,27 @@ async function init() {
       yearEnd = e;
       yrStartVal.textContent = s;
       yrEndVal.textContent = e;
-      const allTime = s === YEARLY.min_year && e === yrMaxYear;
-      yrReset.style.display = allTime ? "none" : "inline";
+      const atFullRange = s === YEARLY.min_year && e === yrMaxYear;
+      yrReset.style.display = atFullRange ? "none" : "inline";
       geoLayer.setStyle(districtStyle);
-      // refresh info panel if a district is selected
       if (activeLayer) infoCtrl._render(activeLayer.feature.properties);
     }
 
+    function setAllTimeMode(on) {
+      allTimeMode = on;
+      yrAlltimeEl.checked = on;
+      if (on) {
+        yrRangeWrap.classList.remove("yr-range-wrap--open");
+        yrRangeWrap.setAttribute("aria-hidden", "true");
+      } else {
+        yrRangeWrap.classList.add("yr-range-wrap--open");
+        yrRangeWrap.setAttribute("aria-hidden", "false");
+      }
+      geoLayer.setStyle(districtStyle);
+      if (activeLayer) infoCtrl._render(activeLayer.feature.properties);
+    }
+
+    yrAlltimeEl.addEventListener("change", () => setAllTimeMode(yrAlltimeEl.checked));
     yrStartEl.addEventListener("input", updateYearRange);
     yrEndEl.addEventListener("input", updateYearRange);
     yrReset.addEventListener("click", () => {
@@ -846,7 +854,7 @@ async function init() {
       updateYearRange();
     });
 
-    yrFilter.style.display = "flex";
+    yrFilter.style.display = "block";
   }
 } // end init()
 init();
