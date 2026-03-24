@@ -39,6 +39,7 @@ OUT_GEOJSON = OUTPUT / "postcode_districts.geojson"
 OUT_CSS = OUTPUT / "page.css"
 OUT_JS = OUTPUT / "page.js"
 OUT_DATA_JSON = OUTPUT / "data.json"
+OUT_YEARLY_JSON = OUTPUT / "yearly_totals.json"
 
 MIN_SALES_FOR_RANKING = 20  # exclude very thin districts from top/bottom tables
 
@@ -489,6 +490,41 @@ def build_data_json(output_dir: pathlib.Path, version: str) -> dict:
     return {"version": version, "datasets": datasets}
 
 
+def build_yearly_totals(output_dir: pathlib.Path | None = None) -> dict:
+    """Build yearly totals dict from price_per_sqm_yearly_postcode_district.csv.
+
+    Returns a dict suitable for serialising to yearly_totals.json:
+      {"min_year": 2010, "districts": {"SW1A": {2020: {"p": 5000, "fa": 1500, "n": 15}, ...}}}
+
+    Compact keys: p = adj_price_per_sqm, fa = total_floor_area (m²), n = num_sales.
+    fa is stored so the JS can reconstruct value-weighted aggregates across year ranges.
+
+    Returns {} if the source CSV does not exist (pipeline not yet run).
+    """
+    csv_path = (output_dir or OUTPUT) / "price_per_sqm_yearly_postcode_district.csv"
+    if not csv_path.exists():
+        return {}
+
+    districts: dict[str, dict[int, dict]] = {}
+    min_year: int | None = None
+
+    with open(csv_path, newline="") as f:
+        for row in csv.DictReader(f):
+            year = int(row["year"])
+            district = row["postcode_district"]
+            if min_year is None or year < min_year:
+                min_year = year
+            if district not in districts:
+                districts[district] = {}
+            districts[district][year] = {
+                "p": int(row["adj_price_per_sqm"]),
+                "fa": int(float(row["total_floor_area"])),
+                "n": int(row["num_sales"]),
+            }
+
+    return {"min_year": min_year, "districts": districts}
+
+
 def main() -> None:
     # Validate inputs
     missing = [p for p in (BOUNDARIES_PATH, CSV_PATH, TEMPLATE_PATH) if not p.exists()]
@@ -583,6 +619,17 @@ def main() -> None:
     data_json = build_data_json(OUTPUT, version)
     OUT_DATA_JSON.write_text(json.dumps(data_json, indent=2))
     print(f"  Written → {OUT_DATA_JSON}")
+
+    print("Writing yearly_totals.json…")
+    yearly_totals = build_yearly_totals()
+    if yearly_totals:
+        OUT_YEARLY_JSON.write_text(json.dumps(yearly_totals, separators=(",", ":")))
+        yearly_kb = OUT_YEARLY_JSON.stat().st_size // 1024
+        print(f"  Written → {OUT_YEARLY_JSON} ({yearly_kb:,} KB)")
+    else:
+        print(
+            "  Skipped — price_per_sqm_yearly_postcode_district.csv not found"
+        )
 
     print(f"  Median: £{stats['median_price_per_sqm']:,}/m²")
     print(f"  Districts: {stats['num_districts']:,}")

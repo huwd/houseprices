@@ -58,6 +58,12 @@ POSTCODE_DISTRICT_OVERRIDES: dict[str, str] = {
     "E20": "E15",  # Olympic Park — carved out of E15 circa 2012; no boundary polygon
 }
 
+# Earliest year included in the yearly district CSV used by the time-range slider.
+# Pre-2010 matches are almost exclusively tier 2+ (address normalisation) and represent
+# only the non-random sub-sample of properties that later received an EPC — unreliable
+# for time-series use.  See issue #61.
+SLIDER_MIN_YEAR: int = 2010
+
 _ABBREVIATIONS: list[tuple[str, str]] = [
     (r"\bAPARTMENT\b", "FLAT"),
     (r"\bUNIT\b", "FLAT"),
@@ -1224,6 +1230,7 @@ def _run_aggregations(
     min_sales: int,
     console: Console,
     min_sales_type: int = 5,
+    slider_min_year: int = SLIDER_MIN_YEAR,
 ) -> None:
     """Emit match report, district CSV, and LSOA CSV from existing Parquet files.
 
@@ -1375,6 +1382,32 @@ def _run_aggregations(
     metadata_path = output_dir / "metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2))
     console.print(f"  [green]✓[/green]  metadata  →  {metadata_path}")
+
+    # Yearly postcode-district aggregation for the time-range slider (issue #61).
+    # Only years >= slider_min_year are included; see SLIDER_MIN_YEAR for rationale.
+    yearly_df = con.execute(f"""
+        SELECT
+            YEAR(date_of_transfer) AS year,
+            {_district_expr} AS postcode_district,
+            COUNT(*) AS num_sales,
+            CAST(ROUND(SUM(TOTAL_FLOOR_AREA)) AS INTEGER) AS total_floor_area,
+            CAST(ROUND(SUM(adjusted_price) / SUM(TOTAL_FLOOR_AREA)) AS INTEGER)
+                AS adj_price_per_sqm
+        FROM read_parquet('{matched_parquet}')
+        WHERE TOTAL_FLOOR_AREA IS NOT NULL
+          AND TOTAL_FLOOR_AREA > 0
+          AND postcode IS NOT NULL
+          AND YEAR(date_of_transfer) >= {slider_min_year}
+        GROUP BY year, postcode_district
+        HAVING COUNT(*) >= {min_sales}
+        ORDER BY year, postcode_district
+    """).df()
+    yearly_path = output_dir / "price_per_sqm_yearly_postcode_district.csv"
+    yearly_df.to_csv(yearly_path, index=False)
+    console.print(
+        f"  [green]✓[/green]  {len(yearly_df):,} district-year rows"
+        f"  →  {yearly_path}"
+    )
 
 
 def rematch(
