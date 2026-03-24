@@ -197,6 +197,66 @@
           </tbody>
         </table>
       </div>
+      <div class="download-card">
+        <h4>By postcode district and year</h4>
+        <p>One row per postcode district × property type × year. Powers the year-range
+          slider. Districts with fewer than 10 matched sales in a given year are excluded.</p>
+        <a class="download-btn" href="price_per_sqm_yearly_postcode_district.csv"
+          download="price_per_sqm_yearly_postcode_district.csv">Download CSV</a>
+        <table class="schema-table">
+          <thead>
+            <tr>
+              <th>Column</th>
+              <th>Type</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>postcode_district</code></td>
+              <td>string</td>
+              <td>UK postcode district (e.g. SW1A)</td>
+            </tr>
+            <tr>
+              <td><code>property_type</code></td>
+              <td>string</td>
+              <td>Property type: <code>ALL</code> (rollup), <code>D</code> detached,
+                <code>F</code> flat/maisonette, <code>S</code> semi-detached,
+                <code>T</code> terraced, <code>O</code> other</td>
+            </tr>
+            <tr>
+              <td><code>year</code></td>
+              <td>integer</td>
+              <td>Calendar year of sale</td>
+            </tr>
+            <tr>
+              <td><code>num_sales</code></td>
+              <td>integer</td>
+              <td>Number of residential sales matched to an EPC record</td>
+            </tr>
+            <tr>
+              <td><code>total_floor_area</code></td>
+              <td>float</td>
+              <td>Total floor area of matched properties (m²)</td>
+            </tr>
+            <tr>
+              <td><code>total_price</code></td>
+              <td>float</td>
+              <td>Total transaction value of matched sales (£)</td>
+            </tr>
+            <tr>
+              <td><code>price_per_sqm</code></td>
+              <td>integer</td>
+              <td>Nominal price per m² = total_price / total_floor_area (£)</td>
+            </tr>
+            <tr>
+              <td><code>adj_price_per_sqm</code></td>
+              <td>integer</td>
+              <td>CPI-adjusted price per m², base January 2026 (£), using ONS CPI series D7BT</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 

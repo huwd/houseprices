@@ -78,6 +78,99 @@
           "description": "CPI-adjusted price per m\u00b2, base January 2026 (\u00a3). Deflated using ONS CPI series D7BT."
         }
       ]
+    },
+    {
+      "name": "Price Per Sqm Yearly Postcode District",
+      "filename": "price_per_sqm_yearly_postcode_district.csv",
+      "description": "Inflation-adjusted price per m\u00b2 by postcode district and year (England & Wales, Jan 1995\u2013present). Powers the year-range slider on the map. Districts with fewer than 10 matched sales in a given year are excluded.",
+      "rows": 66956,
+      "size_bytes": 1602474,
+      "schema": [
+        {
+          "name": "postcode_district",
+          "type": "string",
+          "description": "UK postcode district (e.g. SW1A)"
+        },
+        {
+          "name": "property_type",
+          "type": "string",
+          "description": "Property type: ALL (rollup), D detached, F flat/maisonette, S semi-detached, T terraced, O other"
+        },
+        {
+          "name": "year",
+          "type": "integer",
+          "description": "Calendar year of sale"
+        },
+        {
+          "name": "num_sales",
+          "type": "integer",
+          "description": "Number of residential sales matched to an EPC record"
+        },
+        {
+          "name": "total_floor_area",
+          "type": "float",
+          "description": "Total floor area of matched properties (m\u00b2)"
+        },
+        {
+          "name": "total_price",
+          "type": "float",
+          "description": "Total transaction value of matched sales (\u00a3)"
+        },
+        {
+          "name": "price_per_sqm",
+          "type": "integer",
+          "description": "Nominal price per m\u00b2 = total_price / total_floor_area (\u00a3). Not a mean of per-property ratios."
+        },
+        {
+          "name": "adj_price_per_sqm",
+          "type": "integer",
+          "description": "CPI-adjusted price per m\u00b2, base January 2026 (\u00a3). Deflated using ONS CPI series D7BT."
+        }
+      ]
+    },
+    {
+      "name": "Price Per Sqm Msoa",
+      "filename": "price_per_sqm_msoa.csv",
+      "description": "Inflation-adjusted price per m\u00b2 by 2021 MSOA (England & Wales, Jan 1995\u2013Jan 2022). Derived from UPRN tier-1 matched records only (~60% of sales). Run build_msoa_page.py to generate.",
+      "rows": 6856,
+      "size_bytes": 426277,
+      "schema": [
+        {
+          "name": "msoa21cd",
+          "type": "string",
+          "description": "ONS 2021 Middle Super Output Area code (e.g. E02000001)"
+        },
+        {
+          "name": "msoa21nm",
+          "type": "string",
+          "description": "ONS 2021 MSOA name (e.g. City of London 001)"
+        },
+        {
+          "name": "num_sales",
+          "type": "integer",
+          "description": "Number of residential sales matched to an EPC record"
+        },
+        {
+          "name": "total_floor_area",
+          "type": "float",
+          "description": "Total floor area of matched properties (m\u00b2)"
+        },
+        {
+          "name": "total_price",
+          "type": "float",
+          "description": "Total transaction value of matched sales (\u00a3)"
+        },
+        {
+          "name": "price_per_sqm",
+          "type": "integer",
+          "description": "Nominal price per m\u00b2 = total_price / total_floor_area (\u00a3). Not a mean of per-property ratios."
+        },
+        {
+          "name": "adj_price_per_sqm",
+          "type": "integer",
+          "description": "CPI-adjusted price per m\u00b2, base January 2026 (\u00a3). Deflated using ONS CPI series D7BT. Derived from UPRN tier-1 matches only (~60% of sales, 1995\u2013Jan 2022)."
+        }
+      ]
     }
   ]
 }
