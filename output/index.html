@@ -201,6 +201,70 @@
       <summary>Changelog</summary>
       <div class="changelog-body">
         <h4>[Unreleased]</h4>
+        <h4>Methodology improvements</h4>
+        <h4>Address normalisation: hyphens treated as word separators</h4>
+        <p>Hyphens in PPD and EPC address fields are now replaced with a space before matching, rather than silently removed. Previously, a hyphenated address such as <code>CROSS-O-THE-HANDS</code> was collapsed to <code>CROSSOTHEHANDS</code>, which no longer matched the same address written with spaces in the other source.</p>
+        <p>The fix applies to both the Python normaliser and the DuckDB macro used in tier-2 and tier-3 joins. Non-hyphen punctuation (apostrophes, periods) is still stripped without adding a space.</p>
+        <p>Measured gain on the March 2026 dataset: <strong>+2,428 matched records</strong> across all property types.</p>
+        <ul>
+        <li>Issue: <a href="https://github.com/huwd/houseprices/issues/114">#114</a></li>
+        </ul>
+        <h4>Address normalisation: article &quot;THE&quot; removed before matching</h4>
+        <p>The word &quot;THE&quot; is now stripped from both PPD and EPC addresses before the normalised match key is computed. &quot;THE OLD RECTORY&quot; and &quot;OLD RECTORY&quot; — the same property in different sources — previously produced different keys and went unmatched.</p>
+        <p>The removal uses a whole-word match (<code>\bTHE\b</code>) so property names that contain &quot;THE&quot; as a substring (e.g. <code>THETFORD</code>, <code>THEYDON</code>) are unaffected. Both sides receive the same transformation, so false positives require two distinct properties to have the same name minus the article at the same postcode — structurally very unlikely.</p>
+        <p>Measured gain on the March 2026 dataset: <strong>+4,995 matched records</strong> across all property types.</p>
+        <ul>
+        <li>Issue: <a href="https://github.com/huwd/houseprices/issues/113">#113</a></li>
+        </ul>
+        <h4>Address normalisation: compound property-name words canonicalised</h4>
+        <p>EPC assessors inconsistently split or join compound words in property names. The following pairs are now collapsed to a single canonical one-word form before matching:</p>
+        <table><thead><tr>
+        <th>Two-word form</th>
+        <th>One-word canonical</th>
+        </tr></thead><tbody>
+        <tr>
+        <td>FARM HOUSE</td>
+        <td>FARMHOUSE</td>
+        </tr>
+        <tr>
+        <td>GATE HOUSE</td>
+        <td>GATEHOUSE</td>
+        </tr>
+        <tr>
+        <td>SCHOOL HOUSE</td>
+        <td>SCHOOLHOUSE</td>
+        </tr>
+        <tr>
+        <td>MILL HOUSE</td>
+        <td>MILLHOUSE</td>
+        </tr>
+        <tr>
+        <td>ALMS HOUSE</td>
+        <td>ALMSHOUSE</td>
+        </tr>
+        </tbody></table>
+        <p>Unmatched detached counts in the March 2026 data show significant splits: SCHOOL HOUSE vs SCHOOLHOUSE (3,947 vs 130), MILL HOUSE vs MILLHOUSE (2,218 vs 54), FARM HOUSE vs FARMHOUSE (3,364 vs 4,048).</p>
+        <p>Measured gain on the March 2026 dataset: <strong>+342 matched records</strong> across all property types.</p>
+        <ul>
+        <li>Issue: <a href="https://github.com/huwd/houseprices/issues/115">#115</a></li>
+        </ul>
+        <h4>Matching: tier 4 — ADDRESS1-only join for named properties</h4>
+        <p>A new fourth matching tier recovers rural named properties that tier 2/3 cannot reach due to a structural mismatch between PPD and EPC address fields.</p>
+        <p><strong>The gap:</strong> where PPD has no <code>street</code> field, the tier-2/3 normalised key equals the property name alone (<code>&quot;ROSE COTTAGE&quot;</code>). The EPC key is <code>ADDRESS1 + ADDRESS2</code>, and <code>ADDRESS2</code> often contains a village name (<code>&quot;Rose Cottage Testvillage&quot;</code>). These keys never match even when <code>ADDRESS1</code> exactly equals the PPD property name.</p>
+        <p>Sampling (March 2026): **35.7% of unmatched named-paon detached records** (210,285 of 589,685) have a null <code>street</code> in PPD. 21.8% of unmatched <code>ROSE COTTAGE</code> PPD transactions have an EPC at the same postcode with <code>ADDRESS1 = &quot;ROSE COTTAGE&quot;</code> exactly — a real match that was unreachable.</p>
+        <p><strong>Tier 4 approach:</strong></p>
+        <ul>
+        <li>Only PPD records where <code>paon</code> contains no digits are considered.</li>
+        <li>PPD key: <code>(postcode, normalise_addr(paon))</code>.</li>
+        <li>EPC key: <code>(postcode, normalise_addr(ADDRESS1))</code> — ADDRESS2 is ignored.</li>
+        <li>Only <strong>1:1 matches</strong> are accepted on both sides, limiting false</li>
+        </ul>
+        <p>  positives at postcode granularity.</p>
+        <p>The tier benefits automatically from the normaliser improvements in #113, #114, and #115 (THE-stripping, hyphen→space, compound words).</p>
+        <p>Yield to be measured on next full pipeline run.</p>
+        <ul>
+        <li>Issue: <a href="https://github.com/huwd/houseprices/issues/116">#116</a></li>
+        </ul>
         <h4>Workarounds</h4>
         <h4>E20 postcode district remapped to E15</h4>
         <p>E20 (Queen Elizabeth Olympic Park / East Village, Stratford) was created by Royal Mail circa 2012 — after our Geolytix boundary snapshot — by carving it out of E15. Because no polygon exists for E20 in our boundary file, any PPD or EPC record with an E20 postcode was previously silently dropped at aggregation.</p>

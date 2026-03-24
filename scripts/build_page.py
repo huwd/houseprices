@@ -493,8 +493,11 @@ def build_data_json(output_dir: pathlib.Path, version: str) -> dict:
 def build_yearly_totals(output_dir: pathlib.Path | None = None) -> dict:
     """Build yearly totals dict from price_per_sqm_yearly_postcode_district.csv.
 
-    Returns a dict suitable for serialising to yearly_totals.json:
-      {"min_year": 2010, "districts": {"SW1A": {2020: {"p": 5000, "fa": 1500, "n": 15}, ...}}}
+    Returns a dict suitable for serialising to yearly_totals.json::
+
+      {"min_year": 2010, "districts": {
+        "SW1A": {2020: {"p": 5000, "fa": 1500, "n": 15}, ...}
+      }}
 
     Compact keys: p = adj_price_per_sqm, fa = total_floor_area (m²), n = num_sales.
     fa is stored so the JS can reconstruct value-weighted aggregates across year ranges.
@@ -627,9 +630,7 @@ def main() -> None:
         yearly_kb = OUT_YEARLY_JSON.stat().st_size // 1024
         print(f"  Written → {OUT_YEARLY_JSON} ({yearly_kb:,} KB)")
     else:
-        print(
-            "  Skipped — price_per_sqm_yearly_postcode_district.csv not found"
-        )
+        print("  Skipped — price_per_sqm_yearly_postcode_district.csv not found")
 
     print(f"  Median: £{stats['median_price_per_sqm']:,}/m²")
     print(f"  Districts: {stats['num_districts']:,}")
