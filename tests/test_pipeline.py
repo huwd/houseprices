@@ -2032,7 +2032,12 @@ def test_run_aggregations_writes_yearly_district_csv(
     matched, uprn_lsoa, ppd_slim = aggregation_inputs
     output_dir = tmp_path / "output"
     _run_aggregations(
-        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=Console(quiet=True)
+        matched,
+        uprn_lsoa,
+        ppd_slim,
+        output_dir,
+        min_sales=1,
+        console=Console(quiet=True),
     )
     assert (output_dir / "price_per_sqm_yearly_postcode_district.csv").exists()
 
@@ -2046,7 +2051,12 @@ def test_run_aggregations_yearly_csv_has_required_columns(
     matched, uprn_lsoa, ppd_slim = aggregation_inputs
     output_dir = tmp_path / "output"
     _run_aggregations(
-        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=Console(quiet=True)
+        matched,
+        uprn_lsoa,
+        ppd_slim,
+        output_dir,
+        min_sales=1,
+        console=Console(quiet=True),
     )
     df = pd.read_csv(output_dir / "price_per_sqm_yearly_postcode_district.csv")
     for col in (

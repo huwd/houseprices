@@ -1405,8 +1405,7 @@ def _run_aggregations(
     yearly_path = output_dir / "price_per_sqm_yearly_postcode_district.csv"
     yearly_df.to_csv(yearly_path, index=False)
     console.print(
-        f"  [green]✓[/green]  {len(yearly_df):,} district-year rows"
-        f"  →  {yearly_path}"
+        f"  [green]✓[/green]  {len(yearly_df):,} district-year rows  →  {yearly_path}"
     )
 
 
