@@ -2014,3 +2014,87 @@ def test_run_aggregations_metadata_dates_match_fixture_range(
     # Both dates must fall within the fixture data range (2021–2023 for matched records)
     assert min_d >= datetime.date(2021, 1, 1)
     assert max_d <= datetime.date(2024, 1, 1)
+
+
+# ---------------------------------------------------------------------------
+# _run_aggregations — yearly district CSV (issue #61)
+#
+# Fixture PPD dates: 2020-05-01, 2021-03-15, 2021-06-01, 2023-01-10, 2023-09-01.
+# After join_datasets only matched rows survive (2021–2023 per existing assertions).
+# ---------------------------------------------------------------------------
+
+
+def test_run_aggregations_writes_yearly_district_csv(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """_run_aggregations must write price_per_sqm_yearly_postcode_district.csv."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=Console(quiet=True)
+    )
+    assert (output_dir / "price_per_sqm_yearly_postcode_district.csv").exists()
+
+
+def test_run_aggregations_yearly_csv_has_required_columns(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """Yearly CSV must have year, postcode_district, num_sales, total_floor_area,
+    adj_price_per_sqm columns."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    _run_aggregations(
+        matched, uprn_lsoa, ppd_slim, output_dir, min_sales=1, console=Console(quiet=True)
+    )
+    df = pd.read_csv(output_dir / "price_per_sqm_yearly_postcode_district.csv")
+    for col in (
+        "year",
+        "postcode_district",
+        "num_sales",
+        "total_floor_area",
+        "adj_price_per_sqm",
+    ):
+        assert col in df.columns, f"Missing column: {col}"
+
+
+def test_run_aggregations_yearly_csv_excludes_pre_min_year(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """Rows with sale year < slider_min_year must be excluded from yearly CSV."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    # Fixture matched sales are in 2021 and 2023; min_year=2022 keeps only 2023.
+    _run_aggregations(
+        matched,
+        uprn_lsoa,
+        ppd_slim,
+        output_dir,
+        min_sales=1,
+        console=Console(quiet=True),
+        slider_min_year=2022,
+    )
+    df = pd.read_csv(output_dir / "price_per_sqm_yearly_postcode_district.csv")
+    assert (df["year"] >= 2022).all()
+    assert len(df) >= 1  # 2023 sales must still be present
+
+
+def test_run_aggregations_yearly_csv_min_sales_filter(
+    aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
+    tmp_path: pathlib.Path,
+) -> None:
+    """District-year rows below min_sales must be excluded from the yearly CSV."""
+    matched, uprn_lsoa, ppd_slim = aggregation_inputs
+    output_dir = tmp_path / "output"
+    _run_aggregations(
+        matched,
+        uprn_lsoa,
+        ppd_slim,
+        output_dir,
+        min_sales=9999,
+        console=Console(quiet=True),
+    )
+    df = pd.read_csv(output_dir / "price_per_sqm_yearly_postcode_district.csv")
+    assert len(df) == 0
