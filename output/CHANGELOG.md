@@ -2,7 +2,13 @@
 
 ## [1.0.0] — 2026-03-24
 
-### Breaking change — output schema
+**First stable release.** v1.0.0 marks the point at which this analysis is
+considered ready for public use and the author commits to semantic versioning
+from this release onwards. Future patch releases will update data vintages;
+minor releases will change methodology; major releases will change the output
+schema or geography.
+
+### Output schema change
 
 The district CSV now includes a `property_type` column. Each postcode district
 has one `ALL` row (the previous single row) plus one row per property type:
@@ -17,6 +23,16 @@ Consumers relying on one-row-per-district must filter to `property_type = ALL`.
   district, enabling the year-range filter on the web map.
 - **`price_per_sqm_lsoa.csv`** — LSOA-level aggregation (promoted from
   experimental); used to derive the new MSOA choropleth.
+- **`price_per_sqm_msoa.csv`** — MSOA-level aggregation derived from LSOA data;
+  covers UPRN tier-1 matches only (~60% of sales, 1995–Jan 2022).
+
+### New MSOA choropleth
+
+A second map view aggregates price per m² to Middle Super Output Area level,
+giving finer geographic resolution than postcode districts across England and
+Wales. Coverage is limited to tier-1 UPRN-matched records.
+
+- Issue: [#57](https://github.com/huwd/houseprices/issues/57)
 
 ### Matching improvements
 
