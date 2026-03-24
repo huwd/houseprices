@@ -210,52 +210,64 @@ header a:hover {
 .year-filter {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 1.5rem;
-  background: var(--color-bg-alt, #f7f7f7);
+  gap: 1.2rem;
+  padding: 0.4rem 1.5rem;
+  background: var(--color-card-bg);
   border-bottom: 1px solid var(--color-border);
   flex-wrap: wrap;
 }
 
-.year-filter-label {
-  font-size: 0.85rem;
+.year-filter-title {
+  font-size: 0.78rem;
   color: var(--color-muted);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.year-filter-range {
-  font-size: 0.9rem;
-  font-weight: 600;
-  min-width: 8rem;
-}
-
-.year-range-wrap {
+.year-slider-row {
   display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+  align-items: center;
+  gap: 0.5rem;
   flex: 1;
-  min-width: 160px;
-  max-width: 400px;
+  min-width: 140px;
+  max-width: 300px;
 }
 
-.year-range-wrap input[type="range"] {
-  width: 100%;
+.year-slider-label {
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  width: 2.2rem;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.year-val {
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-width: 2.5rem;
+  flex-shrink: 0;
+}
+
+.year-slider-row input[type="range"] {
+  flex: 1;
   cursor: pointer;
-  accent-color: var(--color-accent, #b10026);
+  accent-color: var(--color-accent);
 }
 
 .year-filter-reset {
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   padding: 0.2rem 0.6rem;
   border: 1px solid var(--color-border);
   border-radius: 3px;
   background: none;
   cursor: pointer;
   color: var(--color-muted);
+  flex-shrink: 0;
 }
 
 .year-filter-reset:hover {
   background: var(--color-border);
+  color: var(--color-text);
 }
 
 /* ── Stats strip ── */

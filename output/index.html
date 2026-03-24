@@ -44,12 +44,17 @@
   </div>
 
   <div id="year-filter" class="year-filter" style="display:none" aria-label="Filter by year range">
-    <span class="year-filter-label">Period:</span>
-    <div class="year-range-wrap">
+    <span class="year-filter-title">Filter by year</span>
+    <div class="year-slider-row">
+      <span class="year-slider-label">From</span>
       <input type="range" id="yr-start" min="2010" max="2026" value="2010" step="1" aria-label="Start year">
-      <input type="range" id="yr-end" min="2010" max="2026" value="2026" step="1" aria-label="End year">
+      <span id="yr-start-val" class="year-val">2010</span>
     </div>
-    <span id="yr-range-label" class="year-filter-range">All years</span>
+    <div class="year-slider-row">
+      <span class="year-slider-label">To</span>
+      <input type="range" id="yr-end" min="2010" max="2026" value="2026" step="1" aria-label="End year">
+      <span id="yr-end-val" class="year-val">2026</span>
+    </div>
     <button id="yr-reset" class="year-filter-reset" style="display:none">Reset</button>
   </div>
 
