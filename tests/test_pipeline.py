@@ -2069,14 +2069,18 @@ def test_run_aggregations_yearly_csv_has_required_columns(
         assert col in df.columns, f"Missing column: {col}"
 
 
-def test_run_aggregations_yearly_csv_excludes_pre_min_year(
+def test_run_aggregations_yearly_csv_includes_all_years(
     aggregation_inputs: tuple[pathlib.Path, pathlib.Path, pathlib.Path],
     tmp_path: pathlib.Path,
 ) -> None:
-    """Rows with sale year < slider_min_year must be excluded from yearly CSV."""
+    """Yearly CSV must include all years present in the matched data.
+
+    No year floor is applied — all years with sufficient matched sales appear,
+    so users can explore the full history via the time-range slider.
+    The fixture has matched sales in both 2021 and 2023.
+    """
     matched, uprn_lsoa, ppd_slim = aggregation_inputs
     output_dir = tmp_path / "output"
-    # Fixture matched sales are in 2021 and 2023; min_year=2022 keeps only 2023.
     _run_aggregations(
         matched,
         uprn_lsoa,
@@ -2084,11 +2088,11 @@ def test_run_aggregations_yearly_csv_excludes_pre_min_year(
         output_dir,
         min_sales=1,
         console=Console(quiet=True),
-        slider_min_year=2022,
     )
     df = pd.read_csv(output_dir / "price_per_sqm_yearly_postcode_district.csv")
-    assert (df["year"] >= 2022).all()
-    assert len(df) >= 1  # 2023 sales must still be present
+    years = set(df["year"].unique())
+    assert 2021 in years, "2021 sales must appear in yearly CSV"
+    assert 2023 in years, "2023 sales must appear in yearly CSV"
 
 
 def test_run_aggregations_yearly_csv_min_sales_filter(
