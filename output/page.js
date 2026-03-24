@@ -14,18 +14,8 @@ document.getElementById("stat-range").textContent = STATS.date_range;
 document.getElementById("stat-cpi-base").textContent = STATS.cpi_base;
 
 // ── Tables ────────────────────────────────────────────────────────────────────
-function populateTable(id, rows) {
-  const tbody = document.querySelector("#" + id + " tbody");
-  rows.forEach((r) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML =
-      `<td><a href="#" class="map-link" data-district="${r.district}">${r.district}</a></td>` +
-      `<td>£${r.adj_price_per_sqm.toLocaleString()}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-populateTable("tbl-top", STATS.top10);
-populateTable("tbl-bottom", STATS.bottom10);
+populateTable("tbl-top", STATS.top10, "district", "data-district");
+populateTable("tbl-bottom", STATS.bottom10, "district", "data-district");
 
 // ── Map initialisation (deferred until GeoJSON is fetched) ───────────────────
 async function init() {
@@ -36,24 +26,6 @@ async function init() {
       .catch(() => null),
   ]);
 
-  // ── Colour scale (9-class hybrid, YlOrRd→purple) ─────────────────────────────
-  // 7-class quantile breaks for the main distribution (~325 districts each),
-  // plus two manual breaks into purple for the high-value tail:
-  //   £3,428–£5,000  outer London / expensive commuter belt  (~222 districts)
-  //   £5,000–£10,000 inner London / prime regional cities     (~74 districts)
-  //   £10,000+       central London only                      (~31 districts)
-  const PALETTE = [
-    "#ffffb2",
-    "#fed976",
-    "#feb24c",
-    "#fd8d3c",
-    "#fc4e2a",
-    "#e31a1c",
-    "#b10026",
-    "#7a0177",
-    "#49006a",
-  ];
-
   // Colour scale calibrated on all-time adj_price_per_sqm from GeoJSON (1995–present).
   // This is the stable reference distribution used in both all-time and year-range modes.
   const allPrices = GEOJSON.features
@@ -61,30 +33,7 @@ async function init() {
     .filter((v) => v != null)
     .sort((a, b) => a - b);
 
-  // 7 quantile lower-bounds, then manual purple thresholds
-  const quantileBreaks = [0, 1 / 7, 2 / 7, 3 / 7, 4 / 7, 5 / 7, 6 / 7].map(
-    (q) => {
-      const i = Math.min(
-        Math.floor(q * allPrices.length),
-        allPrices.length - 1,
-      );
-      return allPrices[i];
-    },
-  );
-  const breaks = [
-    ...quantileBreaks,
-    5000,
-    10000,
-    allPrices[allPrices.length - 1],
-  ];
-
-  function getColour(price) {
-    if (price == null) return "#cccccc";
-    for (let i = breaks.length - 2; i >= 0; i--) {
-      if (price >= breaks[i]) return PALETTE[i];
-    }
-    return PALETTE[0];
-  }
+  const { breaks, getColour } = buildColourScale(allPrices);
 
   // ── Year range filter ─────────────────────────────────────────────────────────
   const yrMaxYear = YEARLY
@@ -165,26 +114,7 @@ async function init() {
     map.setZoom(map.getZoom() + 1);
   }
 
-  const darkMq = window.matchMedia("(prefers-color-scheme: dark)");
-
-  const tileOptions = {
-    attribution:
-      '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> ' +
-      'contributors © <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: "abcd",
-    maxZoom: 19,
-  };
-
-  function tileUrl(dark) {
-    return `https://{s}.basemaps.cartocdn.com/${dark ? "dark" : "light"}_all/{z}/{x}/{y}{r}.png`;
-  }
-
-  let tileLayer = L.tileLayer(tileUrl(darkMq.matches), tileOptions).addTo(map);
-
-  darkMq.addEventListener("change", (e) => {
-    tileLayer.remove();
-    tileLayer = L.tileLayer(tileUrl(e.matches), tileOptions).addTo(map);
-  });
+  setupMapTiles(map);
 
   // Info control (top-right)
   const infoCtrl = L.control({ position: "topright" });
@@ -292,45 +222,11 @@ async function init() {
   }).addTo(map);
 
   // ── Dismiss loading overlay ───────────────────────────────────────────────────
-  const mapLoading = document.getElementById("map-loading");
-  if (mapLoading) {
-    mapLoading.style.opacity = "0";
-    mapLoading.addEventListener("transitionend", () => mapLoading.remove(), {
-      once: true,
-    });
-  }
+  dismissLoadingOverlay();
 
-  // ── Point-in-polygon (ray casting) for locate ────────────────────────────────
-  function pointInRing(lng, lat, ring) {
-    let inside = false;
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const [xi, yi] = ring[i],
-        [xj, yj] = ring[j];
-      if (
-        yi > lat !== yj > lat &&
-        lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi
-      )
-        inside = !inside;
-    }
-    return inside;
-  }
-
+  // ── Point-in-polygon for locate ───────────────────────────────────────────────
   function findDistrict(lng, lat) {
-    for (const feature of GEOJSON.features) {
-      const geom = feature.geometry;
-      if (!geom) continue;
-      let polys = [];
-      if (geom.type === "Polygon") polys = [geom.coordinates];
-      else if (geom.type === "MultiPolygon") polys = geom.coordinates;
-      else if (geom.type === "GeometryCollection")
-        geom.geometries.forEach((g) => {
-          if (g.type === "Polygon") polys.push(g.coordinates);
-          else if (g.type === "MultiPolygon") polys.push(...g.coordinates);
-        });
-      for (const poly of polys)
-        if (pointInRing(lng, lat, poly[0])) return feature.properties.PostDist;
-    }
-    return null;
+    return findFeature(lng, lat, GEOJSON.features, (f) => f.properties.PostDist);
   }
 
   // ── Locate control (top-left, below zoom) ─────────────────────────────────────
@@ -631,12 +527,6 @@ async function init() {
 
     document.getElementById("facts-strip").innerHTML =
       `<p>${p1}</p><p>${p2}</p><p>${p3}</p>` + (p4 ? `<p>${p4}</p>` : "");
-  }
-
-  function ordinal(n) {
-    const s = ["th", "st", "nd", "rd"];
-    const v = n % 100;
-    return s[(v - 20) % 10] || s[v] || s[0];
   }
 
   document.addEventListener("click", function (e) {
