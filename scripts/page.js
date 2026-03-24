@@ -797,7 +797,8 @@ async function init() {
     const yrFilter = document.getElementById("year-filter");
     const yrStartEl = document.getElementById("yr-start");
     const yrEndEl = document.getElementById("yr-end");
-    const yrLabel = document.getElementById("yr-range-label");
+    const yrStartVal = document.getElementById("yr-start-val");
+    const yrEndVal = document.getElementById("yr-end-val");
     const yrReset = document.getElementById("yr-reset");
 
     yrStartEl.min = YEARLY.min_year;
@@ -816,8 +817,9 @@ async function init() {
       }
       yearStart = s;
       yearEnd = e;
+      yrStartVal.textContent = s;
+      yrEndVal.textContent = e;
       const allTime = s === YEARLY.min_year && e === yrMaxYear;
-      yrLabel.textContent = allTime ? "All years" : `${s} – ${e}`;
       yrReset.style.display = allTime ? "none" : "inline";
       geoLayer.setStyle(districtStyle);
       // refresh info panel if a district is selected
