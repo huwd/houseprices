@@ -139,6 +139,95 @@ async function init() {
 
   dismissLoadingOverlay();
 
+  // ── Locate control (top-left, below zoom) ─────────────────────────────────────
+  const locateCtrl = L.control({ position: "topleft" });
+  locateCtrl.onAdd = function () {
+    const div = L.DomUtil.create("div", "leaflet-bar leaflet-control");
+    const btn = L.DomUtil.create("a", "locate-btn", div);
+    btn.href = "#";
+    btn.title = "Find my location";
+    btn.setAttribute("role", "button");
+    btn.setAttribute("aria-label", "Find my location");
+    btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16"
+      fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <circle cx="12" cy="12" r="4"/>
+      <line x1="12" y1="2" x2="12" y2="7"/>
+      <line x1="12" y1="17" x2="12" y2="22"/>
+      <line x1="2" y1="12" x2="7" y2="12"/>
+      <line x1="17" y1="12" x2="22" y2="12"/>
+    </svg>`;
+
+    L.DomEvent.disableClickPropagation(div);
+
+    L.DomEvent.on(btn, "click", function (e) {
+      L.DomEvent.preventDefault(e);
+      if (!navigator.geolocation) {
+        btn.title = "Geolocation not supported";
+        return;
+      }
+      btn.classList.add("locate-btn--loading");
+
+      function locateError(msg) {
+        btn.classList.remove("locate-btn--loading");
+        btn.classList.add("locate-btn--error");
+        btn.title = msg;
+        setTimeout(() => {
+          btn.classList.remove("locate-btn--error");
+          btn.title = "Find my location";
+        }, 3000);
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          btn.classList.remove("locate-btn--loading");
+          const { longitude: lng, latitude: lat } = pos.coords;
+          const code = findFeature(
+            lng,
+            lat,
+            GEOJSON.features,
+            (f) => f.properties.MSOA21CD,
+          );
+          if (!code) {
+            locateError("No MSOA found at your location");
+            return;
+          }
+          const layer = msoaLayers[code];
+          if (!layer) {
+            locateError("MSOA data unavailable");
+            return;
+          }
+          setMsoaParam(code);
+          const bounds = L.geoJSON(layer.feature).getBounds();
+          map.flyToBounds(bounds, {
+            padding: [60, 60],
+            duration: 1.5,
+            maxZoom: 13,
+          });
+          map.once("moveend", function () {
+            if (activeLayer) geoLayer.resetStyle(activeLayer);
+            activeLayer = layer;
+            layer.setStyle({ weight: 2, color: "#333", fillOpacity: 0.9 });
+            layer.bringToFront();
+            infoCtrl._render(layer.feature.properties);
+          });
+        },
+        (err) => {
+          const msg =
+            err.code === 1
+              ? "Location access denied"
+              : err.code === 3
+                ? "Location timed out — try again"
+                : "Location unavailable";
+          locateError(msg);
+        },
+        { timeout: 30000, maximumAge: 300000 },
+      );
+    });
+
+    return div;
+  };
+  locateCtrl.addTo(map);
+
   // ── Deep-link: restore MSOA from ?msoa= on page load ─────────────────────────
   if (initialMsoa) {
     const layer = msoaLayers[initialMsoa];
