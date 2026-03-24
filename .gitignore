@@ -9,9 +9,11 @@ data/*
 cache/*
 !cache/.gitkeep
 
-# Output CSVs and index.html are committed; images are not
+# Output CSVs and index.html are committed; images are not (except social previews)
 output/*.png
 output/*.jpg
+!output/social-preview.png
+!output/social-preview-msoa.png
 
 # Notebook outputs are not committed (nbstripout handles this via git filter)
 notebooks/.ipynb_checkpoints/
