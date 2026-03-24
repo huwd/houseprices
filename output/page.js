@@ -205,8 +205,8 @@ async function init() {
         : "No data";
     const rangeNote =
       yearlyPrice !== null
-        ? `<br><span class="muted">${yearStart}–${yearEnd} avg</span>`
-        : `<br><span class="muted">All years (real Jan-2026 £)</span>`;
+        ? `<br><span class="muted">${yearStart}–${yearEnd} · real Jan-2026 £</span>`
+        : `<br><span class="muted">All years · real Jan-2026 £</span>`;
     const sales =
       !yearlyPrice && props.num_sales != null
         ? props.num_sales.toLocaleString() + " sales"
