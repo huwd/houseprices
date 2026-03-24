@@ -166,16 +166,22 @@ def compute_msoa_stats(msoa_data: dict[str, dict], metadata: dict[str, str]) -> 
     }
 
 
-def _fetch_paginated(service_url: str, fields: list[str]) -> list[dict]:
+def _fetch_paginated(
+    service_url: str,
+    fields: list[str],
+    extra_params: list[str] | None = None,
+) -> list[dict]:
     """Fetch all records from an ArcGIS FeatureServer via offset pagination."""
     records = []
     offset = 0
+    base_params = [
+        "where=1%3D1",
+        f"outFields={','.join(fields)}",
+    ] + (extra_params or ["f=json"])
     while True:
         params = "&".join(
-            [
-                "where=1%3D1",
-                f"outFields={','.join(fields)}",
-                "f=json",
+            base_params
+            + [
                 f"resultOffset={offset}",
                 f"resultRecordCount={_PAGE_SIZE}",
             ]
@@ -220,17 +226,23 @@ def fetch_msoa_boundaries(cache_path: pathlib.Path) -> dict:
         return json.loads(cache_path.read_text())
 
     print("  Fetching MSOA boundaries from ONS…")
+    # f=geojson returns valid GeoJSON geometry (WGS84) rather than the ArcGIS
+    # rings format returned by f=json.  outSR=4326 ensures WGS84 output.
+    # geometryPrecision=5 truncates coordinates to 5 decimal places (~1 m),
+    # keeping the file well under Cloudflare Pages' 25 MB file size limit.
     records = _fetch_paginated(
-        _MSOA_BOUNDARY_SERVICE, ["MSOA21CD", "MSOA21NM", "LAT", "LONG"]
+        _MSOA_BOUNDARY_SERVICE,
+        ["MSOA21CD", "MSOA21NM", "LAT", "LONG"],
+        extra_params=["f=geojson", "outSR=4326", "geometryPrecision=5"],
     )
     features = [
         {
             "type": "Feature",
             "properties": {
-                "MSOA21CD": r["attributes"]["MSOA21CD"],
-                "MSOA21NM": r["attributes"]["MSOA21NM"],
-                "LAT": r["attributes"]["LAT"],
-                "LONG": r["attributes"]["LONG"],
+                "MSOA21CD": r["properties"]["MSOA21CD"],
+                "MSOA21NM": r["properties"]["MSOA21NM"],
+                "LAT": r["properties"]["LAT"],
+                "LONG": r["properties"]["LONG"],
             },
             "geometry": r.get("geometry"),
         }
