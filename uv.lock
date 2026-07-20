@@ -864,7 +864,7 @@ requires-dist = [
     { name = "nbstripout", marker = "extra == 'dev'", specifier = ">=0.9.0" },
     { name = "pandas", specifier = ">=3.0.5" },
     { name = "pandas-stubs", marker = "extra == 'dev'", specifier = ">=3.0.5.260730" },
-    { name = "pyarrow", specifier = ">=17.0.0" },
+    { name = "pyarrow", specifier = ">=24.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1.1" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
