@@ -20,6 +20,8 @@ import shutil
 import statistics
 import sys
 
+from site_config import render_shared_js
+
 ROOT = pathlib.Path(__file__).parent.parent
 OUTPUT = ROOT / "output"
 DATA = ROOT / "data"
@@ -736,7 +738,7 @@ def main() -> None:
     print(f"  Written → {OUT_HTML} ({size_kb:,} KB)")
 
     shutil.copy2(CSS_PATH, OUT_CSS)
-    shutil.copy2(SHARED_JS_PATH, OUT_SHARED_JS)
+    render_shared_js(SHARED_JS_PATH, OUT_SHARED_JS)
     shutil.copy2(JS_PATH, OUT_JS)
     print(f"  Copied  → {OUT_CSS}")
     print(f"  Copied  → {OUT_SHARED_JS}")
