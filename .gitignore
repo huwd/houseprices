@@ -46,3 +46,8 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# devenv / direnv
+.devenv*
+devenv.local.nix
+.direnv/
