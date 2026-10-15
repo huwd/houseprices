@@ -74,6 +74,10 @@ page:  ## Build output/index.html and output/msoa.html (requires CARTO_API_KEY i
 	uv run python scripts/build_page.py
 	uv run python scripts/build_msoa_page.py
 
+.PHONY: inject-key
+inject-key:  ## Bake CARTO_API_KEY into output/shared.js only (deploy-time; needs python-dotenv, not uv or data)
+	python3 scripts/site_config.py
+
 .PHONY: serve
 serve:  ## Serve output/ on http://localhost:8000 for local preview
 	uv run python -m http.server 8000 --directory output
