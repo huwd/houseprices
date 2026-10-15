@@ -70,7 +70,7 @@ boundaries:  ## Convert Geolytix PostalBoundariesOpen SHP → WGS84 GeoJSON (run
 	uv run scripts/prepare_boundaries.py
 
 .PHONY: page
-page:  ## Build output/index.html and output/msoa.html from pipeline outputs
+page:  ## Build output/index.html and output/msoa.html (requires CARTO_API_KEY in .env)
 	uv run python scripts/build_page.py
 	uv run python scripts/build_msoa_page.py
 

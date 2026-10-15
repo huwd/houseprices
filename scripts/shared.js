@@ -81,6 +81,9 @@ function populateTable(id, rows, codeKey, dataAttr, nameKey = null) {
   });
 }
 
+// Injected at build time by scripts/site_config.py from CARTO_API_KEY.
+const CARTO_API_KEY = "__CARTO_API_KEY__";
+
 // ── Map tiles (CARTO, dark/light via prefers-color-scheme) ───────────────────
 /**
  * Add a CARTO tile layer to the map, swapping dark↔light on system theme change.
@@ -91,12 +94,12 @@ function setupMapTiles(map) {
     attribution:
       '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> ' +
       'contributors © <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: "abcd",
     maxZoom: 19,
   };
 
   function tileUrl(dark) {
-    return `https://{s}.basemaps.cartocdn.com/${dark ? "dark" : "light"}_all/{z}/{x}/{y}{r}.png`;
+    const style = dark ? "dark_all" : "voyager";
+    return `https://basemaps.cartocdn.com/rastertiles/${style}/{z}/{x}/{y}.png?key=${CARTO_API_KEY}`;
   }
 
   const darkMq = window.matchMedia("(prefers-color-scheme: dark)");
